@@ -19,24 +19,6 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
 
 @bot.event
-async def on_message(message):
-    if message.author == bot.user:
-        return
-
-    # Check if the bot is mentioned (tagged)
-    if bot.user.mentioned_in(message):
-        referenced_message = None
-        if message.reference:
-            referenced_message = await message.channel.fetch_message(message.reference.message_id)
-
-        if referenced_message:
-            # Generate the joke based on the original message
-            joke = generate_joke(referenced_message.content)
-            print(f"original message: {referenced_message.content}\njoke: {joke}")
-            # Send the joke as a reply
-            await message.reply(joke)
-
-@bot.event
 async def on_raw_reaction_add(payload):
     # Only process 🤡 emoji reactions
     if str(payload.emoji) != "🤡":
