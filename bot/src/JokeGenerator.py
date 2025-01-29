@@ -41,7 +41,7 @@ class JokeGenerator:
         
         for (input, output) in sample_jokes:
             prompt.append(f"input: {input}")
-            prompt.append(f"output: {output}")
+            prompt.append(f"output: *joke*{output}*joke*")
         
         prompt.append("input: " + content)
         prompt.append("output: ")
