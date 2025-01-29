@@ -1,9 +1,42 @@
 version: '3.8'
 
 services:
-  bot:
-    build: 
-      context: ./bot
+  db:
+    build: ./db
     env_file:
       - .env
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - db:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    ports:
+        - "8080:80"
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+
+  bot:
+    build: ./bot
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=db
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    depends_on:
+      - db
+
+volumes:
+    pgadmin:
+    db:

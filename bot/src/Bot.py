@@ -1,10 +1,27 @@
 import nextcord
 from dotenv import load_dotenv
 from nextcord.ext import commands
-from Gemini import generate_joke
+from JokeGenerator import JokeGenerator
+from Store import Store
 import os
 
 load_dotenv()
+
+# Create store instance before bot setup
+store = Store(
+    host=os.getenv('POSTGRES_HOST', 'localhost'),
+    port=int(os.getenv('POSTGRES_PORT', '5432')),
+    user=os.getenv('POSTGRES_USER', 'postgres'),
+    password=os.getenv('POSTGRES_PASSWORD', 'postgres'),
+    database=os.getenv('POSTGRES_DB', 'postgres')
+)
+
+# Create joke generator instance
+joke_generator = JokeGenerator(
+    api_key=os.getenv('GEMINI_API_KEY'),
+    model_name=os.getenv('GEMINI_MODEL'),
+    temperature=float(os.getenv('GEMINI_TEMPERATURE', '1.2'))
+)
 
 intents = nextcord.Intents.default()
 intents.message_content = True  # MUST have this to receive message content
@@ -51,16 +68,14 @@ async def save_joke(payload):
     # Calculate total reactions
     reaction_count = sum(reaction.count for reaction in joke_message.reactions)
     
-    # Create joke data structure with message contents
-    joke_data = {
-        "source_message_id": source_message.id,
-        "joke_message_id": joke_message.id,
-        "source_message_content": source_message.content,
-        "joke_message_content": joke_message.content,
-        "reaction_count": reaction_count
-    }
-
-    print(f"Saving joke: {joke_data}")
+    # Save to database using store
+    store.save(
+        source_message_id=source_message.id,
+        joke_message_id=joke_message.id,
+        source_message_content=source_message.content,
+        joke_message_content=joke_message.content,
+        reaction_count=reaction_count
+    )
 
 async def process_joke_request(payload):
     # Skip if already processed this message
@@ -70,8 +85,8 @@ async def process_joke_request(payload):
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
 
-    # Generate and send joke
-    joke = generate_joke(message.content)
+    # Use joke_generator instance and get_random_jokes
+    joke = joke_generator.generate_joke(message.content, store.get_random_jokes(5))
     await message.reply(joke)
     
     # Mark message as processed
