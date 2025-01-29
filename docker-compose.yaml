@@ -3,7 +3,7 @@ version: '3.8'
 services:
   bot:
     build: 
-      dockerfile: Dockerfile
+      context: ./bot
     env_file:
       - .env
     restart: unless-stopped
