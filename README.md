@@ -22,6 +22,14 @@ GEMINI_MODEL=       # Model name (e.g. "gemini-exp-1206")
 - Discord token: [Discord Developer Portal](https://discord.com/developers/applications)
 - Gemini API key: [Google AI Studio](https://aistudio.google.com)
 
+### Required Bot Permissions
+1. In Discord Developer Portal:
+   - Go to Settings > Bot
+   - Enable "Message Content Intent"
+2. In Settings > Installation:
+   - Select "bot" under Scopes
+   - Enable "Send Messages" permission
+
 ## Running the Bot
 
 Simply run:
