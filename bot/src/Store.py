@@ -5,7 +5,8 @@ class Store:
                  port: int = 5432,
                  user: str = "postgres",
                  password: str = "postgres",
-                 database: str = "postgres"):
+                 database: str = "postgres",
+                 weight_coef: float = 1.1):
         self.connection_params = {
             "host": host,
             "port": port,
@@ -14,6 +15,7 @@ class Store:
             "database": database
         }
         self.conn = None
+        self.weight_coef = weight_coef
 
     def _connect(self):
         return psycopg2.connect(**self.connection_params)
@@ -101,7 +103,7 @@ class Store:
                     WITH weighted_jokes AS (
                         SELECT m1.content as source_content,
                                m2.content as joke_content,
-                               random() * power(1.1, j.reaction_count) as weight
+                               random() * power(%s, j.reaction_count) as weight
                         FROM jokes j
                         JOIN messages m1 ON j.source_message_id = m1.message_id
                         JOIN messages m2 ON j.joke_message_id = m2.message_id
@@ -111,7 +113,7 @@ class Store:
                     ORDER BY weight DESC
                     LIMIT %s
                     """,
-                    (n,)
+                    (self.weight_coef, n)
                 )
                 return cur.fetchall()
         except Exception as e:

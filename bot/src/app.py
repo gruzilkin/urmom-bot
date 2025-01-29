@@ -13,7 +13,8 @@ store = Store(
     port=int(os.getenv('POSTGRES_PORT', '5432')),
     user=os.getenv('POSTGRES_USER', 'postgres'),
     password=os.getenv('POSTGRES_PASSWORD', 'postgres'),
-    database=os.getenv('POSTGRES_DB', 'postgres')
+    database=os.getenv('POSTGRES_DB', 'postgres'),
+    weight_coef=float(os.getenv('SAMPLE_JOKES_COEF', '1.1'))
 )
 
 # Create joke generator instance
@@ -85,8 +86,8 @@ async def process_joke_request(payload):
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
 
-    # Use joke_generator instance and get_random_jokes
-    joke = joke_generator.generate_joke(message.content, store.get_random_jokes(5))
+    sample_count = int(os.getenv('SAMPLE_JOKES_COUNT', '10'))
+    joke = joke_generator.generate_joke(message.content, store.get_random_jokes(sample_count))
     await message.reply(joke)
     
     # Mark message as processed
