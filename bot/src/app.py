@@ -1,6 +1,5 @@
 import nextcord
 from dotenv import load_dotenv
-from nextcord.ext import commands
 from JokeGenerator import JokeGenerator
 from Store import Store
 import os
@@ -27,7 +26,7 @@ joke_generator = JokeGenerator(
 intents = nextcord.Intents.default()
 intents.message_content = True  # MUST have this to receive message content
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = nextcord.Client(intents=intents)
 
 # Set to store IDs of messages we've already responded to
 processed_messages = set()
