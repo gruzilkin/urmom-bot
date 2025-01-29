@@ -7,6 +7,21 @@ A Discord bot that responds with "ur mom" jokes when messages are reacted to wit
 - Triggered by clown emoji reactions
 - Powered by Google's Gemini AI
 
+## Adaptive Learning
+The bot features an adaptive learning system that improves its joke generation over time:
+
+- Collects and stores jokes (both "ur mom" and "in Soviet Russia" variants)
+- Learns from both AI-generated and user-contributed jokes
+- Evaluates joke quality based on user reactions
+- Uses popular jokes as reference material for generating new content
+
+For a joke to be considered for learning (both bot-generated and user-contributed):
+- Must be a reply to the original message that inspired the joke
+- Must follow the "ur mom" or "in Soviet Russia" format
+- Must receive reactions from server members
+
+The learning system prioritizes jokes with higher engagement (more reactions) when creating new content, ensuring better quality over time.
+
 ## Configuration
 
 Create a `.env` file in the root directory with the following variables:
