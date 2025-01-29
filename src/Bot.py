@@ -23,7 +23,7 @@ async def on_raw_reaction_add(payload):
     # Only process 🤡 emoji reactions
     if str(payload.emoji) == "🤡":
         await process_joke_request(payload)
-    elif is_joke(payload):
+    elif await is_joke(payload):
         await save_joke(payload)
 
 async def is_joke(payload):
