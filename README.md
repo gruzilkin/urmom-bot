@@ -56,3 +56,8 @@ To view logs:
 ```bash
 docker compose logs -f
 ```
+
+## Try It Out! 🤖
+Want to test the bot without setting up your own instance? You can add my hosted instance to your Discord server:
+
+[➡️ Add Bot to Your Server](https://discord.com/oauth2/authorize?client_id=1333878858138652682)
