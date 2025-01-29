@@ -31,8 +31,6 @@ services:
       - .env
     environment:
       - POSTGRES_HOST=db
-    ports:
-      - "5432:5432"
     restart: unless-stopped
     depends_on:
       - db
