@@ -12,5 +12,14 @@ class TestJokeGenerator(unittest.TestCase):
         expected_result = "tldr, its basically ur mom with some extra coloured plastic"
         self.assertEqual(result, expected_result)
 
+    def test_generate_joke_2(self):
+        # Test input
+        test_message = "I remember it being too hard"
+
+        # Generate joke
+        result = generate_joke(test_message)
+
+        print(result)
+
 if __name__ == '__main__':
     unittest.main()
