@@ -15,7 +15,7 @@ class JokeGenerator:
             "temperature": temperature,
             "top_p": 0.95,
             "top_k": 64,
-            "max_output_tokens": 8192,
+            "max_output_tokens": 512,
             "response_mime_type": "text/plain",
         }
 
@@ -30,10 +30,9 @@ class JokeGenerator:
         The second type is \"In Soviet Russia\" joke. \"In Soviet Russia\", also called the Russian reversal, is a joke template taking the general form \"In America you do X to/with Y; in Soviet Russia Y does X to/with you\".
         Typically the American clause describes a harmless ordinary activity and the inverted Soviet form something menacing or dysfunctional, satirizing life under communist rule, or in the \"old country\".
         Sometimes the first clause is omitted, and sometimes either clause or both are deliberately rendered with English grammatical errors stereotypical of Russians.
-        You can combine the two patterns if it results in a funny joke.
+        You can combine the two patterns.
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
-        If the result looks absurd and funny then it's a good joke, you should surround your response with *joke* tag before the joke and after so that I could automatically extract it with a script.
-        Respond with *none* if the sentence is not a good material for such a joke or if it doesn't sound funny in the end.
+        You should surround your response with *joke* tag before the joke and after so that I could automatically extract it with a script.
         """
 
     def generate_joke(self, content: str, sample_jokes: list[tuple[str, str]]) -> str:
@@ -46,10 +45,9 @@ class JokeGenerator:
         prompt.append("input: " + content)
         prompt.append("output: ")
 
-        response = self.model.generate_content(prompt)
-
         print(f"{prompt}")
         print(f"source: {content}")
+        response = self.model.generate_content(prompt)
         print(f"response: {response.text}")
 
         joke_match = re.search(r'\*joke\*(.*?)\*joke\*', response.text, re.DOTALL)
