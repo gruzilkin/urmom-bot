@@ -32,7 +32,8 @@ class JokeGenerator:
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
         """
 
-        self.in_soviet_russia_prompt = """Make a "In Soviet Russia" joke based on the following message: """
+        self.in_soviet_russia_prompt = """You are a chatbot and you need to make a "In Soviet Russia" joke based on the following message, your reply should only contain the joke itself:
+        """
 
     def generate_joke(self, content: str, sample_jokes: list[tuple[str, str]]) -> str:
         prompt = [self.base_prompt]
