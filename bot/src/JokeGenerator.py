@@ -30,7 +30,6 @@ class JokeGenerator:
         You can combine the two patterns.
         Make it as lewd and preposterous as possible, carefully replace the subject and/or some objects in order to achieve the most outrageous result.
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
-        You should surround your response with *joke* tag before the joke and after so that I could automatically extract it with a script.
         """
 
     def generate_joke(self, content: str, sample_jokes: list[tuple[str, str]]) -> str:
@@ -38,7 +37,7 @@ class JokeGenerator:
         
         for (input, output) in sample_jokes:
             prompt.append(f"input: {input}")
-            prompt.append(f"output: *joke*{output}*joke*")
+            prompt.append(f"output: {output}")
         
         prompt.append("input: " + content)
         prompt.append("output: ")
@@ -48,9 +47,4 @@ class JokeGenerator:
         response = self.model.generate_content(prompt)
         print(f"response: {response.text}")
 
-        joke_match = re.search(r'\*joke\*(.*?)\*joke\*', response.text, re.DOTALL)
-        if joke_match:
-            joke = joke_match.group(1).strip()
-            return joke
-        else:
-            return "I need some better urmom joke material to work with"
+        return response.text
