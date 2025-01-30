@@ -37,9 +37,10 @@ async def on_ready():
 
 @bot.event
 async def on_raw_reaction_add(payload):
-    # Only process 🤡 emoji reactions
     if str(payload.emoji) == "🤡":
         await process_joke_request(payload)
+    elif str(payload.emoji) == "🇷🇺":
+        await process_in_soviet_russia_joke_request(payload)
     elif await is_joke(payload):
         await save_joke(payload)
 
@@ -87,6 +88,20 @@ async def process_joke_request(payload):
 
     sample_count = int(os.getenv('SAMPLE_JOKES_COUNT', '10'))
     joke = joke_generator.generate_joke(message.content, store.get_random_jokes(sample_count))
+    await message.reply(joke)
+    
+    # Mark message as processed
+    processed_messages.add(payload.message_id)
+
+async def process_in_soviet_russia_joke_request(payload):
+    # Skip if already processed this message
+    if payload.message_id in processed_messages:
+        return
+
+    channel = await bot.fetch_channel(payload.channel_id)
+    message = await channel.fetch_message(payload.message_id)
+
+    joke = joke_generator.generate_in_soviet_russia_joke(message.content)
     await message.reply(joke)
     
     # Mark message as processed

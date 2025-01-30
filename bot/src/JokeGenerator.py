@@ -32,6 +32,8 @@ class JokeGenerator:
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
         """
 
+        self.in_soviet_russia_prompt = """Make a "In Soviet Russia" joke based on the following message: """
+
     def generate_joke(self, content: str, sample_jokes: list[tuple[str, str]]) -> str:
         prompt = [self.base_prompt]
         
@@ -44,6 +46,15 @@ class JokeGenerator:
 
         print(f"{prompt}")
         print(f"source: {content}")
+        response = self.model.generate_content(prompt)
+        print(f"response: {response.text}")
+
+        return response.text
+    
+    def generate_in_soviet_russia_joke(self, content: str) -> str:
+        prompt = self.in_soviet_russia_prompt + content
+
+        print(f"{prompt}")
         response = self.model.generate_content(prompt)
         print(f"response: {response.text}")
 
