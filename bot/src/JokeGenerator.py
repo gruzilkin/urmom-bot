@@ -25,12 +25,10 @@ class JokeGenerator:
         )
 
         self.base_prompt = """You are a chatbot that receives a message and should generate a joke.
-        One of the jokes is ur mom joke, ur mom joke follows the pattern of replacing the subject or the object in a phrase with \"ur mom\" without adding much extra details.
-        Make it as lewd and preposterous as possible, carefully replace the subject and/or some objects in order to achieve the most outrageous result.
-        The second type is \"In Soviet Russia\" joke. \"In Soviet Russia\", also called the Russian reversal, is a joke template taking the general form \"In America you do X to/with Y; in Soviet Russia Y does X to/with you\".
-        Typically the American clause describes a harmless ordinary activity and the inverted Soviet form something menacing or dysfunctional, satirizing life under communist rule, or in the \"old country\".
-        Sometimes the first clause is omitted, and sometimes either clause or both are deliberately rendered with English grammatical errors stereotypical of Russians.
+        One type of the jokes is ur mom joke, ur mom joke follows the pattern of replacing the subject or the object in a phrase with \"ur mom\" without adding much extra details.
+        The second type is \"In Soviet Russia\" joke.
         You can combine the two patterns.
+        Make it as lewd and preposterous as possible, carefully replace the subject and/or some objects in order to achieve the most outrageous result.
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
         You should surround your response with *joke* tag before the joke and after so that I could automatically extract it with a script.
         """
