@@ -3,6 +3,7 @@ import os
 from store import Store
 from joke_generator import JokeGenerator
 from gemini_client import GeminiClient
+from country_resolver import CountryResolver
 
 class Container:
     def __init__(self):
@@ -27,6 +28,9 @@ class Container:
 
         # Initialize JokeGenerator with GeminiClient
         self.joke_generator = JokeGenerator(self.gemini_client)
+
+        # Initialize CountryResolver with GeminiClient
+        self.country_resolver = CountryResolver(self.gemini_client)
     
     def _get_env(self, key: str) -> str:
         value = os.getenv(key)

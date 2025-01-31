@@ -1,7 +1,6 @@
 import nextcord
 from dotenv import load_dotenv
 from container import container  # Import the instance instead of the class
-from utils import get_country_from_flag
 import os
 
 load_dotenv()
@@ -21,7 +20,7 @@ async def on_ready():
 @bot.event
 async def on_raw_reaction_add(payload):
     emoji_str = str(payload.emoji)
-    country = get_country_from_flag(emoji_str)
+    country = container.country_resolver.get_country_from_flag(emoji_str)
 
     if emoji_str == "🤡":
         await process_joke_request(payload)
