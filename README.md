@@ -21,8 +21,9 @@ For a joke to be considered for learning (both bot-generated and user-contribute
 
 The learning system prioritizes jokes with higher engagement (more reactions) when creating new content, ensuring better quality over time.
 
-## Configuration
+## Server Setup
 
+### Environment Variables
 Create a `.env` file in the root directory with the following variables:
 
 ```env
@@ -43,16 +44,11 @@ GROK_TEMPERATURE=0.7                      # Value between 0-2, higher = more cre
 GROK_MODEL=grok-2-1212                    # Latest model version
 ```
 
-## Server Setup
-To ensure proper bot operation:
-- Create a channel named `#bots` - the bot will post all generated jokes there
-- The bot will react to emoji triggers in any channel, but responses are always posted in `#bots`
-
-## Where to get the keys:
+### Where to get the keys:
 - Discord token: [Discord Developer Portal](https://discord.com/developers/applications)
 - Gemini API key: [Google AI Studio](https://aistudio.google.com)
 
-## Required Bot Permissions
+### Required Bot Permissions
 1. In Discord Developer Portal:
    - Go to Settings > Bot
    - Enable "Message Content Intent"
@@ -71,6 +67,11 @@ To view logs:
 ```bash
 docker compose logs -f
 ```
+
+## Bot Behavior
+The bot will:
+1. Reply with temporary jokes that auto-delete after timeout
+2. Additionally, if a `#bots` channel exists, post permanent copies of jokes there
 
 ## Try It Out! 🤖
 Want to test the bot without setting up your own instance? You can add my hosted instance to your Discord server:

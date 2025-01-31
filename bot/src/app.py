@@ -29,7 +29,7 @@ try:
 except ValueError:
     raise ValueError("DELETE_JOKES_AFTER must be a valid integer!")
 
-async def get_bot_channel_id(guild_id: int) -> int:
+async def get_bot_channel_id(guild_id: int) -> int | None:
     """Get or find bot channel ID for a specific guild"""
     if guild_id in guild_channel_mapping:
         return guild_channel_mapping[guild_id]
@@ -37,12 +37,14 @@ async def get_bot_channel_id(guild_id: int) -> int:
     # Find the guild by ID
     guild = bot.get_guild(guild_id)
     if not guild:
-        raise ValueError(f"Could not find guild {guild_id}")
+        print(f"Could not find guild {guild_id}")
+        return None
 
     # Find the bot channel in this guild
     channel = nextcord.utils.get(guild.text_channels, name=BOT_CHANNEL_NAME)
     if not channel:
-        raise ValueError(f"Could not find channel #{BOT_CHANNEL_NAME} in guild {guild.name}")
+        print(f"Could not find channel #{BOT_CHANNEL_NAME} in guild {guild.name}")
+        return None
 
     # Cache the channel ID
     guild_channel_mapping[guild_id] = channel.id
@@ -106,8 +108,6 @@ async def save_joke(payload):
 async def process_joke_request(payload, country=None):
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
-    bot_channel_id = await get_bot_channel_id(payload.guild_id)
-    bot_channel = await bot.fetch_channel(bot_channel_id)
 
     if country:
         joke = await container.joke_generator.generate_country_joke(message.content, country)
@@ -117,10 +117,16 @@ async def process_joke_request(payload, country=None):
     # Send direct reply with just the joke
     reply_message = await message.reply(joke)
     
-    # Send full message with link to bot channel
-    message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
-    bot_channel_response = f"**Original message**: {message_link}\n{joke}"
-    await bot_channel.send(bot_channel_response)
+    # Try to send to bot channel if it exists
+    bot_channel_id = await get_bot_channel_id(payload.guild_id)
+    if bot_channel_id:
+        try:
+            bot_channel = await bot.fetch_channel(bot_channel_id)
+            message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
+            bot_channel_response = f"**Original message**: {message_link}\n{joke}"
+            await bot_channel.send(bot_channel_response)
+        except Exception as e:
+            print(f"Failed to send to bot channel: {e}")
     
     await asyncio.sleep(DELETE_JOKES_AFTER)
     try:

@@ -43,6 +43,7 @@ services:
       SAMPLE_JOKES_COUNT: ${SAMPLE_JOKES_COUNT:-3}
       SAMPLE_JOKES_COEF: ${SAMPLE_JOKES_COEF:-1.3}
       BOT_CHANNEL_NAME: ${BOT_CHANNEL_NAME:-bots}
+      DELETE_JOKES_AFTER: ${DELETE_JOKES_AFTER:-600}
     restart: unless-stopped
     depends_on:
       - db
