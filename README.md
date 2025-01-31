@@ -4,7 +4,7 @@ A Discord bot that responds with "ur mom" jokes when messages are reacted to wit
 
 ## Features
 - Generates AI-powered "ur mom" jokes in response to 🤡 emoji reactions
-- Creates inapropriate culturally-themed jokes when triggered by country flag emoji reactions
+- Creates inappropriate culturally-themed jokes when triggered by country flag emoji reactions
 - Powered by Google's Gemini AI
 
 ## Adaptive Learning
