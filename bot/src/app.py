@@ -50,7 +50,7 @@ async def on_raw_reaction_add(payload):
         bot_channel_id = await get_bot_channel_id(payload.guild_id)
         
         emoji_str = str(payload.emoji)
-        country = container.country_resolver.get_country_from_flag(emoji_str)
+        country = await container.country_resolver.get_country_from_flag(emoji_str)
         message_key = (payload.message_id, emoji_str)
         
         is_clown = emoji_str == "🤡"

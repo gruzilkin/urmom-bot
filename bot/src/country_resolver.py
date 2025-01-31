@@ -1,6 +1,8 @@
+import traceback
+
 class CountryResolver:
-    def __init__(self, gemini_client):
-        self.gemini_client = gemini_client
+    def __init__(self, ai_client):
+        self.ai_client = ai_client
         self.flag_to_country = {
             "🇺🇸": "America",
             "🇦🇺": "Australia", 
@@ -29,7 +31,7 @@ class CountryResolver:
                 return False
         return True
 
-    def get_country_from_flag(self, emoji: str) -> str | None:
+    async def get_country_from_flag(self, emoji: str) -> str | None:
         # First check if this is actually a flag emoji
         if not self._is_flag_emoji(emoji):
             return None
@@ -37,8 +39,8 @@ class CountryResolver:
         if emoji in self.flag_to_country:
             return self.flag_to_country[emoji]
 
-        # Try to resolve unknown flag using Gemini
-        country = self._resolve_flag_with_gemini(emoji)
+        # Try to resolve unknown flag using AI
+        country = await self._resolve_flag_with_ai(emoji)
         if country:
             # Cache the result for future use
             self.flag_to_country[emoji] = country
@@ -47,17 +49,14 @@ class CountryResolver:
         print(f'Unknown flag emoji: "{emoji}"')
         return None
 
-    def _resolve_flag_with_gemini(self, emoji: str) -> str | None:
-        prompt = [
-            "You are a flag emoji resolver. Given a flag emoji, respond only with the country name in a single word.",
-            "For example: 🇺🇸 -> America",
-            f"Emoji to resolve: {emoji}"
-        ]
+    async def _resolve_flag_with_ai(self, emoji: str) -> str | None:
+        prompt = "You are a flag emoji resolver. Given a flag emoji, respond only with the country name."
+        samples = [["🇺🇸", "America"]]
 
         try:
-            response = self.gemini_client.model.generate_content(prompt)
-            country = response.text.strip()
-            return country if country else None
+            return await self.ai_client.generate_content(emoji, prompt, samples)
         except Exception as e:
-            print(f"Error resolving flag with Gemini: {e}")
+            print(f"Error resolving flag with AI: {str(e)}")
+            print("Stack trace:")
+            print(traceback.format_exc())
             return None
