@@ -1,8 +1,8 @@
 from dotenv import load_dotenv
 import os
-from Store import Store
-from JokeGenerator import JokeGenerator
-from GeminiClient import GeminiClient
+from store import Store
+from joke_generator import JokeGenerator
+from gemini_client import GeminiClient
 
 class Container:
     def __init__(self):

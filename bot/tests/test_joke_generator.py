@@ -1,7 +1,7 @@
 import unittest
 import os
 from dotenv import load_dotenv
-from JokeGenerator import JokeGenerator
+from joke_generator import JokeGenerator
 
 load_dotenv()  # Load environment variables from .env file
 

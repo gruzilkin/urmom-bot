@@ -1,5 +1,5 @@
 import re
-from GeminiClient import GeminiClient
+from gemini_client import GeminiClient
 
 class JokeGenerator:
     def __init__(self, gemini_client: GeminiClient):
