@@ -26,10 +26,21 @@ The learning system prioritizes jokes with higher engagement (more reactions) wh
 Create a `.env` file in the root directory with the following variables:
 
 ```env
-DISCORD_TOKEN=      # Your Discord bot token
-GEMINI_API_KEY=     # Your Gemini API key
-GEMINI_TEMPERATURE= # Model temperature (recommended: 1.0)
-GEMINI_MODEL=       # Model name (e.g. "gemini-exp-1206")
+# Select AI Provider (Required)
+AI_PROVIDER=GEMINI                        # Choose either GEMINI or GROK
+
+# Discord Configuration (Required)
+DISCORD_TOKEN=your_discord_bot_token      # Get from Discord Developer Portal
+
+# Gemini Configuration (Required if AI_PROVIDER=GEMINI)
+GEMINI_API_KEY=your_gemini_api_key        # Get from Google AI Studio
+GEMINI_TEMPERATURE=0.7                    # Value between 0-2, higher = more creative
+GEMINI_MODEL=gemini-2.0-flash-exp         # Latest experimental model for best results
+
+# Grok Configuration (Required if AI_PROVIDER=GROK)
+GROK_API_KEY=your_grok_api_key            # Get from xAI platform
+GROK_TEMPERATURE=0.7                      # Value between 0-2, higher = more creative
+GROK_MODEL=grok-2-1212                    # Latest model version
 ```
 
 ## Server Setup
