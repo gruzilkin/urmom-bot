@@ -1,28 +1,10 @@
 import nextcord
 from dotenv import load_dotenv
-from JokeGenerator import JokeGenerator
-from Store import Store
+from container import container  # Import the instance instead of the class
 from utils import get_country_from_flag
 import os
 
 load_dotenv()
-
-# Create store instance before bot setup
-store = Store(
-    host=os.getenv('POSTGRES_HOST', 'localhost'),
-    port=int(os.getenv('POSTGRES_PORT', '5432')),
-    user=os.getenv('POSTGRES_USER', 'postgres'),
-    password=os.getenv('POSTGRES_PASSWORD', 'postgres'),
-    database=os.getenv('POSTGRES_DB', 'postgres'),
-    weight_coef=float(os.getenv('SAMPLE_JOKES_COEF', '1.1'))
-)
-
-# Create joke generator instance
-joke_generator = JokeGenerator(
-    api_key=os.getenv('GEMINI_API_KEY'),
-    model_name=os.getenv('GEMINI_MODEL'),
-    temperature=float(os.getenv('GEMINI_TEMPERATURE', '1.2'))
-)
 
 intents = nextcord.Intents.default()
 intents.message_content = True  # MUST have this to receive message content
@@ -73,8 +55,8 @@ async def save_joke(payload):
     # Calculate total reactions
     reaction_count = sum(reaction.count for reaction in joke_message.reactions)
     
-    # Save to database using store
-    store.save(
+    # Use container.store instead of store
+    container.store.save(
         source_message_id=source_message.id,
         joke_message_id=joke_message.id,
         source_message_content=source_message.content,
@@ -91,7 +73,8 @@ async def process_joke_request(payload):
     message = await channel.fetch_message(payload.message_id)
 
     sample_count = int(os.getenv('SAMPLE_JOKES_COUNT', '10'))
-    joke = joke_generator.generate_joke(message.content, store.get_random_jokes(sample_count))
+    # Use container.store and container.joke_generator
+    joke = container.joke_generator.generate_joke(message.content, container.store.get_random_jokes(sample_count))
     await message.reply(joke)
     
     # Mark message as processed
@@ -101,7 +84,8 @@ async def process_country_joke_request(payload, country):
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
 
-    joke = joke_generator.generate_country_joke(message.content, country)
+    # Use container.joke_generator
+    joke = container.joke_generator.generate_country_joke(message.content, country)
     await message.reply(joke)
 
 # Get bot token from environment variable

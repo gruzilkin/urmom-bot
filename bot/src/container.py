@@ -1,0 +1,38 @@
+from dotenv import load_dotenv
+import os
+from Store import Store
+from JokeGenerator import JokeGenerator
+from GeminiClient import GeminiClient
+
+class Container:
+    def __init__(self):
+        load_dotenv()
+        
+        # Initialize Store
+        self.store = Store(
+            host=self._get_env('POSTGRES_HOST'),
+            port=int(self._get_env('POSTGRES_PORT')),
+            user=self._get_env('POSTGRES_USER'),
+            password=self._get_env('POSTGRES_PASSWORD'),
+            database=self._get_env('POSTGRES_DB'),
+            weight_coef=float(self._get_env('SAMPLE_JOKES_COEF'))
+        )
+
+        # Initialize GeminiClient
+        self.gemini_client = GeminiClient(
+            api_key=self._get_env('GEMINI_API_KEY'),
+            model_name=self._get_env('GEMINI_MODEL'),
+            temperature=float(self._get_env('GEMINI_TEMPERATURE'))
+        )
+
+        # Initialize JokeGenerator with GeminiClient
+        self.joke_generator = JokeGenerator(self.gemini_client)
+    
+    def _get_env(self, key: str) -> str:
+        value = os.getenv(key)
+        if value is None:
+            raise ValueError(f"Environment variable {key} is not set")
+        return value
+
+# Create a single instance to be imported by other modules
+container = Container()
