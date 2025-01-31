@@ -10,8 +10,7 @@ A Discord bot that responds with "ur mom" jokes when messages are reacted to wit
 ## Adaptive Learning
 The bot features an adaptive learning system that improves its joke generation over time:
 
-- Collects and stores jokes (both "ur mom" and "in Soviet Russia" variants)
-- Learns from both AI-generated and user-contributed jokes
+- Learns from both AI-generated and user-contributed "ur mom" jokes
 - Evaluates joke quality based on user reactions
 - Uses popular jokes as reference material for generating new content
 
