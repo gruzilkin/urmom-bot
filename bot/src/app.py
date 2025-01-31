@@ -64,12 +64,14 @@ async def on_raw_reaction_add(payload):
         
         is_clown = emoji_str == "🤡"
         is_country = country is not None
+        is_thumbs_down = emoji_str == "👎"
 
         if (is_clown or is_country) and message_key not in processed_messages:
             await process_joke_request(payload, country)
             processed_messages.add(message_key)
-        
-        if await is_joke(payload):
+        elif is_thumbs_down:
+            await retract_joke(payload)
+        elif await is_joke(payload):
             await save_joke(payload)
     except ValueError as e:
         print(f"Error processing reaction: {e}")
@@ -104,6 +106,13 @@ async def save_joke(payload):
         joke_message_content=joke_message.content,
         reaction_count=reaction_count
     )
+
+async def retract_joke(payload):
+    channel = await bot.fetch_channel(payload.channel_id)
+    message = await channel.fetch_message(payload.message_id)
+
+    if message.author.id == bot.user.id:
+        await message.delete()
 
 async def process_joke_request(payload, country=None):
     channel = await bot.fetch_channel(payload.channel_id)
