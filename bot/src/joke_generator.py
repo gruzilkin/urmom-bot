@@ -1,20 +1,22 @@
 import re
 from gemini_client import GeminiClient
+from Store import Store
 
 class JokeGenerator:
-    def __init__(self, gemini_client: GeminiClient):
+    def __init__(self, gemini_client: GeminiClient, store: Store, sample_count: int = 10):
         self.model = gemini_client.model
-        self.base_prompt = """You are a chatbot that receives a message and should generate a joke.
-        One type of the jokes is ur mom joke, ur mom joke follows the pattern of replacing the subject or the object in a phrase with \"ur mom\" without adding much extra details.
-        The second type is \"In Soviet Russia\" joke.
-        You can combine the two patterns.
+        self.store = store
+        self.sample_count = sample_count
+        self.base_prompt = """You are a chatbot that receives a message and you should generate a ur mom joke.
+        ur mom joke follows the pattern of replacing the subject or the object in a phrase with \"ur mom\" without adding much extra details.
         Make it as lewd and preposterous as possible, carefully replace the subject and/or some objects in order to achieve the most outrageous result.
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
         """
 
-    def generate_joke(self, content: str, sample_jokes: list[tuple[str, str]]) -> str:
+    def generate_joke(self, content: str) -> str:
         prompt = [self.base_prompt]
         
+        sample_jokes = self.store.get_random_jokes(self.sample_count)
         for (input, output) in sample_jokes:
             prompt.append(f"input: {input}")
             prompt.append(f"output: {output}")

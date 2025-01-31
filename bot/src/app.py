@@ -38,11 +38,8 @@ async def is_joke(payload):
         return False
         
     content = message.content.lower()
-    
-    is_ur_mom_joke = "urmom" in content or "ur mom" in content
-    is_soviet_russia_joke = "soviet" in content and "russia" in content
+    return "ur" in content and "mom" in content
 
-    return is_ur_mom_joke or is_soviet_russia_joke
 
 async def save_joke(payload):
     channel = await bot.fetch_channel(payload.channel_id)
@@ -71,9 +68,7 @@ async def process_joke_request(payload):
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
 
-    sample_count = int(os.getenv('SAMPLE_JOKES_COUNT', '10'))
-    # Use container.store and container.joke_generator
-    joke = container.joke_generator.generate_joke(message.content, container.store.get_random_jokes(sample_count))
+    joke = container.joke_generator.generate_joke(message.content)
     await message.reply(joke)
     
     # Mark message as processed
