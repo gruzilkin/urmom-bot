@@ -42,6 +42,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       SAMPLE_JOKES_COUNT: ${SAMPLE_JOKES_COUNT:-10}
       SAMPLE_JOKES_COEF: ${SAMPLE_JOKES_COEF:-1.3}
+      BOT_CHANNEL_NAME: ${BOT_CHANNEL_NAME:-bots}
     restart: unless-stopped
     depends_on:
       - db
