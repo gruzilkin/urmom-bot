@@ -107,7 +107,7 @@ async def process_joke_request(payload, bot_channel_id):
     message = await channel.fetch_message(payload.message_id)
     bot_channel = await bot.fetch_channel(bot_channel_id)
 
-    joke = container.joke_generator.generate_joke(message.content)
+    joke = await container.joke_generator.generate_joke(message.content)
     message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
     response = f"**Original message**: {message_link}\n{joke}"
     await bot_channel.send(response)
@@ -117,7 +117,7 @@ async def process_country_joke_request(payload, country, bot_channel_id):
     message = await channel.fetch_message(payload.message_id)
     bot_channel = await bot.fetch_channel(bot_channel_id)
 
-    joke = container.joke_generator.generate_country_joke(message.content, country)
+    joke = await container.joke_generator.generate_country_joke(message.content, country)
     message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
     response = f"**Original message**: {message_link}\n{joke}"
     await bot_channel.send(response)

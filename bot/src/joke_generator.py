@@ -1,10 +1,12 @@
 import re
+
+from ai_client import AIClient
 from gemini_client import GeminiClient
 from store import Store
 
 class JokeGenerator:
-    def __init__(self, gemini_client: GeminiClient, store: Store, sample_count: int = 10):
-        self.model = gemini_client.model
+    def __init__(self, ai_client: AIClient, store: Store, sample_count: int = 10):
+        self.ai_client = ai_client
         self.store = store
         self.sample_count = sample_count
         self.base_prompt = """You are a chatbot that receives a message and you should generate a ur mom joke.
@@ -13,31 +15,16 @@ class JokeGenerator:
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
         """
 
-    def generate_joke(self, content: str) -> str:
-        prompt = [self.base_prompt]
-        
+    async def generate_joke(self, content: str) -> str:
         sample_jokes = self.store.get_random_jokes(self.sample_count)
-        for (input, output) in sample_jokes:
-            prompt.append(f"input: {input}")
-            prompt.append(f"output: {output}")
-        
-        prompt.append("input: " + content)
-        prompt.append("output: ")
+        response = await self.ai_client.generate_content(
+            message=content,
+            prompt=self.base_prompt,
+            samples=sample_jokes
+        )
+        return response
 
-        print(f"{prompt}")
-        print(f"source: {content}")
-        response = self.model.generate_content(prompt)
-        print(f"response: {response.text}")
-
-        return response.text
-
-    def generate_country_joke(self, message: str, country: str) -> str:
-        prompt = [ f"You are a chat bot and you need to turn a user message into a country joke.",
-                   f"Your response should only contain the joke itself and it should start with 'In {country}'. Apply stereotypes and cliches about the country.",
-                   f"Respond with a joke that plays with the following message: ", message ]
-
-        print(f"{prompt}")
-        response = self.model.generate_content(prompt)
-        print(f"response: {response.text}")
-
-        return response.text
+    async def generate_country_joke(self, message: str, country: str) -> str:
+        prompt = f"You are a chat bot and you need to turn a user message into a country joke. Your response should only contain the joke itself and it should start with 'In {country}'. Apply stereotypes and cliches about the country."
+        response = await self.ai_client.generate_content(message=message, prompt=prompt)
+        return response
