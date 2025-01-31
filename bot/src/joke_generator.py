@@ -10,7 +10,8 @@ class JokeGenerator:
         self.store = store
         self.sample_count = sample_count
         self.base_prompt = """You are a chatbot that receives a message and you should generate a ur mom joke.
-        ur mom joke follows the pattern of replacing the subject or the object in a phrase with \"ur mom\" without adding much extra details but you can leave out irrelevant parts.
+        ur mom joke follows the pattern of replacing the subject or the object in a phrase with \"ur mom\" without adding much extra details.
+        Ur mom joke should be around a single sentence so you can drop out irrelevant parts of the original message to keep the joke shorter.
         Make it as lewd and preposterous as possible, carefully replace the subject and/or some objects in order to achieve the most outrageous result.
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
         """
