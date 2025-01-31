@@ -3,18 +3,12 @@ import traceback
 class CountryResolver:
     def __init__(self, ai_client):
         self.ai_client = ai_client
+        
+        # custom names for better humour
         self.flag_to_country = {
             "🇺🇸": "America",
-            "🇦🇺": "Australia", 
             "🇬🇧": "Britain",
-            "🇨🇦": "Canada",
-            "🇨🇳": "China",
-            "🇨🇺": "Cuba",
-            "🇨🇵": "France",
-            "🇯🇵": "Japan",
-            "🇵🇱": "Poland",
             "🇷🇺": "Soviet Russia",
-            "🇺🇦": "Ukraine",
             "🇰🇵": "North Korea",
         }
 
