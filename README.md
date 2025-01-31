@@ -1,4 +1,4 @@
-# urmom-bot
+# urmom-bot / мамкин бот
 
 A Discord bot that responds with "ur mom" jokes when messages are reacted to with a clown emoji (🤡).
 
