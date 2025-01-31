@@ -2,6 +2,7 @@ import nextcord
 from dotenv import load_dotenv
 from JokeGenerator import JokeGenerator
 from Store import Store
+from utils import get_country_from_flag
 import os
 
 load_dotenv()
@@ -37,10 +38,13 @@ async def on_ready():
 
 @bot.event
 async def on_raw_reaction_add(payload):
-    if str(payload.emoji) == "🤡":
+    emoji_str = str(payload.emoji)
+    country = get_country_from_flag(emoji_str)
+
+    if emoji_str == "🤡":
         await process_joke_request(payload)
-    elif str(payload.emoji) == "🇷🇺":
-        await process_in_soviet_russia_joke_request(payload)
+    elif country is not None:
+        await process_country_joke_request(payload, country)
     elif await is_joke(payload):
         await save_joke(payload)
 
@@ -93,20 +97,12 @@ async def process_joke_request(payload):
     # Mark message as processed
     processed_messages.add(payload.message_id)
 
-async def process_in_soviet_russia_joke_request(payload):
-    # Skip if already processed this message
-    if payload.message_id in processed_messages:
-        return
-
+async def process_country_joke_request(payload, country):
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
 
-    joke = joke_generator.generate_in_soviet_russia_joke(message.content)
+    joke = joke_generator.generate_country_joke(message.content, country)
     await message.reply(joke)
-    
-    # Mark message as processed
-    processed_messages.add(payload.message_id)
-
 
 # Get bot token from environment variable
 TOKEN = os.getenv('DISCORD_TOKEN')
