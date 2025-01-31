@@ -1,6 +1,6 @@
 import re
 from gemini_client import GeminiClient
-from Store import Store
+from store import Store
 
 class JokeGenerator:
     def __init__(self, gemini_client: GeminiClient, store: Store, sample_count: int = 10):

@@ -27,7 +27,7 @@ class Container:
         )
 
         # Initialize JokeGenerator with GeminiClient
-        self.joke_generator = JokeGenerator(self.gemini_client)
+        self.joke_generator = JokeGenerator(self.gemini_client, self.store, sample_count=int(self._get_env('SAMPLE_JOKES_COUNT')))
 
         # Initialize CountryResolver with GeminiClient
         self.country_resolver = CountryResolver(self.gemini_client)
