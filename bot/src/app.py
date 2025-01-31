@@ -51,12 +51,19 @@ async def on_raw_reaction_add(payload):
         
         emoji_str = str(payload.emoji)
         country = container.country_resolver.get_country_from_flag(emoji_str)
+        message_key = (payload.message_id, emoji_str)
+        
+        is_clown = emoji_str == "🤡"
+        is_country = country is not None
 
-        if emoji_str == "🤡":
-            await process_joke_request(payload, bot_channel_id)
-        elif country is not None:
-            await process_country_joke_request(payload, country, bot_channel_id)
-        elif await is_joke(payload):
+        if (is_clown or is_country) and message_key not in processed_messages:
+            if is_clown:
+                await process_joke_request(payload, bot_channel_id)
+            elif is_country:
+                await process_country_joke_request(payload, country, bot_channel_id)
+            processed_messages.add(message_key)
+        
+        if await is_joke(payload):
             await save_joke(payload)
     except ValueError as e:
         print(f"Error processing reaction: {e}")
@@ -104,8 +111,6 @@ async def process_joke_request(payload, bot_channel_id):
     message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
     response = f"**Original message**: {message_link}\n{joke}"
     await bot_channel.send(response)
-    
-    processed_messages.add(payload.message_id)
 
 async def process_country_joke_request(payload, country, bot_channel_id):
     channel = await bot.fetch_channel(payload.channel_id)
