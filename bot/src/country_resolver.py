@@ -12,7 +12,8 @@ class CountryResolver:
             "🇯🇵": "Japan",
             "🇵🇱": "Poland",
             "🇷🇺": "Soviet Russia",
-            "🇺🇦": "Ukraine"
+            "🇺🇦": "Ukraine",
+            "🇰🇵": "North Korea",
         }
 
     def _is_flag_emoji(self, emoji: str) -> bool:
