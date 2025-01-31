@@ -2,6 +2,7 @@ import nextcord
 from dotenv import load_dotenv
 from container import container  # Import the instance instead of the class
 import os
+import asyncio
 
 load_dotenv()
 
@@ -18,6 +19,15 @@ bot = nextcord.Client(intents=intents)
 processed_messages = set()
 
 guild_channel_mapping = {}
+
+# Get timeout value in seconds from env, default to 600 (10 minutes)
+DELETE_JOKES_AFTER = os.getenv('DELETE_JOKES_AFTER')
+if not DELETE_JOKES_AFTER:
+    raise ValueError("DELETE_JOKES_AFTER not found in environment variables!")
+try:
+    DELETE_JOKES_AFTER = int(DELETE_JOKES_AFTER)
+except ValueError:
+    raise ValueError("DELETE_JOKES_AFTER must be a valid integer!")
 
 async def get_bot_channel_id(guild_id: int) -> int:
     """Get or find bot channel ID for a specific guild"""
@@ -46,9 +56,6 @@ async def on_ready():
 @bot.event
 async def on_raw_reaction_add(payload):
     try:
-        # Get the bot channel ID for this guild first
-        bot_channel_id = await get_bot_channel_id(payload.guild_id)
-        
         emoji_str = str(payload.emoji)
         country = await container.country_resolver.get_country_from_flag(emoji_str)
         message_key = (payload.message_id, emoji_str)
@@ -57,10 +64,7 @@ async def on_raw_reaction_add(payload):
         is_country = country is not None
 
         if (is_clown or is_country) and message_key not in processed_messages:
-            if is_clown:
-                await process_joke_request(payload, bot_channel_id)
-            elif is_country:
-                await process_country_joke_request(payload, country, bot_channel_id)
+            await process_joke_request(payload, country)
             processed_messages.add(message_key)
         
         if await is_joke(payload):
@@ -99,28 +103,30 @@ async def save_joke(payload):
         reaction_count=reaction_count
     )
 
-async def process_joke_request(payload, bot_channel_id):
-    if payload.message_id in processed_messages:
-        return
-
+async def process_joke_request(payload, country=None):
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
+    bot_channel_id = await get_bot_channel_id(payload.guild_id)
     bot_channel = await bot.fetch_channel(bot_channel_id)
 
-    joke = await container.joke_generator.generate_joke(message.content)
+    if country:
+        joke = await container.joke_generator.generate_country_joke(message.content, country)
+    else:
+        joke = await container.joke_generator.generate_joke(message.content)
+    
+    # Send direct reply with just the joke
+    reply_message = await message.reply(joke)
+    
+    # Send full message with link to bot channel
     message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
-    response = f"**Original message**: {message_link}\n{joke}"
-    await bot_channel.send(response)
-
-async def process_country_joke_request(payload, country, bot_channel_id):
-    channel = await bot.fetch_channel(payload.channel_id)
-    message = await channel.fetch_message(payload.message_id)
-    bot_channel = await bot.fetch_channel(bot_channel_id)
-
-    joke = await container.joke_generator.generate_country_joke(message.content, country)
-    message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
-    response = f"**Original message**: {message_link}\n{joke}"
-    await bot_channel.send(response)
+    bot_channel_response = f"**Original message**: {message_link}\n{joke}"
+    await bot_channel.send(bot_channel_response)
+    
+    await asyncio.sleep(DELETE_JOKES_AFTER)
+    try:
+        await reply_message.delete()
+    except nextcord.errors.NotFound:
+        pass
 
 # Get bot token from environment variable
 TOKEN = os.getenv('DISCORD_TOKEN')
