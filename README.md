@@ -72,6 +72,7 @@ docker compose logs -f
 The bot will:
 1. Reply with temporary jokes that auto-delete after timeout
 2. Additionally, if a `#bots` channel exists, post permanent copies of jokes there
+3. Remove jokes that receive thumbs down (👎) reactions to maintain quality
 
 ## Try It Out! 🤖
 Want to test the bot without setting up your own instance? You can add my hosted instance to your Discord server:
