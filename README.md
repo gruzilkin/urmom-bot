@@ -3,8 +3,8 @@
 A Discord bot that responds with "ur mom" jokes when messages are reacted to with a clown emoji (🤡).
 
 ## Features
-- Generates custom "ur mom" jokes using AI
-- Triggered by clown emoji reactions
+- Generates AI-powered "ur mom" jokes in response to 🤡 emoji reactions
+- Creates inapropriate culturally-themed jokes when triggered by country flag emoji reactions
 - Powered by Google's Gemini AI
 
 ## Adaptive Learning
@@ -33,11 +33,16 @@ GEMINI_TEMPERATURE= # Model temperature (recommended: 1.0)
 GEMINI_MODEL=       # Model name (e.g. "gemini-exp-1206")
 ```
 
-### Where to get the keys:
+## Server Setup
+To ensure proper bot operation:
+- Create a channel named `#bots` - the bot will post all generated jokes there
+- The bot will react to emoji triggers in any channel, but responses are always posted in `#bots`
+
+## Where to get the keys:
 - Discord token: [Discord Developer Portal](https://discord.com/developers/applications)
 - Gemini API key: [Google AI Studio](https://aistudio.google.com)
 
-### Required Bot Permissions
+## Required Bot Permissions
 1. In Discord Developer Portal:
    - Go to Settings > Bot
    - Enable "Message Content Intent"
