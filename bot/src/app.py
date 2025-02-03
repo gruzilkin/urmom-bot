@@ -4,6 +4,7 @@ from container import container  # Import the instance instead of the class
 import os
 import asyncio
 from enum import Enum
+from types import SimpleNamespace
 
 load_dotenv()
 
@@ -12,10 +13,9 @@ intents.message_content = True  # MUST have this to receive message content
 
 bot = nextcord.Client(intents=intents)
 
-# Create cache dict to hold bot state
-cache = {
-    'processed_messages': set()
-}
+# Create cache object to hold bot state
+cache = SimpleNamespace()
+cache.processed_messages = set()
 
 class BotCommand(Enum):
     HELP = "help"
