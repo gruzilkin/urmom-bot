@@ -222,13 +222,13 @@ async def process_joke_request(payload, country=None):
 
 async def check_should_delete(message: nextcord.Message) -> bool:
     config = container.store.get_guild_config(message.guild.id)
-    if config.downvote_threshold <= 0:
+    if config.downvote_reaction_threshold <= 0:
         return False
 
     upvotes = sum(r.count for r in message.reactions if str(r.emoji) == "👍")
     downvotes = sum(r.count for r in message.reactions if str(r.emoji) == "👎")
     
-    return (downvotes - upvotes) >= config.downvote_threshold
+    return (downvotes - upvotes) >= config.downvote_reaction_threshold
 
 # Get bot token from environment variable
 TOKEN = os.getenv('DISCORD_TOKEN')
