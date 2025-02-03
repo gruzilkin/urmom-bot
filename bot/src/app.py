@@ -48,8 +48,8 @@ async def on_raw_reaction_add(payload):
         is_thumbs_down = emoji_str == "👎"
 
         if (is_clown or is_country) and message_key not in cache.processed_messages:
-            await process_joke_request(payload, country)
             cache.processed_messages.add(message_key)
+            await process_joke_request(payload, country)
         elif is_thumbs_down:
             await retract_joke(payload)
         elif await is_joke(payload):
