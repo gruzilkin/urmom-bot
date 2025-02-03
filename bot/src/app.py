@@ -19,6 +19,7 @@ cache = {
 
 class BotCommand(Enum):
     HELP = "help"
+    SETTINGS = "settings"
     SET_ARCHIVE_CHANNEL = "setarchivechannel"
     DELETE_JOKES_AFTER = "deletejokesafterminutes"
     DELETE_JOKES_WHEN_DOWNVOTED = "deletejokeswhendownvoted"
@@ -77,12 +78,24 @@ async def on_message(message):
     if command == BotCommand.HELP:
         help_text = """
 Available commands:
+`@urmom-bot settings` - Show current configuration
 `@urmom-bot setArchiveChannel #channel` - Set channel for permanent joke storage
 `@urmom-bot deleteJokesAfterMinutes X` - Delete jokes after X minutes (0 to disable)
 `@urmom-bot deleteJokesWhenDownvoted X` - Delete jokes when downvotes - upvotes >= X (0 to disable)
 `@urmom-bot enableCountryJokes true/false` - Enable/disable country-specific jokes
 """
         await message.reply(help_text)
+        return
+
+    if command == BotCommand.SETTINGS:
+        settings_text = f"""
+Current settings:
+• Archive Channel: {f'<#{config.archive_channel_id}>' if config.archive_channel_id else 'Disabled'}
+• Auto-delete after: {config.delete_jokes_after_minutes} minutes (0 = never)
+• Delete on downvotes: {config.downvote_reaction_threshold} (0 = disabled)
+• Country jokes: {'Enabled' if config.enable_country_jokes else 'Disabled'}
+"""
+        await message.reply(settings_text)
         return
 
     if command == BotCommand.SET_ARCHIVE_CHANNEL:
