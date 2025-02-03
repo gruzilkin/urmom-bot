@@ -65,6 +65,11 @@ async def on_message(message):
     if not message.content.startswith(f"<@{bot.user.id}>"):
         return
 
+    # Check if user is admin before processing commands
+    if not message.author.guild_permissions.administrator:
+        await message.reply("Sorry, only administrators can use bot commands!")
+        return
+
     args = message.content.split()[1:]
     if not args:
         return
