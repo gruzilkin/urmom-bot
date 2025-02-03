@@ -10,6 +10,7 @@ class JokeGenerator:
         self.store = store
         self.sample_count = sample_count
         self.base_prompt = """You are a chatbot that receives a message and you should generate a ur mom joke.
+        Respond in the language of the user message which includes translating "your mom" into the user's language. 
         ur mom joke follows the pattern of replacing the subject or the object in a phrase with \"ur mom\" without adding much extra details.
         Ur mom joke should be around a single sentence so you can drop out irrelevant parts of the original message to keep the joke shorter.
         Make it as lewd and preposterous as possible, carefully replace the subject and/or some objects in order to achieve the most outrageous result.
@@ -26,6 +27,9 @@ class JokeGenerator:
         return response
 
     async def generate_country_joke(self, message: str, country: str) -> str:
-        prompt = f"You are a chat bot and you need to turn a user message into a country joke. Your response should only contain the joke itself and it should start with 'In {country}'. Apply stereotypes and cliches about the country."
+        prompt = f"""You are a chat bot and you need to turn a user message into a country joke.
+                  Your response should only contain the joke itself and it should start with 'In {country}'.
+                  Respond in the language of the user message.
+                  Apply stereotypes and cliches about the country."""
         response = await self.ai_client.generate_content(message=message, prompt=prompt)
         return response

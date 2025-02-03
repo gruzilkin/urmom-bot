@@ -1,4 +1,13 @@
 import psycopg2
+from dataclasses import dataclass
+
+@dataclass
+class GuildConfig:
+    guild_id: int
+    archive_channel_id: int = 0
+    delete_jokes_after_minutes: int = 0
+    downvote_reaction_threshold: int = 0
+    enable_country_jokes: bool = True
 
 class Store:
     def __init__(self, host: str = "localhost", 
@@ -16,6 +25,7 @@ class Store:
         }
         self.conn = None
         self.weight_coef = weight_coef
+        self._guild_configs = {}  # Add cache dictionary
 
     def _connect(self):
         return psycopg2.connect(**self.connection_params)
@@ -119,6 +129,57 @@ class Store:
         except Exception as e:
             print(f"Error fetching random jokes: {e}")
             return []
+
+    def get_guild_config(self, guild_id: int) -> GuildConfig:
+        if guild_id not in self._guild_configs:
+            self._ensure_connection()
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO guild_configs (guild_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (guild_id,)
+                )
+                
+                cur.execute(
+                    """
+                    SELECT archive_channel_id, delete_jokes_after_minutes, 
+                           downvote_reaction_threshold, enable_country_jokes 
+                    FROM guild_configs 
+                    WHERE guild_id = %s
+                    """,
+                    (guild_id,)
+                )
+                result = cur.fetchone()
+                self.conn.commit()
+                
+                self._guild_configs[guild_id] = GuildConfig(
+                    guild_id=guild_id,
+                    archive_channel_id=result[0],
+                    delete_jokes_after_minutes=result[1],
+                    downvote_reaction_threshold=result[2],
+                    enable_country_jokes=result[3]
+                )
+        
+        return self._guild_configs[guild_id]
+
+    def save_guild_config(self, config: GuildConfig) -> None:
+        self._ensure_connection()
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE guild_configs 
+                SET archive_channel_id = %s,
+                    delete_jokes_after_minutes = %s,
+                    downvote_reaction_threshold = %s,
+                    enable_country_jokes = %s
+                WHERE guild_id = %s
+                """,
+                (config.archive_channel_id, config.delete_jokes_after_minutes,
+                 config.downvote_reaction_threshold, config.enable_country_jokes,
+                 config.guild_id)
+            )
+            self.conn.commit()
+            # Update cache
+            self._guild_configs[config.guild_id] = config
 
     def __del__(self):
         if hasattr(self, 'conn'):

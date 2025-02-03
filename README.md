@@ -68,11 +68,22 @@ To view logs:
 docker compose logs -f
 ```
 
+## Bot Configuration
+The following commands are available:
+- `@urmom-bot help` - Show info on available commands
+- `@urmom-bot settings` - Display current configuration
+- `@urmom-bot setArchiveChannel #bot-jokes` - Set channel name for bot jokes, empty to disable
+- `@urmom-bot deleteJokesAfterMinutes X` - 0 for disabled, otherwise bot will delete jokes after X minutes
+- `@urmom-bot deleteJokesWhenDownvoted X` - Delete jokes if downvotes - upvotes >= X, 0 to disable
+- `@urmom-bot enableCountryJokes true/false` - Enable/disable country-specific jokes
+
 ## Bot Behavior
-The bot will:
-1. Reply with temporary jokes that auto-delete after timeout
-2. Additionally, if a `#bots` channel exists, post permanent copies of jokes there
-3. Remove jokes that receive thumbs down (👎) reactions to maintain quality
+What can this bot do?
+- Generate "ur mom" jokes when someone reacts to a message with 🤡
+- Create country-specific jokes when someone uses a flag emoji reaction
+- Archive all jokes to a dedicated channel of your choice
+- Keep your chat channels clean by automatically removing joke responses after a set time
+- Listen to your community's feedback - if a joke gets too many 👎 reactions, it gets removed
 
 ## Try It Out! 🤖
 Want to test the bot without setting up your own instance? You can add my hosted instance to your Discord server:

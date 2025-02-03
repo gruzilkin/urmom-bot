@@ -10,6 +10,14 @@ CREATE TABLE jokes (
     PRIMARY KEY (source_message_id, joke_message_id)
 );
 
+CREATE TABLE guild_configs (
+    guild_id BIGINT PRIMARY KEY,
+    archive_channel_id BIGINT DEFAULT 0,
+    delete_jokes_after_minutes INTEGER DEFAULT 0,
+    downvote_reaction_threshold INTEGER DEFAULT 0,
+    enable_country_jokes BOOLEAN DEFAULT TRUE
+);
+
 -- Insert messages
 INSERT INTO messages VALUES
 (1, 'My son is bioterrorising me. He walked in my office, sat down for a few minutes, farted, and then immediately left'),
