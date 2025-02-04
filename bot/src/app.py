@@ -5,6 +5,7 @@ import os
 import asyncio
 from enum import Enum
 from types import SimpleNamespace
+from langdetect import detect, LangDetectException
 
 load_dotenv()
 
@@ -165,6 +166,17 @@ async def save_joke(payload):
     # Get the source message that was replied to
     source_message = await channel.fetch_message(joke_message.reference.message_id)
     
+    # Detect languages with "unknown" fallback
+    try:
+        source_lang = detect(source_message.content)
+    except LangDetectException:
+        source_lang = 'unknown'
+        
+    try:
+        joke_lang = detect(joke_message.content)
+    except LangDetectException:
+        joke_lang = 'unknown'
+    
     # Calculate total reactions
     reaction_count = sum(reaction.count for reaction in joke_message.reactions)
     
@@ -174,7 +186,9 @@ async def save_joke(payload):
         joke_message_id=joke_message.id,
         source_message_content=source_message.content,
         joke_message_content=joke_message.content,
-        reaction_count=reaction_count
+        reaction_count=reaction_count,
+        source_language=source_lang,
+        joke_language=joke_lang
     )
 
 async def retract_joke(payload):
@@ -194,10 +208,16 @@ async def process_joke_request(payload, country=None):
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
 
+    # Detect message language
+    try:
+        language = detect(message.content)
+    except LangDetectException:
+        language = 'en'  # Default to English if detection fails
+
     if country:
         joke = await container.joke_generator.generate_country_joke(message.content, country)
     else:
-        joke = await container.joke_generator.generate_joke(message.content)
+        joke = await container.joke_generator.generate_joke(message.content, language)
     
     # Send direct reply
     reply_message = await message.reply(joke)

@@ -53,7 +53,9 @@ class Store:
             joke_message_id: int,
             source_message_content: str,
             joke_message_content: str,
-            reaction_count: int = 0) -> None:
+            reaction_count: int,
+            source_language: str,
+            joke_language: str) -> None:
         
         # Print joke data
         joke_data = {
@@ -61,31 +63,26 @@ class Store:
             "joke_message_id": joke_message_id,
             "source_message_content": source_message_content,
             "joke_message_content": joke_message_content,
-            "reaction_count": reaction_count
+            "reaction_count": reaction_count,
+            "source_language": source_language,
+            "joke_language": joke_language
         }
         print(f"Store saving joke: {joke_data}")
         
         try:
             self._ensure_connection()
             with self.conn.cursor() as cur:
-                # Insert both messages with content update on conflict
+                # Insert both messages in a single statement
                 cur.execute(
                     """
-                    INSERT INTO messages (message_id, content) 
-                    VALUES (%s, %s)
+                    INSERT INTO messages (message_id, content, language_code) 
+                    VALUES (%s, %s, %s), (%s, %s, %s)
                     ON CONFLICT (message_id) 
-                    DO UPDATE SET content = EXCLUDED.content
+                    DO UPDATE SET content = EXCLUDED.content,
+                                language_code = EXCLUDED.language_code
                     """,
-                    (source_message_id, source_message_content)
-                )
-                cur.execute(
-                    """
-                    INSERT INTO messages (message_id, content) 
-                    VALUES (%s, %s)
-                    ON CONFLICT (message_id) 
-                    DO UPDATE SET content = EXCLUDED.content
-                    """,
-                    (joke_message_id, joke_message_content)
+                    (source_message_id, source_message_content, source_language,
+                     joke_message_id, joke_message_content, joke_language)
                 )
                 
                 # Create or update relationship in jokes table
@@ -104,26 +101,28 @@ class Store:
             self.conn.rollback()
             raise e
 
-    def get_random_jokes(self, n: int) -> list[tuple[str, str]]:
+    def get_random_jokes(self, n: int, language: str, guild_ids: list[int] | None = None) -> list[tuple[str, str]]:
+        """Get multiple random jokes in a single query"""
         try:
             self._ensure_connection()
             with self.conn.cursor() as cur:
+                guild_filter = "AND j.guild_id = ANY(%s)" if guild_ids else ""
+                params = [language]  # Language should be first parameter
+                if guild_ids:
+                    params.append(guild_ids)
+                params.extend([self.weight_coef, n])  # Add remaining parameters
+                
                 cur.execute(
-                    """
-                    WITH weighted_jokes AS (
-                        SELECT m1.content as source_content,
-                               m2.content as joke_content,
-                               random() * power(%s, j.reaction_count) as weight
-                        FROM jokes j
-                        JOIN messages m1 ON j.source_message_id = m1.message_id
-                        JOIN messages m2 ON j.joke_message_id = m2.message_id
-                    )
-                    SELECT source_content, joke_content 
-                    FROM weighted_jokes
-                    ORDER BY weight DESC
+                    f"""
+                    SELECT m1.content, m2.content
+                    FROM jokes j
+                    JOIN messages m1 ON j.source_message_id = m1.message_id
+                    JOIN messages m2 ON j.joke_message_id = m2.message_id
+                    WHERE m1.language_code = %s {guild_filter}
+                    ORDER BY random() * power(%s, j.reaction_count) DESC
                     LIMIT %s
                     """,
-                    (self.weight_coef, n)
+                    params
                 )
                 return cur.fetchall()
         except Exception as e:

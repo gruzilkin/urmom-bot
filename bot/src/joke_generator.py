@@ -17,8 +17,8 @@ class JokeGenerator:
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
         """
 
-    async def generate_joke(self, content: str) -> str:
-        sample_jokes = self.store.get_random_jokes(self.sample_count)
+    async def generate_joke(self, content: str, language: str) -> str:
+        sample_jokes = self.store.get_random_jokes(self.sample_count, language)
         response = await self.ai_client.generate_content(
             message=content,
             prompt=self.base_prompt,
