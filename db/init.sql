@@ -5,8 +5,8 @@ CREATE TABLE messages (
 );
 
 CREATE TABLE jokes (
-    source_message_id BIGINT REFERENCES messages(message_id),
-    joke_message_id BIGINT REFERENCES messages(message_id),
+    source_message_id BIGINT REFERENCES messages(message_id) ON DELETE CASCADE,
+    joke_message_id BIGINT REFERENCES messages(message_id) ON DELETE CASCADE,
     reaction_count INTEGER DEFAULT 0,
     PRIMARY KEY (source_message_id, joke_message_id)
 );
