@@ -51,16 +51,16 @@ Is it actually a joke? Reply only yes or no."""
         print(f"[GROK] Original: {original_message}")
         print(f"[GROK] Response: {response_message}")
 
-        completion = self.model.completions.create(
+        completion = self.model.chat.completions.create(
             model=self.model_name,
-            prompt=prompt,
-            temperature=0.1,
-            max_tokens=1,
-            stop=["\n", "."]
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1
         )
         
         print(f"[GROK] Raw completion object: {completion}")
-        result = completion.choices[0].text.strip().lower() == "yes"
-        print(f"[GROK] AI response: {completion.choices[0].text}")
+        response_text = completion.choices[0].message.content.strip().lower()
+        # Remove any punctuation and check if the response is 'yes'
+        result = response_text.rstrip('.,!?') == "yes"
+        print(f"[GROK] AI response: {response_text}")
         print(f"[GROK] Is joke: {result}")
         return result
