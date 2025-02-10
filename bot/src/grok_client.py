@@ -39,3 +39,28 @@ class GrokClient(AIClient):
         print(completion)
 
         return completion.choices[0].message.content
+
+    async def is_joke(self, original_message: str, response_message: str) -> bool:
+        prompt = f"""Tell me if the response is a joke, a wordplay or a sarcastic remark to the original message, reply in English with only yes or no:
+original message: {original_message}
+response: {response_message}
+No? Think again carefully. The response might be a joke, wordplay, or sarcastic remark.
+Is it actually a joke? Reply only yes or no."""
+
+        print(f"[GROK] Checking if message is a joke:")
+        print(f"[GROK] Original: {original_message}")
+        print(f"[GROK] Response: {response_message}")
+
+        completion = self.model.completions.create(
+            model=self.model_name,
+            prompt=prompt,
+            temperature=0.1,
+            max_tokens=1,
+            stop=["\n", "."]
+        )
+        
+        print(f"[GROK] Raw completion object: {completion}")
+        result = completion.choices[0].text.strip().lower() == "yes"
+        print(f"[GROK] AI response: {completion.choices[0].text}")
+        print(f"[GROK] Is joke: {result}")
+        return result

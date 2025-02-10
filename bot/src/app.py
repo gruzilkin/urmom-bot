@@ -147,7 +147,7 @@ Current settings:
         except IndexError:
             await message.reply("Please specify true or false!")
 
-async def is_joke(payload):
+async def is_joke(payload) -> bool:
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
     
@@ -155,9 +155,14 @@ async def is_joke(payload):
     if not message.reference:
         return False
         
-    content = message.content.lower()
-    return "ur" in content and "mom" in content
-
+    # Get the source message that was replied to
+    source_message = await channel.fetch_message(message.reference.message_id)
+    
+    # Use AI client directly from container
+    return await container.ai_client.is_joke(
+        source_message.content,
+        message.content
+    )
 
 async def save_joke(payload):
     channel = await bot.fetch_channel(payload.channel_id)
