@@ -16,8 +16,8 @@ The bot features an adaptive learning system that improves its joke generation o
 
 For a joke to be considered for learning (both bot-generated and user-contributed):
 - Must be a reply to the original message that inspired the joke
-- Must follow "ur mom" joke pattern
 - Must receive reactions from server members
+- AI must confirm it's actually a joke
 
 The learning system prioritizes jokes with higher engagement (more reactions) when creating new content, ensuring better quality over time.
 
