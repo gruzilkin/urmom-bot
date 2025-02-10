@@ -17,6 +17,7 @@ bot = nextcord.Client(intents=intents)
 # Create cache object to hold bot state
 cache = SimpleNamespace()
 cache.processed_messages = set()
+cache.joke_cache = {}  # message_id -> bool
 
 class BotCommand(Enum):
     HELP = "help"
@@ -148,21 +149,27 @@ Current settings:
             await message.reply("Please specify true or false!")
 
 async def is_joke(payload) -> bool:
+    if payload.message_id in cache.joke_cache:
+        return cache.joke_cache[payload.message_id]
+    
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
     
     # First check if this is a reply
     if not message.reference:
-        return False
+                return False
         
     # Get the source message that was replied to
     source_message = await channel.fetch_message(message.reference.message_id)
     
-    # Use AI client directly from container
-    return await container.ai_client.is_joke(
+    is_joke_result = await container.ai_client.is_joke(
         source_message.content,
         message.content
     )
+    
+    # Cache the result
+    cache.joke_cache[payload.message_id] = is_joke_result
+    return is_joke_result
 
 async def save_joke(payload):
     channel = await bot.fetch_channel(payload.channel_id)
@@ -171,7 +178,7 @@ async def save_joke(payload):
     # Get the source message that was replied to
     source_message = await channel.fetch_message(joke_message.reference.message_id)
     
-    # Detect languages with "unknown" fallback
+        # Detect languages with "unknown" fallback
     try:
         source_lang = detect(source_message.content)
     except LangDetectException:
