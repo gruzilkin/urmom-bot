@@ -36,7 +36,7 @@ DISCORD_TOKEN=your_discord_bot_token      # Get from Discord Developer Portal
 # Gemini Configuration (Required if AI_PROVIDER=GEMINI)
 GEMINI_API_KEY=your_gemini_api_key        # Get from Google AI Studio
 GEMINI_TEMPERATURE=0.7                    # Value between 0-2, higher = more creative
-GEMINI_MODEL=gemini-2.0-flash-exp         # Latest experimental model for best results
+GEMINI_MODEL=gemini-2.0-flash-thinking-exp-01-21  # Latest experimental model for best results
 
 # Grok Configuration (Required if AI_PROVIDER=GROK)
 GROK_API_KEY=your_grok_api_key            # Get from xAI platform
