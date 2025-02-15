@@ -1,4 +1,5 @@
-import google.generativeai as genai
+from google import genai
+from google.genai.types import Content, Part, GenerateContentConfig
 from ai_client import AIClient
 from typing import List, Tuple
 
@@ -9,42 +10,34 @@ class GeminiClient(AIClient):
         if not model_name:
             raise ValueError("Gemini model name not provided!")
 
-        genai.configure(api_key=api_key)
-
-        generation_config = {
-            "temperature": temperature,
-            "top_p": 0.95,
-            "top_k": 64,
-            "max_output_tokens": 512,
-            "response_mime_type": "text/plain",
-        }
-
-        self.model = genai.GenerativeModel(
-            model_name=model_name,
-            generation_config=generation_config,
-        )
+        self.client = genai.Client(api_key=api_key)
+        self.temperature = temperature
+        self.model_name = model_name
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None) -> str:
-        history = []
-        
-        # Add prompt as first message in history if exists
-        if prompt:
-            history.append({"role": "user", "parts": [prompt]})
-        
-        # Add samples to history
-        if samples:
-            for user_msg, assistant_msg in samples:
-                history.append({"role": "user", "parts": [user_msg]})
-                history.append({"role": "model", "parts": [assistant_msg]})
+        samples = samples or []
+        contents = []
 
-        print(history)
+        for msg, joke in samples:
+            contents.append(Content(parts=[Part(text=msg)], role="user"))
+            contents.append(Content(parts=[Part(text=joke)], role="model"))
 
-        # Start chat with history and send current message
-        chat = self.model.start_chat(history=history)
-        response = await chat.send_message_async(message)
+        contents.append(Content(parts=[Part(text=message)], role="user"))
+
+        print(f"[GEMINI] system_instruction: {prompt}")
+        print(f"[GEMINI] Request contents: {contents}")
+
+        response = await self.client.aio.models.generate_content(
+            model=self.model_name,
+            contents=contents,
+            config=GenerateContentConfig(
+                temperature=self.temperature,
+                system_instruction = prompt,
+            )
+        )
 
         print(response)
-
+        print(f"[GEMINI] Response: {response}")
         return response.text
 
     async def is_joke(self, original_message: str, response_message: str) -> bool:
@@ -58,14 +51,16 @@ Is it actually a joke? Reply only yes or no."""
         print(f"[GEMINI] Original: {original_message}")
         print(f"[GEMINI] Response: {response_message}")
 
-        response = await self.model.generate_content_async(
-            prompt,
-            generation_config={
-                "temperature": 0.1,
-                "max_output_tokens": 1,
-                "stop_sequences": ["\n", "."]
-            }
+        response = await self.client.aio.models.generate_content(
+            model=self.model_name,
+            contents=[prompt],
+            config=GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=1,
+                stop_sequences=["\n", "."]
+            )
         )
+        
         print(f"[GEMINI] Raw response object: {response}")
         result = response.text.strip().lower() == "yes"
         print(f"[GEMINI] AI response: {response.text}")

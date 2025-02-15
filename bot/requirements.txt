@@ -1,4 +1,4 @@
-google-generativeai
+google-genai
 nextcord
 python-dotenv
 psycopg2-binary

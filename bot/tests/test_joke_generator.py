@@ -34,7 +34,7 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
         test_message = "tldr, it's basically switch 1 with some extra coloured plastic"
         
         # Generate joke
-        result = await self.joke_generator.generate_joke(test_message)
+        result = await self.joke_generator.generate_joke(test_message, "en")
         print(f"Generated joke: {result}")
 
     async def test_generate_country_joke(self):
