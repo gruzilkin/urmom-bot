@@ -166,7 +166,7 @@ async def process_famous_person_query(message, famous_person):
         conversation = await get_recent_conversation(message.channel,
                                                     min_messages=10,
                                                     max_messages=30, 
-                                                    max_age_minutes=5, 
+                                                    max_age_minutes=30, 
                                                     reference_message=reference_message)
         
         response = await container.ai_client.generate_famous_person_response(
@@ -179,7 +179,7 @@ async def process_famous_person_query(message, famous_person):
         print(f"Error generating famous person response: {e}")
         await message.reply(f"Sorry, I couldn't determine what {famous_person.title()} would say.")
 
-async def get_recent_conversation(channel, min_messages=10, max_messages=30, max_age_minutes=5, reference_message=None):
+async def get_recent_conversation(channel, min_messages=10, max_messages=30, max_age_minutes=30, reference_message=None):
     """
     Fetch recent messages from the channel to build conversation context.
     
