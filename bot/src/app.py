@@ -5,7 +5,9 @@ import os
 import asyncio
 from enum import Enum
 from types import SimpleNamespace
+import re
 from langdetect import detect, LangDetectException
+import datetime
 
 load_dotenv()
 
@@ -63,8 +65,15 @@ async def on_raw_reaction_add(payload):
 async def on_message(message):
     if message.author.bot:
         return
-
+    
     if not message.content.startswith(f"<@{bot.user.id}>"):
+        return
+
+    famous_person_match = re.search(r"what would (.+?) say\??", message.content.lower())
+    
+    if famous_person_match and message.content.startswith(f"<@{bot.user.id}>"):
+        famous_person = famous_person_match.group(1).strip()
+        await process_famous_person_query(message, famous_person)
         return
 
     # Check if user is admin before processing commands
@@ -147,6 +156,80 @@ Current settings:
             await message.reply(f"Country jokes {'enabled' if enable else 'disabled'}")
         except IndexError:
             await message.reply("Please specify true or false!")
+
+async def process_famous_person_query(message, famous_person):
+    try:
+        reference_message = None
+        if message.reference and message.reference.message_id:
+            reference_message = await message.channel.fetch_message(message.reference.message_id)
+        
+        conversation = await get_recent_conversation(message.channel,
+                                                    min_messages=10,
+                                                    max_messages=30, 
+                                                    max_age_minutes=5, 
+                                                    reference_message=reference_message)
+        
+        response = await container.ai_client.generate_famous_person_response(
+            conversation=conversation,
+            person=famous_person
+        )
+        
+        await message.reply(f"**{famous_person.title()} would say:**\n\n{response}")
+    except Exception as e:
+        print(f"Error generating famous person response: {e}")
+        await message.reply(f"Sorry, I couldn't determine what {famous_person.title()} would say.")
+
+async def get_recent_conversation(channel, min_messages=10, max_messages=30, max_age_minutes=5, reference_message=None):
+    """
+    Fetch recent messages from the channel to build conversation context.
+    
+    Args:
+        channel: The Discord channel to get messages from
+        min_messages: Minimum number of messages to retrieve, regardless of age
+        max_messages: Maximum number of messages to retrieve
+        max_age_minutes: Maximum age of messages in minutes from the reference point
+        reference_message: If provided, use this as the starting point for the conversation
+    """
+    all_messages = []
+    
+    if reference_message:
+        all_messages.append(reference_message)
+        async for msg in channel.history(limit=max_messages, before=reference_message):
+            all_messages.append(msg)
+    else:
+        async for msg in channel.history(limit=max_messages):
+            all_messages.append(msg)
+    
+    if not all_messages:
+        return []
+    
+    filtered_messages = []
+    for msg in all_messages:
+        if not msg.author.bot and not msg.content.startswith(f"<@{bot.user.id}>"):
+            filtered_messages.append(msg)
+    
+    if not filtered_messages:
+        return []
+    
+    reference_time = filtered_messages[0].created_at
+    cutoff_time = reference_time - datetime.timedelta(minutes=max_age_minutes)
+    
+    conversation_messages = []
+    min_messages_collected = 0
+    
+    for msg in filtered_messages:
+        if min_messages_collected < min_messages:
+            conversation_messages.append((msg.author.name, msg.content))
+            min_messages_collected += 1
+            continue
+            
+        if msg.created_at < cutoff_time:
+            break
+            
+        conversation_messages.append((msg.author.name, msg.content))
+
+    conversation_messages.reverse()
+    return conversation_messages
 
 async def is_joke(payload) -> bool:
     if payload.message_id in cache.joke_cache:

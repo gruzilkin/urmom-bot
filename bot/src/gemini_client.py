@@ -66,3 +66,40 @@ Is it actually a joke? Reply only yes or no."""
         print(f"[GEMINI] AI response: {response.text}")
         print(f"[GEMINI] Is joke: {result}")
         return result
+
+    async def generate_famous_person_response(self, conversation: List[Tuple[str, str]], person: str) -> str:
+        """
+        Generate a response in the style of a famous person based on the conversation context.
+        
+        Args:
+            conversation (List[Tuple[str, str]]): List of (username, message) tuples
+            person (str): The name of the famous person
+            
+        Returns:
+            str: A response in the style of the famous person
+        """
+
+        system_instruction = f"""You are {person}. Generate a response as if you were {person}, 
+            using their communication style, beliefs, values, and knowledge.
+            Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
+            Stay in character completely and respond directly as {person} would.
+            Keep your response length similar to the conversation context."""
+        
+        contents = []
+        for username, content in conversation:
+            contents.append(Content(parts=[Part(text=f"{username}: {content}")], role="user"))
+        
+        print(f"[GEMINI] Generating response as {person}")
+        print(f"[GEMINI] Conversation: {conversation}")
+        
+        response = await self.client.aio.models.generate_content(
+            model=self.model_name,
+            contents=contents,
+            config=GenerateContentConfig(
+                temperature=self.temperature,
+                system_instruction=system_instruction,
+            )
+        )
+        
+        print(f"[GEMINI] Famous person response: {response.text}")
+        return response.text
