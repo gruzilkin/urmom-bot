@@ -5,6 +5,7 @@ A Discord bot that responds with "ur mom" jokes when messages are reacted to wit
 ## Features
 - Generates AI-powered "ur mom" jokes in response to 🤡 emoji reactions
 - Creates inappropriate culturally-themed jokes when triggered by country flag emoji reactions
+- Impersonates famous people with AI-generated responses in their unique style and personality
 - Powered by Google's Gemini (free) and Grok (paid) for enhanced joke generation
 
 ## Adaptive Learning
@@ -81,6 +82,7 @@ The following commands are available:
 What can this bot do?
 - Generate "ur mom" jokes when someone reacts to a message with 🤡
 - Create country-specific jokes when someone uses a flag emoji reaction
+- Respond as famous personalities with `@urmom-bot what would <famous person> say?` (e.g., `@urmom-bot what would Jesus say?`)
 - Archive all jokes to a dedicated channel of your choice
 - Keep your chat channels clean by automatically removing joke responses after a set time
 - Listen to your community's feedback - if a joke gets too many 👎 reactions, it gets removed
