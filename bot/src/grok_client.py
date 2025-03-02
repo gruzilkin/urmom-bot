@@ -83,7 +83,7 @@ Is it actually a joke? Reply only yes or no."""
             using their communication style, beliefs, values, and knowledge.
             Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
             Stay in character completely and respond directly as {person} would.
-            Keep your response length similar to the conversation context."""
+            Keep your response length to about a couple of paragraphs."""
         }
         
         messages = [system_message]
