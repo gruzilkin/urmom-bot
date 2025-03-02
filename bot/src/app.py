@@ -69,10 +69,10 @@ async def on_message(message):
     if not message.content.startswith(f"<@{bot.user.id}>"):
         return
 
-    famous_person_match = re.search(r"what would (.+?) say\??", message.content.lower())
+    extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
+    famous_person = await container.ai_client.is_famous_person_request(extracted_message)
     
-    if famous_person_match and message.content.startswith(f"<@{bot.user.id}>"):
-        famous_person = famous_person_match.group(1).strip()
+    if famous_person:
         await process_famous_person_query(message, famous_person)
         return
 
@@ -169,9 +169,13 @@ async def process_famous_person_query(message, famous_person):
                                                     max_age_minutes=30, 
                                                     reference_message=reference_message)
         
+        # Extract original message with bot mention removed
+        extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
+        
         response = await container.ai_client.generate_famous_person_response(
             conversation=conversation,
-            person=famous_person
+            person=famous_person,
+            original_message=extracted_message
         )
         
         await message.reply(f"**{famous_person.title()} would say:**\n\n{response}")
