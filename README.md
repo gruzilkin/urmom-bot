@@ -80,9 +80,13 @@ The following commands are available:
 
 ## Bot Behavior
 What can this bot do?
+- Respond as famous personalities with `@urmom-bot what would <famous person> say?`
+  - Examples:
+    - `@urmom-bot what would Jesus say if we could rap like Eminen?`
+    - `@urmom-bot what would Trump say if he was a software developer?`
+    - `@urmom-bot Что бы сказал Гоблин если бы он делал свой перевод?`
 - Generate "ur mom" jokes when someone reacts to a message with 🤡
 - Create country-specific jokes when someone uses a flag emoji reaction
-- Respond as famous personalities with `@urmom-bot what would <famous person> say?` (e.g., `@urmom-bot what would Jesus say?`)
 - Archive all jokes to a dedicated channel of your choice
 - Keep your chat channels clean by automatically removing joke responses after a set time
 - Listen to your community's feedback - if a joke gets too many 👎 reactions, it gets removed
