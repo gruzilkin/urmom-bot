@@ -42,7 +42,9 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
 
 @bot.event
-async def on_raw_reaction_add(payload):
+async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
+    container.telemetry.increment_reaction_counter(payload)
+    
     try:
         emoji_str = str(payload.emoji)
         country = await container.country_resolver.get_country_from_flag(emoji_str)

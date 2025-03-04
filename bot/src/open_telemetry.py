@@ -60,8 +60,17 @@ class Telemetry:
         )
         print("Created counter: discord_messages")
         
+        # Define a counter for reaction events
+        reaction_counter = meter.create_counter(
+            name="discord_reactions",
+            description="Number of Discord reactions received",
+            unit="1"
+        )
+        print("Created counter: discord_reactions")
+        
         return SimpleNamespace(
-            message_counter=message_counter
+            message_counter=message_counter,
+            reaction_counter=reaction_counter
         )
     
     def increment_message_counter(self, message: nextcord.Message):
@@ -75,6 +84,21 @@ class Telemetry:
                 "guild_id": str(guild_id) if guild_id else "dm"
             }
             self.metrics.message_counter.add(1, attributes)
-            return True
         except Exception as e:
             print(f"Error incrementing counter: {e}")
+            
+    def increment_reaction_counter(self, payload: nextcord.RawReactionActionEvent):
+        """Increment the reaction counter with emoji, channel and guild information"""
+        try:
+            emoji_str = str(payload.emoji)
+            channel_id = payload.channel_id
+            guild_id = payload.guild_id
+            
+            attributes = {
+                "channel_id": str(channel_id),
+                "guild_id": str(guild_id) if guild_id else "dm",
+                "emoji": emoji_str
+            }
+            self.metrics.reaction_counter.add(1, attributes)
+        except Exception as e:
+            print(f"Error incrementing reaction counter: {e}")
