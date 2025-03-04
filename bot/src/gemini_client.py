@@ -148,27 +148,11 @@ Is it actually a joke? Reply only yes or no."""
     async def is_famous_person_request(self, message: str) -> str | None:
         """Check if a message is asking what a famous person would say"""
         
-        system_instruction = """You need to check if the user message matches the pattern of "What would X say?" 
+        system_instruction = """If the user message is a question similar to "What would X say?" 
         and then reply with X - the person's name.
 
         Only extract the person's name if the message is clearly asking what they would say.
         If it's not a request about what someone would say, respond with 'None'.
-
-        The following are examples of how you should respond:
-        <example1>
-        Input: What would Trump say?
-        Output: Trump
-        </example1>
-
-        <example2>
-        Input: What's the weather today?
-        Output: None
-        </example2>
-
-        <example3>
-        Input: What would Jesus say if he spoke like Trump?
-        Output: Jesus
-        </example3>
         """
         
         print(f"[GEMINI] Checking if message is a famous person request: {message}")
