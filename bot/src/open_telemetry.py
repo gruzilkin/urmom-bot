@@ -1,13 +1,12 @@
-import os
-import logging
+import uuid
 from types import SimpleNamespace
-import nextcord
 
+import nextcord
 # OpenTelemetry imports
 from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 
 class Telemetry:
@@ -15,6 +14,30 @@ class Telemetry:
         self.service_name = service_name
         self.endpoint = endpoint
         self.metrics = self.setup_metrics()
+
+    def get_container_id(self):
+        """Get the Docker container ID or generate a unique ID if not in Docker"""
+        # Try to get container ID from cgroup (most reliable in Docker)
+        try:
+            with open('/proc/self/cgroup', 'r') as f:
+                for line in f:
+                    if '/docker/' in line:
+                        return line.split('/')[-1][:12]  # Get the 12-char container ID
+        except:
+            pass
+        
+        # Try hostname file as backup
+        try:
+            with open('/etc/hostname', 'r') as f:
+                hostname = f.read().strip()
+                # Check if this looks like a container ID (hexadecimal)
+                if len(hostname) == 12 and all(c in '0123456789abcdef' for c in hostname):
+                    return hostname
+        except:
+            pass
+            
+        # Fall back to a generated UUID if we can't get container ID
+        return uuid.uuid4().hex[:12]
             
     def setup_metrics(self):
         """Set up OpenTelemetry metrics with debug logging"""
@@ -24,7 +47,8 @@ class Telemetry:
         print(f"OTLP endpoint: {self.endpoint}")
         
         resource = Resource.create({
-            "service.name": self.service_name
+            "service.name": self.service_name,
+            "service.instance.id": self.get_container_id(),
         })
         
         # Create the OTLP exporter for metrics
