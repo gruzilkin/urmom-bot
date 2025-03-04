@@ -50,7 +50,8 @@ class Container:
             return GeminiClient(
                 api_key=self._get_env("GEMINI_API_KEY"),
                 model_name=self._get_env("GEMINI_MODEL"),
-                temperature=float(self._get_env("GEMINI_TEMPERATURE"))
+                temperature=float(self._get_env("GEMINI_TEMPERATURE")),
+                telemetry=self.telemetry
             )
             
         elif ai_provider == GROK:

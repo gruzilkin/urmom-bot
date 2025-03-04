@@ -1,10 +1,11 @@
 from google import genai
-from google.genai.types import Content, Part, GenerateContentConfig
+from google.genai.types import Content, Part, GenerateContentConfig, GenerateContentResponse
 from ai_client import AIClient
 from typing import List, Tuple
+from open_telemetry import Telemetry
 
 class GeminiClient(AIClient):
-    def __init__(self, api_key: str, model_name: str, temperature: float = 1.2):
+    def __init__(self, api_key: str, model_name: str, temperature: float = 1.2, telemetry: Telemetry = None):
         if not api_key:
             raise ValueError("Gemini API key not provided!")
         if not model_name:
@@ -13,6 +14,36 @@ class GeminiClient(AIClient):
         self.client = genai.Client(api_key=api_key)
         self.temperature = temperature
         self.model_name = model_name
+        self.telemetry = telemetry
+        
+    def _track_completion_metrics(self, response: GenerateContentResponse, method_name: str, **additional_attributes):
+        """Track metrics from Gemini response with detailed attributes"""
+        if self.telemetry:
+            try:
+                usage_metadata = response.usage_metadata
+                
+                prompt_tokens = usage_metadata.prompt_token_count
+                completion_tokens = usage_metadata.candidates_token_count
+                total_tokens = usage_metadata.total_token_count
+                    
+                attributes = {
+                    "service": "GEMINI",
+                    "model": self.model_name,
+                    "method": method_name
+                }
+                
+                # Add any additional attributes passed in
+                attributes.update(additional_attributes)
+                
+                self.telemetry.track_token_usage(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
+                    attributes=attributes
+                )
+                print(f"[GEMINI] Token usage tracked - Method: {method_name}, Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}")
+            except Exception as e:
+                print(f"[GEMINI] Error tracking token usage: {e}")
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None) -> str:
         samples = samples or []
@@ -38,6 +69,7 @@ class GeminiClient(AIClient):
 
         print(response)
         print(f"[GEMINI] Response: {response}")
+        self._track_completion_metrics(response, method_name="generate_content")
         return response.text
 
     async def is_joke(self, original_message: str, response_message: str) -> bool:
@@ -63,6 +95,7 @@ Is it actually a joke? Reply only yes or no."""
         
         print(f"[GEMINI] Raw response object: {response}")
         result = response.text.strip().lower() == "yes"
+        self._track_completion_metrics(response, method_name="is_joke", is_joke=result)
         print(f"[GEMINI] AI response: {response.text}")
         print(f"[GEMINI] Is joke: {result}")
         return result
@@ -104,6 +137,11 @@ Is it actually a joke? Reply only yes or no."""
             )
         )
         
+        self._track_completion_metrics(
+            response, 
+            method_name="generate_famous_person_response", 
+            person=person
+        )
         print(f"[GEMINI] Famous person response: {response.text}")
         return response.text
 
@@ -113,20 +151,25 @@ Is it actually a joke? Reply only yes or no."""
         system_instruction = """You need to check if the user message matches the pattern of "What would X say?" 
         and then reply with X - the person's name.
 
-        Example 1:
+        Only extract the person's name if the message is clearly asking what they would say.
+        If it's not a request about what someone would say, respond with 'None'.
+
+        The following are examples of how you should respond:
+        <example1>
         Input: What would Trump say?
         Output: Trump
+        </example1>
 
-        Example 2:
+        <example2>
         Input: What's the weather today?
         Output: None
+        </example2>
 
-        Example 3:
+        <example3>
         Input: What would Jesus say if he spoke like Trump?
         Output: Jesus
-        
-        Only extract the person's name if the message is clearly asking what they would say.
-        If it's not a request about what someone would say, respond with 'None'."""
+        </example3>
+        """
         
         print(f"[GEMINI] Checking if message is a famous person request: {message}")
         
@@ -147,6 +190,12 @@ Is it actually a joke? Reply only yes or no."""
         
         # Convert "None" string to actual None
         person_name = None if response_text == "None" else response_text
+        self._track_completion_metrics(
+            response, 
+            method_name="is_famous_person_request", 
+            person_detected=(person_name is not None),
+            person=person_name
+        )
         print(f"[GEMINI] Famous person detection result: '{person_name}'")
         
         return person_name
