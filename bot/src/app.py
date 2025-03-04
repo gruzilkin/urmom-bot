@@ -1,13 +1,14 @@
-import nextcord
-from dotenv import load_dotenv
-from container import container  # Import the instance instead of the class
-import os
 import asyncio
+import datetime
+import os
 from enum import Enum
 from types import SimpleNamespace
-import re
+
+import nextcord
+from dotenv import load_dotenv
 from langdetect import detect, LangDetectException
-import datetime
+
+from container import container  # Import the instance instead of the class
 
 load_dotenv()
 
@@ -62,7 +63,9 @@ async def on_raw_reaction_add(payload):
         print(f"Error processing reaction: {e}")
 
 @bot.event
-async def on_message(message):
+async def on_message(message: nextcord.Message):
+    container.telemetry.increment_message_counter(message)
+    
     if message.author.bot:
         return
     
