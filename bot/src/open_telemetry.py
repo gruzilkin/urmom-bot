@@ -34,9 +34,6 @@ class Telemetry:
         )
         print(f"Created OTLP exporter targeting {self.endpoint}")
         
-        # Add console exporter for debugging
-        console_exporter = ConsoleMetricExporter()
-        
         # Create metric readers
         otlp_reader = PeriodicExportingMetricReader(
             exporter=otlp_exporter,
