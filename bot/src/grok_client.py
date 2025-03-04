@@ -178,12 +178,12 @@ Is it actually a joke? Reply only yes or no."""
         response_text = completion.choices[0].message.content.strip()
         
         # Convert "None" string to actual None
-        person_name = None if response_text == "None" else response_text
+        person = None if response_text == "None" else response_text
         self._track_completion_metrics(completion, 
                                       method_name="is_famous_person_request", 
-                                      person_detected=(person_name is not None),
-                                      person_name=person_name)
+                                      person_detected=(person is not None),
+                                      person=person)
         
-        print(f"[GROK] Famous person detection result: '{person_name}'")
+        print(f"[GROK] Famous person detection result: '{person}'")
         
-        return person_name
+        return person
