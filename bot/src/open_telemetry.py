@@ -49,7 +49,7 @@ class Telemetry:
         )
         
         # Set the meter provider with the readers
-        provider = MeterProvider(metric_readers=[otlp_reader, console_reader], resource=resource)
+        provider = MeterProvider(metric_readers=[otlp_reader], resource=resource)
         metrics.set_meter_provider(provider)
         print("Meter provider configured with OTLP and Console exporters")
         
