@@ -43,15 +43,10 @@ class Telemetry:
             export_interval_millis=15000  # Export every 15 seconds
         )
         
-        console_reader = PeriodicExportingMetricReader(
-            exporter=console_exporter,
-            export_interval_millis=15000
-        )
-        
         # Set the meter provider with the readers
         provider = MeterProvider(metric_readers=[otlp_reader], resource=resource)
         metrics.set_meter_provider(provider)
-        print("Meter provider configured with OTLP and Console exporters")
+        print("Meter provider configured with OTLP exporter")
         
         # Create a meter
         meter = metrics.get_meter("urmom_bot_metrics")
