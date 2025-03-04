@@ -68,9 +68,34 @@ class Telemetry:
         )
         print("Created counter: discord_reactions")
         
+        # Define counters for token usage metrics
+        prompt_tokens_counter = meter.create_counter(
+            name="llm_prompt_tokens",
+            description="Number of tokens used in prompts",
+            unit="tokens"
+        )
+        print("Created counter: llm_prompt_tokens")
+        
+        completion_tokens_counter = meter.create_counter(
+            name="llm_completion_tokens",
+            description="Number of tokens used in completions",
+            unit="tokens"
+        )
+        print("Created counter: llm_completion_tokens")
+        
+        total_tokens_counter = meter.create_counter(
+            name="llm_total_tokens",
+            description="Total number of tokens used",
+            unit="tokens"
+        )
+        print("Created counter: llm_total_tokens")
+        
         return SimpleNamespace(
             message_counter=message_counter,
-            reaction_counter=reaction_counter
+            reaction_counter=reaction_counter,
+            prompt_tokens_counter=prompt_tokens_counter,
+            completion_tokens_counter=completion_tokens_counter,
+            total_tokens_counter=total_tokens_counter
         )
     
     def increment_message_counter(self, message: nextcord.Message):
@@ -102,3 +127,17 @@ class Telemetry:
             self.metrics.reaction_counter.add(1, attributes)
         except Exception as e:
             print(f"Error incrementing reaction counter: {e}")
+            
+    def track_token_usage(self, prompt_tokens: int, completion_tokens: int, total_tokens: int, attributes: dict = None):
+        """Track token usage from LLM API calls with custom attributes"""
+        try:
+            if attributes is None:
+                attributes = {}
+            
+            self.metrics.prompt_tokens_counter.add(prompt_tokens, attributes)
+            self.metrics.completion_tokens_counter.add(completion_tokens, attributes)
+            self.metrics.total_tokens_counter.add(total_tokens, attributes)
+            
+            print(f"Token usage tracked - Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}, Attributes: {attributes}")
+        except Exception as e:
+            print(f"Error tracking token usage: {e}")

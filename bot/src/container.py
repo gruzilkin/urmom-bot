@@ -57,7 +57,8 @@ class Container:
             return GrokClient(
                 api_key=self._get_env("GROK_API_KEY"),
                 model_name=self._get_env("GROK_MODEL"),
-                temperature=float(self._get_env("GROK_TEMPERATURE"))
+                temperature=float(self._get_env("GROK_TEMPERATURE")),
+                telemetry=self.telemetry
             )
         else:
             raise ValueError(f"Invalid AI_PROVIDER: {ai_provider}. Must be either {GEMINI} or {GROK}")

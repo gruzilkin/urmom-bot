@@ -1,9 +1,11 @@
 from openai import OpenAI
+from openai.types.chat import ChatCompletion
 from ai_client import AIClient
 from typing import List, Tuple
+from open_telemetry import Telemetry
 
 class GrokClient(AIClient):
-    def __init__(self, api_key: str, model_name: str = "grok-2-latest", temperature: float = 0.7):
+    def __init__(self, api_key: str, model_name: str = "grok-2-latest", temperature: float = 0.7, telemetry: Telemetry = None):
         if not api_key:
             raise ValueError("Grok API key not provided!")
         if not model_name:
@@ -15,6 +17,27 @@ class GrokClient(AIClient):
         )
         self.model_name = model_name
         self.temperature = temperature
+        self.telemetry = telemetry
+        
+    def _track_completion_metrics(self, completion: ChatCompletion, method_name: str, **additional_attributes):
+        """Track metrics from completion response with detailed attributes"""
+        if self.telemetry:
+            usage = completion.usage
+            attributes = {
+                "service": "GROK",
+                "model": self.model_name,
+                "method": method_name
+            }
+            
+            # Add any additional attributes passed in
+            attributes.update(additional_attributes)
+            
+            self.telemetry.track_token_usage(
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                total_tokens=usage.total_tokens,
+                attributes=attributes
+            )
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None) -> str:
         messages = []
@@ -37,6 +60,7 @@ class GrokClient(AIClient):
         )
 
         print(completion)
+        self._track_completion_metrics(completion, method_name="generate_content")
 
         return completion.choices[0].message.content
 
@@ -61,6 +85,7 @@ Is it actually a joke? Reply only yes or no."""
         response_text = completion.choices[0].message.content.strip().lower()
         # Remove any punctuation and check if the response is 'yes'
         result = response_text.rstrip('.,!?') == "yes"
+        self._track_completion_metrics(completion, method_name="is_joke", is_joke=result)
         print(f"[GROK] AI response: {response_text}")
         print(f"[GROK] Is joke: {result}")
         return result
@@ -109,6 +134,10 @@ Is it actually a joke? Reply only yes or no."""
         )
         
         print(f"[GROK] Raw completion object: {completion}")
+        self._track_completion_metrics(completion, 
+                                      method_name="generate_famous_person_response", 
+                                      person=person)
+        
         return completion.choices[0].message.content
 
     async def is_famous_person_request(self, message: str) -> str | None:
@@ -150,6 +179,11 @@ Is it actually a joke? Reply only yes or no."""
         
         # Convert "None" string to actual None
         person_name = None if response_text == "None" else response_text
+        self._track_completion_metrics(completion, 
+                                      method_name="is_famous_person_request", 
+                                      person_detected=(person_name is not None),
+                                      person_name=person_name)
+        
         print(f"[GROK] Famous person detection result: '{person_name}'")
         
         return person_name
