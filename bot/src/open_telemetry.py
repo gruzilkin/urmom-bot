@@ -1,19 +1,33 @@
 import uuid
+import contextlib
 from types import SimpleNamespace
 
 import nextcord
 # OpenTelemetry imports
-from opentelemetry import metrics
+from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 class Telemetry:
     def __init__(self, service_name="urmom-bot", endpoint="192.168.0.2:4317"):
         self.service_name = service_name
         self.endpoint = endpoint
+        
+        # Create shared resource for both metrics and tracing
+        self.resource = Resource.create({
+            "service.name": self.service_name,
+            "service.instance.id": self.get_container_id(),
+        })
+        
+        # Setup both metrics and tracing
         self.metrics = self.setup_metrics()
+        self.tracer = self.setup_tracing()
 
     def get_container_id(self):
         """Get the Docker container ID or generate a unique ID if not in Docker"""
@@ -46,11 +60,6 @@ class Telemetry:
         print(f"Service name: {self.service_name}")
         print(f"OTLP endpoint: {self.endpoint}")
         
-        resource = Resource.create({
-            "service.name": self.service_name,
-            "service.instance.id": self.get_container_id(),
-        })
-        
         # Create the OTLP exporter for metrics
         otlp_exporter = OTLPMetricExporter(
             endpoint=self.endpoint,
@@ -64,8 +73,7 @@ class Telemetry:
             export_interval_millis=15000  # Export every 15 seconds
         )
         
-        # Set the meter provider with the readers
-        provider = MeterProvider(metric_readers=[otlp_reader], resource=resource)
+        provider = MeterProvider(metric_readers=[otlp_reader], resource=self.resource)
         metrics.set_meter_provider(provider)
         print("Meter provider configured with OTLP exporter")
         
@@ -118,6 +126,48 @@ class Telemetry:
             completion_tokens_counter=completion_tokens_counter,
             total_tokens_counter=total_tokens_counter
         )
+    
+    def setup_tracing(self):
+        """Set up OpenTelemetry tracing"""
+        print("Setting up OpenTelemetry tracing...")
+        
+        # Create the OTLP exporter for tracing
+        otlp_span_exporter = OTLPSpanExporter(
+            endpoint=self.endpoint,
+            insecure=True
+        )
+        print(f"Created OTLP trace exporter targeting {self.endpoint}")
+        
+        # Create a span processor for the exporter
+        span_processor = BatchSpanProcessor(otlp_span_exporter)
+        
+        # Set up the tracer provider with the processor and shared resource
+        trace_provider = TracerProvider(resource=self.resource)
+        trace_provider.add_span_processor(span_processor)
+        trace.set_tracer_provider(trace_provider)
+        print("Tracer provider configured with OTLP exporter")
+        
+        # Create a tracer
+        tracer = trace.get_tracer("urmom_bot_tracer")
+        print("Created tracer: urmom_bot_tracer")
+        
+        return tracer
+    
+    @contextlib.contextmanager
+    def create_span(self, name, kind=SpanKind.INTERNAL, attributes=None):
+        """Create a span as a context manager for tracing operations"""
+        if attributes is None:
+            attributes = {}
+            
+        span = self.tracer.start_span(name, kind=kind, attributes=attributes)
+        try:
+            with trace.use_span(span, end_on_exit=True):
+                yield span
+                span.set_status(Status(StatusCode.OK))  # Set status to OK if no exception occurs
+        except Exception as e:
+            span.set_status(Status(StatusCode.ERROR))
+            span.record_exception(e)
+            raise
     
     def increment_message_counter(self, message: nextcord.Message):
         """Increment the message counter and log the action"""
