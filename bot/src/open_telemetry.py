@@ -13,6 +13,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import SpanKind, Status, StatusCode
+from contextlib import asynccontextmanager, contextmanager
 
 class Telemetry:
     def __init__(self, service_name="urmom-bot", endpoint="192.168.0.2:4317"):
@@ -153,7 +154,7 @@ class Telemetry:
         
         return tracer
     
-    @contextlib.contextmanager
+    @contextmanager
     def create_span(self, name, kind=SpanKind.INTERNAL, attributes=None):
         """Create a span as a context manager for tracing operations"""
         if attributes is None:
@@ -169,6 +170,19 @@ class Telemetry:
             span.record_exception(e)
             raise
     
+    @asynccontextmanager
+    async def async_create_span(self, name, kind=SpanKind.INTERNAL, attributes=None):
+        """Create a span as an async context manager for async operations"""
+        span = self.tracer.start_span(name, kind=kind, attributes=attributes or {})
+        try:
+            with trace.use_span(span, end_on_exit=True):
+                yield span
+                span.set_status(Status(StatusCode.OK))
+        except Exception as e:
+            span.set_status(Status(StatusCode.ERROR))
+            span.record_exception(e)
+            raise
+
     def increment_message_counter(self, message: nextcord.Message):
         """Increment the message counter and log the action"""
         try:
@@ -204,7 +218,9 @@ class Telemetry:
         try:
             if attributes is None:
                 attributes = {}
-            
+
+            attributes = {k: v for k, v in attributes.items() if v is not None}
+
             self.metrics.prompt_tokens_counter.add(prompt_tokens, attributes)
             self.metrics.completion_tokens_counter.add(completion_tokens, attributes)
             self.metrics.total_tokens_counter.add(total_tokens, attributes)

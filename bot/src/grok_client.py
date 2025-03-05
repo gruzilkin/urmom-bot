@@ -41,7 +41,7 @@ class GrokClient(AIClient):
             )
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None) -> str:
-        with self.telemetry.create_span("generate_content", kind=SpanKind.CLIENT) as span:
+        async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             messages = []
             if prompt:
                 messages.append({"role": "system", "content": prompt})
@@ -67,7 +67,7 @@ class GrokClient(AIClient):
             return completion.choices[0].message.content
 
     async def is_joke(self, original_message: str, response_message: str) -> bool:
-        with self.telemetry.create_span("is_joke", kind=SpanKind.CLIENT) as span:
+        async with self.telemetry.async_create_span("is_joke", kind=SpanKind.CLIENT) as span:
             prompt = f"""Tell me if the response is a joke, a wordplay or a sarcastic remark to the original message, reply in English with only yes or no:
     original message: {original_message}
     response: {response_message}
@@ -105,7 +105,7 @@ class GrokClient(AIClient):
         Returns:
             str: A response in the style of the famous person
         """
-        with self.telemetry.create_span("generate_famous_person_response", kind=SpanKind.CLIENT) as span:
+        async with self.telemetry.async_create_span("generate_famous_person_response", kind=SpanKind.CLIENT) as span:
             system_content = f"""You are {person}. Generate a response as if you were {person}, 
                 using their communication style, beliefs, values, and knowledge.
                 Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
@@ -145,9 +145,8 @@ class GrokClient(AIClient):
 
     async def is_famous_person_request(self, message: str) -> str | None:
         """Check if a message is asking what a famous person would say"""
-        with self.telemetry.create_span("is_famous_person_request", kind=SpanKind.CLIENT) as span:
-            prompt = """You need to check if the user message matches the pattern of "What would X say?" 
-            and then reply with X - the person's name.
+        async with self.telemetry.async_create_span("is_famous_person_request", kind=SpanKind.CLIENT) as span:
+            prompt = """You need to check if the user message is asking to impersonate a famous person and reply with the person's name.
 
             Example 1:
             Input: What would Trump say?
@@ -161,8 +160,20 @@ class GrokClient(AIClient):
             Input: What would Jesus say if he spoke like Trump?
             Output: Jesus
 
-            Only extract the person's name if the message is clearly asking what they would say.
-            If it's not a request about what someone would say, respond with 'None'."""
+            Example 4:
+            Input: How would Darth Vader feel about this?
+            Output: Darth Vader
+
+            Example 5:
+            Input: What if Eminen did tldr?
+            Output: Eminen
+
+            Example 5:
+            Input: How would Sigmund Freud respond to this?
+            Output: Sigmund Freud
+
+            Only extract the person's name if the message is clearly asking to impersonate them.
+            If it's not a request to impersonate someone then respond with 'None'."""
             
 
             messages = [

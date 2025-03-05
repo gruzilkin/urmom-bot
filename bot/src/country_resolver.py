@@ -1,8 +1,12 @@
 import traceback
 
+from ai_client import AIClient
+from open_telemetry import Telemetry
+
 class CountryResolver:
-    def __init__(self, ai_client):
+    def __init__(self, ai_client: AIClient, telemetry: Telemetry):
         self.ai_client = ai_client
+        self.telemetry = telemetry
         
         # custom names for better humour
         self.flag_to_country = {

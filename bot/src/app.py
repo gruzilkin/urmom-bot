@@ -45,7 +45,7 @@ async def on_ready():
 
 @bot.event
 async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
-    with container.telemetry.create_span("on_raw_reaction_add", kind=SpanKind.CONSUMER) as span:
+    async with container.telemetry.async_create_span("on_raw_reaction_add", kind=SpanKind.CONSUMER) as span:
         container.telemetry.increment_reaction_counter(payload)
         
         try:
@@ -69,7 +69,7 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
 
 @bot.event
 async def on_message(message: nextcord.Message):
-    with container.telemetry.create_span("on_message", kind=SpanKind.CONSUMER) as span:
+    async with container.telemetry.async_create_span("on_message", kind=SpanKind.CONSUMER) as span:
         span.set_attribute("message_id", str(message.id))
         
         container.telemetry.increment_message_counter(message)
@@ -80,93 +80,109 @@ async def on_message(message: nextcord.Message):
         if not message.content.startswith(f"<@{bot.user.id}>"):
             return
 
+        # First check if this is a bot command
+        is_command = await process_bot_commands(message)
+        if is_command:
+            return
+            
+        # If not a command, check for famous person query
         extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
         famous_person = await container.ai_client.is_famous_person_request(extracted_message)
         
         if famous_person:
             await process_famous_person_query(message, famous_person)
-            return
 
-        # Check if user is admin before processing commands
-        if not message.author.guild_permissions.administrator:
-            await message.reply("Sorry, only administrators can use bot commands!")
-            return
+async def process_bot_commands(message: nextcord.Message) -> bool:
+    """
+    Process bot commands from the message if any.
+    Returns True if a command was processed, False otherwise.
+    """
+    # Extract command arguments
+    args = message.content.split()[1:]
+    if not args:
+        return False
 
-        args = message.content.split()[1:]
-        if not args:
-            return
-
-        command = BotCommand.from_str(args[0])
-        if not command:
-            return
+    command = BotCommand.from_str(args[0])
+    if not command:
+        return False
+        
+    # Check if user is admin before processing commands
+    if not message.author.guild_permissions.administrator:
+        await message.reply("Sorry, only administrators can use bot commands!")
+        return True
             
-        config = container.store.get_guild_config(message.guild.id)
+    config = container.store.get_guild_config(message.guild.id)
 
-        if command == BotCommand.HELP:
-            help_text = """
-    Available commands:
-    `@urmom-bot settings` - Show current configuration
-    `@urmom-bot setArchiveChannel #channel` - Set channel for permanent joke storage
-    `@urmom-bot deleteJokesAfterMinutes X` - Delete jokes after X minutes (0 to disable)
-    `@urmom-bot deleteJokesWhenDownvoted X` - Delete jokes when downvotes - upvotes >= X (0 to disable)
-    `@urmom-bot enableCountryJokes true/false` - Enable/disable country-specific jokes
-    """
-            await message.reply(help_text)
-            return
+    if command == BotCommand.HELP:
+        help_text = """
+Available commands:
+`@urmom-bot settings` - Show current configuration
+`@urmom-bot setArchiveChannel #channel` - Set channel for permanent joke storage
+`@urmom-bot deleteJokesAfterMinutes X` - Delete jokes after X minutes (0 to disable)
+`@urmom-bot deleteJokesWhenDownvoted X` - Delete jokes when downvotes - upvotes >= X (0 to disable)
+`@urmom-bot enableCountryJokes true/false` - Enable/disable country-specific jokes
+"""
+        await message.reply(help_text)
+        return True
 
-        if command == BotCommand.SETTINGS:
-            settings_text = f"""
-    Current settings:
-    • Archive Channel: {f'<#{config.archive_channel_id}>' if config.archive_channel_id else 'Disabled'}
-    • Auto-delete after: {config.delete_jokes_after_minutes} minutes (0 = never)
-    • Delete on downvotes: {config.downvote_reaction_threshold} (0 = disabled)
-    • Country jokes: {'Enabled' if config.enable_country_jokes else 'Disabled'}
-    """
-            await message.reply(settings_text)
-            return
+    if command == BotCommand.SETTINGS:
+        settings_text = f"""
+Current settings:
+• Archive Channel: {f'<#{config.archive_channel_id}>' if config.archive_channel_id else 'Disabled'}
+• Auto-delete after: {config.delete_jokes_after_minutes} minutes (0 = never)
+• Delete on downvotes: {config.downvote_reaction_threshold} (0 = disabled)
+• Country jokes: {'Enabled' if config.enable_country_jokes else 'Disabled'}
+"""
+        await message.reply(settings_text)
+        return True
 
-        if command == BotCommand.SET_ARCHIVE_CHANNEL:
-            if not message.channel_mentions:
-                config.archive_channel_id = 0  # Disable archiving
-                container.store.save_guild_config(config)
-                await message.reply("Joke archiving has been disabled.")
-                return
-                
-            config.archive_channel_id = message.channel_mentions[0].id
+    if command == BotCommand.SET_ARCHIVE_CHANNEL:
+        if not message.channel_mentions:
+            config.archive_channel_id = 0  # Disable archiving
             container.store.save_guild_config(config)
-            await message.reply(f"Jokes will now be archived in {message.channel_mentions[0].mention}")
-            return
+            await message.reply("Joke archiving has been disabled.")
+            return True
+            
+        config.archive_channel_id = message.channel_mentions[0].id
+        container.store.save_guild_config(config)
+        await message.reply(f"Jokes will now be archived in {message.channel_mentions[0].mention}")
+        return True
 
-        elif command == BotCommand.DELETE_JOKES_AFTER:
-            try:
-                minutes = int(args[1])
-                if minutes < 0:
-                    raise ValueError
-                config.delete_jokes_after_minutes = minutes
-                container.store.save_guild_config(config)
-                await message.reply(f"Jokes will be deleted after {minutes} minutes (0 = never)")
-            except (IndexError, ValueError):
-                await message.reply("Please provide a valid number of minutes!")
+    elif command == BotCommand.DELETE_JOKES_AFTER:
+        try:
+            minutes = int(args[1])
+            if minutes < 0:
+                raise ValueError
+            config.delete_jokes_after_minutes = minutes
+            container.store.save_guild_config(config)
+            await message.reply(f"Jokes will be deleted after {minutes} minutes (0 = never)")
+        except (IndexError, ValueError):
+            await message.reply("Please provide a valid number of minutes!")
+        return True
 
-        elif command == BotCommand.DELETE_JOKES_WHEN_DOWNVOTED:
-            try:
-                threshold = int(args[1])
-                if threshold < 0:
-                    raise ValueError
-                config.downvote_reaction_threshold = threshold
-                container.store.save_guild_config(config)
-                await message.reply(f"Jokes will be deleted when downvotes - upvotes >= {threshold}")
-            except (IndexError, ValueError):
-                await message.reply("Please provide a valid threshold number!")
+    elif command == BotCommand.DELETE_JOKES_WHEN_DOWNVOTED:
+        try:
+            threshold = int(args[1])
+            if threshold < 0:
+                raise ValueError
+            config.downvote_reaction_threshold = threshold
+            container.store.save_guild_config(config)
+            await message.reply(f"Jokes will be deleted when downvotes - upvotes >= {threshold}")
+        except (IndexError, ValueError):
+            await message.reply("Please provide a valid threshold number!")
+        return True
 
-        elif command == BotCommand.ENABLE_COUNTRY_JOKES:
-            try:
-                enable = args[1].lower() == "true"
-                config.enable_country_jokes = enable
-                container.store.save_guild_config(config)
-                await message.reply(f"Country jokes {'enabled' if enable else 'disabled'}")
-            except IndexError:
-                await message.reply("Please specify true or false!")
+    elif command == BotCommand.ENABLE_COUNTRY_JOKES:
+        try:
+            enable = args[1].lower() == "true"
+            config.enable_country_jokes = enable
+            container.store.save_guild_config(config)
+            await message.reply(f"Country jokes {'enabled' if enable else 'disabled'}")
+        except IndexError:
+            await message.reply("Please specify true or false!")
+        return True
+        
+    return False
 
 async def process_famous_person_query(message, famous_person):
     try:
@@ -344,11 +360,16 @@ async def process_joke_request(payload, country=None):
     
     # Delete after timeout if configured
     if config.delete_jokes_after_minutes > 0:
-        await asyncio.sleep(config.delete_jokes_after_minutes * 60)
-        try:
-            await reply_message.delete()
-        except nextcord.errors.NotFound:
-            pass
+        asyncio.create_task(delete_message_later(reply_message, config.delete_jokes_after_minutes * 60))
+
+async def delete_message_later(message, delay_seconds):
+    """Delete a message after a delay without blocking the caller."""
+    await asyncio.sleep(delay_seconds)
+    try:
+        await message.delete()
+    except nextcord.errors.NotFound:
+        # Message might have been deleted already
+        pass
 
 async def check_should_delete(message: nextcord.Message) -> bool:
     config = container.store.get_guild_config(message.guild.id)

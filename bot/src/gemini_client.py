@@ -47,7 +47,7 @@ class GeminiClient(AIClient):
                 print(f"[GEMINI] Error tracking token usage: {e}")
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None) -> str:
-        with self.telemetry.create_span("generate_content", kind=SpanKind.CLIENT) as span:
+        async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             samples = samples or []
             contents = []
 
@@ -75,7 +75,7 @@ class GeminiClient(AIClient):
             return response.text
 
     async def is_joke(self, original_message: str, response_message: str) -> bool:
-        with self.telemetry.create_span("is_joke", kind=SpanKind.CLIENT) as span:
+        async with self.telemetry.async_create_span("is_joke", kind=SpanKind.CLIENT) as span:
             prompt = f"""Tell me if the response is a joke, a wordplay or a sarcastic remark to the original message, reply in English with only yes or no:
     original message: {original_message}
     response: {response_message}
@@ -115,7 +115,7 @@ class GeminiClient(AIClient):
         Returns:
             str: A response in the style of the famous person
         """
-        with self.telemetry.create_span("generate_famous_person_response", kind=SpanKind.CLIENT) as span:
+        async with self.telemetry.async_create_span("generate_famous_person_response", kind=SpanKind.CLIENT) as span:
             system_instruction = f"""You are {person}. Generate a response as if you were {person}, 
                 using their communication style, beliefs, values, and knowledge.
                 Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
@@ -150,7 +150,7 @@ class GeminiClient(AIClient):
 
     async def is_famous_person_request(self, message: str) -> str | None:
         """Check if a message is asking what a famous person would say"""
-        with self.telemetry.create_span("is_famous_person_request", kind=SpanKind.CLIENT) as span:
+        async with self.telemetry.async_create_span("is_famous_person_request", kind=SpanKind.CLIENT) as span:
             system_instruction = """If the user message is a question similar to "What would X say?" 
             and then reply with X - the person's name.
 

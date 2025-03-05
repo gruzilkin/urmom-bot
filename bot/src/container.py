@@ -26,14 +26,16 @@ class Container:
         endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "192.168.0.2:4317")
         self.telemetry = Telemetry(service_name=service_name, endpoint=endpoint)
 
-        # Initialize AI Client
         self.ai_client = self._create_ai_client()
 
-        # Initialize JokeGenerator with AI Client
-        self.joke_generator = JokeGenerator(self.ai_client, self.store, sample_count=int(self._get_env('SAMPLE_JOKES_COUNT')))
+        self.joke_generator = JokeGenerator(
+            self.ai_client, 
+            self.store, 
+            self.telemetry, 
+            sample_count=int(self._get_env('SAMPLE_JOKES_COUNT'))
+        )
 
-        # Initialize CountryResolver with AI Client
-        self.country_resolver = CountryResolver(self.ai_client)
+        self.country_resolver = CountryResolver(self.ai_client, self.telemetry)
     
     def _get_env(self, key: str) -> str:
         value = os.getenv(key)
