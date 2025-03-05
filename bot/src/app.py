@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import nextcord
 from dotenv import load_dotenv
 from langdetect import detect, LangDetectException
+from goose3 import Goose
 
 from opentelemetry.trace import SpanKind
 
@@ -223,19 +224,20 @@ async def get_recent_conversation(channel, min_messages=10, max_messages=30, max
     """
     all_messages = []
     
-    if reference_message:
-        all_messages.append(reference_message)
-        async for msg in channel.history(limit=max_messages, before=reference_message):
-            all_messages.append(msg)
-    else:
-        async for msg in channel.history(limit=max_messages):
-            all_messages.append(msg)
+    with container.telemetry.create_span("get_recent_conversation") as span:
+        if reference_message:
+            all_messages.append(reference_message)
+            async for msg in channel.history(limit=max_messages, before=reference_message):
+                all_messages.append(msg)
+        else:
+            async for msg in channel.history(limit=max_messages):
+                all_messages.append(msg)
     
     if not all_messages:
         return []
     
     filtered_messages = []
-    for msg in all_messages:
+    for msg in all_messages: 
         if not msg.author.bot and not msg.content.startswith(f"<@{bot.user.id}>"):
             filtered_messages.append(msg)
     
@@ -245,21 +247,30 @@ async def get_recent_conversation(channel, min_messages=10, max_messages=30, max
     reference_time = filtered_messages[0].created_at
     cutoff_time = reference_time - datetime.timedelta(minutes=max_age_minutes)
     
-    conversation_messages = []
-    min_messages_collected = 0
+    # Always include the minimum number of messages
+    guaranteed_messages = filtered_messages[:min_messages]
     
-    for msg in filtered_messages:
-        if min_messages_collected < min_messages:
-            conversation_messages.append((msg.author.name, msg.content))
-            min_messages_collected += 1
-            continue
-            
-        if msg.created_at < cutoff_time:
-            break
-            
-        conversation_messages.append((msg.author.name, msg.content))
+    # Apply time filter only to the remaining messages
+    time_filtered_messages = [msg for msg in filtered_messages[min_messages:] 
+                             if msg.created_at >= cutoff_time]
+    
+    # Combine guaranteed messages with time-filtered messages
+    result_messages = guaranteed_messages + time_filtered_messages
+
+    # Format messages as conversation tuples and reverse them for chronological order
+    conversation_messages = [(msg.author.name, msg.content) for msg in result_messages]
+
+    for message in result_messages:
+        for embed in message.embeds:
+            if embed.url:
+                with container.telemetry.create_span("extract_article") as span:
+                    span.set_attribute("url", embed.url)
+                    article = Goose().extract(embed.url)
+                    if article.cleaned_text:
+                        conversation_messages.append(("article", article.cleaned_text))
 
     conversation_messages.reverse()
+    
     return conversation_messages
 
 async def is_joke(payload) -> bool:

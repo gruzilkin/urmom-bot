@@ -7,3 +7,4 @@ langdetect
 opentelemetry-api
 opentelemetry-sdk
 opentelemetry-exporter-otlp
+goose3[all]

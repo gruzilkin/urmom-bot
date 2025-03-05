@@ -110,7 +110,7 @@ class GrokClient(AIClient):
                 using their communication style, beliefs, values, and knowledge.
                 Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
                 Stay in character completely and respond directly as {person} would.
-                Keep your response length similar to the average message length in the conversation.
+                Try to keep your response short but make sure to go over all main talking points.
                 The user specifically asked: '{original_message}'
                 Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions."""
                 
