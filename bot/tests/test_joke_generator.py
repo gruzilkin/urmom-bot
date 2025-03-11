@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from joke_generator import JokeGenerator
 from gemini_client import GeminiClient
 from store import Store
+from null_telemetry import NullTelemetry
 
 load_dotenv()
 
@@ -13,7 +14,8 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
         ai_client = GeminiClient(
             api_key=os.getenv('GEMINI_API_KEY'),
             model_name=os.getenv('GEMINI_MODEL'),
-            temperature=float(os.getenv('GEMINI_TEMPERATURE', '1.2'))
+            temperature=float(os.getenv('GEMINI_TEMPERATURE', '1.2')),
+            telemetry=NullTelemetry()
         )
         self.store = Mock(spec=Store)
         self.store.get_random_jokes.return_value = [
@@ -26,7 +28,8 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
         
         self.joke_generator = JokeGenerator(
             ai_client=ai_client,
-            store=self.store
+            store=self.store,
+            telemetry=NullTelemetry()
         )
 
     async def test_generate_joke(self):

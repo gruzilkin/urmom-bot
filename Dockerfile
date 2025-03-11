@@ -19,7 +19,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy bot code from src directory
-COPY src .
+COPY bot/ .
 
 # Command to run the bot
 CMD ["python", "app.py"]

@@ -31,7 +31,7 @@ services:
       - pgadmin:/var/lib/pgadmin
 
   bot:
-    build: ./bot
+    build: .
     env_file:
       - .env
     environment:
