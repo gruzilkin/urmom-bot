@@ -71,6 +71,8 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
 @bot.event
 async def on_message(message: nextcord.Message):
     async with container.telemetry.async_create_span("on_message", kind=SpanKind.CONSUMER) as span:
+        span.set_attribute("message_id", str(message.id))
+        
         container.telemetry.increment_message_counter(message)
         
         if message.author.bot:

@@ -1,12 +1,13 @@
 import unittest
 from unittest.mock import Mock, AsyncMock
 from country_resolver import CountryResolver
+from null_telemetry import NullTelemetry
 
 class TestCountryFlags(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.ai_client = Mock()
         self.ai_client.generate_content = AsyncMock()
-        self.resolver = CountryResolver(self.ai_client)
+        self.resolver = CountryResolver(self.ai_client, NullTelemetry())
 
     async def test_custom_names(self):
         test_cases = {
