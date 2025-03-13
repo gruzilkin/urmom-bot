@@ -261,11 +261,14 @@ async def get_recent_conversation(channel, min_messages=10, max_messages=30, max
     for message in result_messages:
         for embed in message.embeds:
             if embed.url:
-                with container.telemetry.create_span("extract_article") as span:
-                    span.set_attribute("url", embed.url)
-                    article = Goose().extract(embed.url)
-                    if article.cleaned_text:
-                        conversation_messages.append(("article", article.cleaned_text))
+                try:
+                    with container.telemetry.create_span("extract_article") as span:
+                        span.set_attribute("url", embed.url)
+                        article = Goose().extract(embed.url)
+                        if article.cleaned_text:
+                            conversation_messages.append(("article", article.cleaned_text))
+                except Exception as e:
+                    print(f"Error extracting article from {embed.url}: {str(e)}")
 
     conversation_messages.reverse()
     
