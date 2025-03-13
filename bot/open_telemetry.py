@@ -162,12 +162,14 @@ class Telemetry:
             
         span = self.tracer.start_span(name, kind=kind, attributes=attributes)
         try:
-            with trace.use_span(span, end_on_exit=True):
+            with trace.use_span(span, end_on_exit=False):
                 yield span
-                span.set_status(Status(StatusCode.OK))  # Set status to OK if no exception occurs
+                span.set_status(Status(StatusCode.OK))
+                span.end()
         except Exception as e:
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
+            span.end()
             raise
     
     @asynccontextmanager
@@ -175,12 +177,14 @@ class Telemetry:
         """Create a span as an async context manager for async operations"""
         span = self.tracer.start_span(name, kind=kind, attributes=attributes or {})
         try:
-            with trace.use_span(span, end_on_exit=True):
+            with trace.use_span(span, end_on_exit=False):
                 yield span
                 span.set_status(Status(StatusCode.OK))
+                span.end()
         except Exception as e:
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
+            span.end()
             raise
 
     def increment_message_counter(self, message: nextcord.Message):
