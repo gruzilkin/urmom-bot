@@ -86,10 +86,27 @@ async def on_message(message: nextcord.Message):
             
         # If not a command, check for famous person query
         extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
-        famous_person = await container.ai_client.is_famous_person_request(extracted_message)
+        famous_person = await container.famous_person_generator.is_famous_person_request(extracted_message)
         
         if famous_person:
-            await process_famous_person_query(message, famous_person)
+            # Create a parameterless lambda that encapsulates all conversation fetching logic
+            async def fetch_conversation():
+                reference_message = None
+                if message.reference and message.reference.message_id:
+                    reference_message = await message.channel.fetch_message(message.reference.message_id)
+                
+                return await get_recent_conversation(
+                    message.channel,
+                    min_messages=10,
+                    max_messages=30, 
+                    max_age_minutes=30, 
+                    reference_message=reference_message
+                )
+            
+            response = await container.famous_person_generator.generate_famous_person_response(
+                extracted_message, famous_person, fetch_conversation
+            )
+            await message.reply(response)
 
 async def process_bot_commands(message: nextcord.Message) -> bool:
     """
@@ -183,31 +200,6 @@ Current settings:
         
     return False
 
-async def process_famous_person_query(message, famous_person):
-    try:
-        reference_message = None
-        if message.reference and message.reference.message_id:
-            reference_message = await message.channel.fetch_message(message.reference.message_id)
-        
-        conversation = await get_recent_conversation(message.channel,
-                                                    min_messages=10,
-                                                    max_messages=30, 
-                                                    max_age_minutes=30, 
-                                                    reference_message=reference_message)
-        
-        # Extract original message with bot mention removed
-        extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
-        
-        response = await container.ai_client.generate_famous_person_response(
-            conversation=conversation,
-            person=famous_person,
-            original_message=extracted_message
-        )
-        
-        await message.reply(f"**{famous_person.title()} would say:**\n\n{response}")
-    except Exception as e:
-        print(f"Error generating famous person response: {e}")
-        await message.reply(f"Sorry, I couldn't determine what {famous_person.title()} would say.")
 
 async def get_recent_conversation(channel, min_messages=10, max_messages=30, max_age_minutes=30, reference_message=None):
     """

@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 import os
 from store import Store
 from joke_generator import JokeGenerator
+from famous_person_generator import FamousPersonGenerator
 from gemini_client import GeminiClient
 from grok_client import GrokClient
 from country_resolver import CountryResolver
@@ -34,6 +35,8 @@ class Container:
             self.telemetry, 
             sample_count=int(self._get_env('SAMPLE_JOKES_COUNT'))
         )
+
+        self.famous_person_generator = FamousPersonGenerator(self.ai_client, self.telemetry)
 
         self.country_resolver = CountryResolver(self.ai_client, self.telemetry)
     

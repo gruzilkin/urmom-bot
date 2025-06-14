@@ -1,0 +1,123 @@
+from typing import List, Tuple
+import nextcord
+from ai_client import AIClient
+from open_telemetry import Telemetry
+
+
+class FamousPersonGenerator:
+    def __init__(self, ai_client: AIClient, telemetry: Telemetry):
+        self.ai_client = ai_client
+        self.telemetry = telemetry
+
+    async def is_famous_person_request(self, message: str) -> str | None:
+        """
+        Check if a message is asking what a famous person would say.
+        
+        Args:
+            message (str): The message to check
+            
+        Returns:
+            str | None: The name of the famous person if it's a request, None otherwise
+        """
+        # Use AI client's generate_content method with specialized prompt
+        prompt = """You need to check if the user message is asking to impersonate a famous person and reply with the person's name.
+
+        Example 1:
+        Input: What would Trump say?
+        Output: Trump
+
+        Example 2:
+        Input: What's the weather today?
+        Output: None
+
+        Example 3:
+        Input: What would Jesus say if he spoke like Trump?
+        Output: Jesus
+
+        Example 4:
+        Input: How would Darth Vader feel about this?
+        Output: Darth Vader
+
+        Example 5:
+        Input: What if Eminen did tldr?
+        Output: Eminen
+
+        Example 6:
+        Input: How would Sigmund Freud respond to this?
+        Output: Sigmund Freud
+
+        Only extract the person's name if the message is clearly asking to impersonate them.
+        If it's not a request to impersonate someone then respond with 'None'."""
+
+        async with self.telemetry.async_create_span("is_famous_person_request") as span:
+            span.set_attribute("message", message)
+            
+            response_text = await self.ai_client.generate_content(
+                message=message,
+                prompt=prompt
+            )
+            
+            response_text = response_text.strip()
+            # Convert "None" string to actual None
+            person_name = None if response_text == "None" else response_text
+            
+            span.set_attribute("person_detected", person_name is not None)
+            if person_name:
+                span.set_attribute("person", person_name)
+            
+            print(f"[FAMOUS_PERSON] Detection result: '{person_name}'")
+            return person_name
+
+    async def generate_famous_person_response(self, extracted_message: str, person: str, conversation_fetcher) -> str:
+        """
+        Generate a famous person response. Returns the response string.
+        
+        Args:
+            extracted_message (str): The user's message with bot mentions removed
+            person (str): The name of the famous person to impersonate
+            conversation_fetcher: Parameterless async function that returns conversation history
+            
+        Returns:
+            str: The response string ready to be sent by the caller
+        """
+        async with self.telemetry.async_create_span("generate_famous_person_response") as span:
+            span.set_attribute("person", person)
+            span.set_attribute("extracted_message", extracted_message)
+            
+            try:
+                conversation = await conversation_fetcher()
+                
+                # Build conversation context as a single message
+                conversation_text = "\n".join([f"{username}: {content}" for username, content in conversation])
+                
+                prompt = f"""You are {person}. Generate a response as if you were {person}, 
+                using their communication style, beliefs, values, and knowledge.
+                Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
+                Stay in character completely and respond directly as {person} would.
+                Keep your response length similar to the average message length in the conversation.
+                Feel free to tease and poke fun at the message authors, especially Florent.
+                The user specifically asked: '{extracted_message}'
+                Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions.
+                
+                Here is the conversation context:
+                {conversation_text}"""
+                
+                print(f"[FAMOUS_PERSON] Generating response as {person}")
+                print(f"[FAMOUS_PERSON] Conversation: {conversation}")
+                
+                response = await self.ai_client.generate_content(
+                    message="",  # The conversation is included in the prompt
+                    prompt=prompt
+                )
+                
+                print(f"[FAMOUS_PERSON] Generated response: {response}")
+                span.set_attribute("success", True)
+                return f"**{person.title()} would say:**\n\n{response}"
+                
+            except Exception as e:
+                print(f"Error generating famous person response: {e}")
+                span.set_attribute("success", False)
+                span.set_attribute("error", str(e))
+                return f"Sorry, I couldn't determine what {person.title()} would say."
+
+
