@@ -65,30 +65,3 @@ class GrokClient(AIClient):
             self._track_completion_metrics(completion, method_name="generate_content")
 
             return completion.choices[0].message.content
-
-    async def is_joke(self, original_message: str, response_message: str) -> bool:
-        async with self.telemetry.async_create_span("is_joke", kind=SpanKind.CLIENT) as span:
-            prompt = f"""Tell me if the response is a joke, a wordplay or a sarcastic remark to the original message, reply in English with only yes or no:
-    original message: {original_message}
-    response: {response_message}
-    No? Think again carefully. The response might be a joke, wordplay, or sarcastic remark.
-    Is it actually a joke? Reply only yes or no."""
-
-            print(f"[GROK] Checking if message is a joke:")
-            print(f"[GROK] Original: {original_message}")
-            print(f"[GROK] Response: {response_message}")
-
-            completion = self.model.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1
-            )
-            
-            print(f"[GROK] Raw completion object: {completion}")
-            response_text = completion.choices[0].message.content.strip().lower()
-            # Remove any punctuation and check if the response is 'yes'
-            result = response_text.rstrip('.,!?') == "yes"
-            self._track_completion_metrics(completion, method_name="is_joke", is_joke=result)
-            print(f"[GROK] AI response: {response_text}")
-            print(f"[GROK] Is joke: {result}")
-            return result

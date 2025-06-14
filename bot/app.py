@@ -23,7 +23,6 @@ bot = nextcord.Client(intents=intents)
 # Create cache object to hold bot state
 cache = SimpleNamespace()
 cache.processed_messages = set()
-cache.joke_cache = {}  # message_id -> bool
 
 class BotCommand(Enum):
     HELP = "help"
@@ -267,27 +266,22 @@ async def get_recent_conversation(channel, min_messages=10, max_messages=30, max
     return conversation_messages
 
 async def is_joke(payload) -> bool:
-    if payload.message_id in cache.joke_cache:
-        return cache.joke_cache[payload.message_id]
-    
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
     
     # First check if this is a reply
     if not message.reference:
-                return False
+        return False
         
     # Get the source message that was replied to
     source_message = await channel.fetch_message(message.reference.message_id)
     
-    is_joke_result = await container.ai_client.is_joke(
+    # Use JokeGenerator's is_joke method with caching
+    return await container.joke_generator.is_joke(
         source_message.content,
-        message.content
+        message.content,
+        message_id=payload.message_id
     )
-    
-    # Cache the result
-    cache.joke_cache[payload.message_id] = is_joke_result
-    return is_joke_result
 
 async def save_joke(payload):
     channel = await bot.fetch_channel(payload.channel_id)
@@ -296,29 +290,16 @@ async def save_joke(payload):
     # Get the source message that was replied to
     source_message = await channel.fetch_message(joke_message.reference.message_id)
     
-        # Detect languages with "unknown" fallback
-    try:
-        source_lang = detect(source_message.content)
-    except LangDetectException:
-        source_lang = 'unknown'
-        
-    try:
-        joke_lang = detect(joke_message.content)
-    except LangDetectException:
-        joke_lang = 'unknown'
-    
     # Calculate total reactions
     reaction_count = sum(reaction.count for reaction in joke_message.reactions)
     
-    # Use container.store instead of store
-    container.store.save(
+    # Use JokeGenerator's save method
+    await container.joke_generator.save_joke(
         source_message_id=source_message.id,
-        joke_message_id=joke_message.id,
         source_message_content=source_message.content,
+        joke_message_id=joke_message.id,
         joke_message_content=joke_message.content,
-        reaction_count=reaction_count,
-        source_language=source_lang,
-        joke_language=joke_lang
+        reaction_count=reaction_count
     )
 
 async def retract_joke(payload):
