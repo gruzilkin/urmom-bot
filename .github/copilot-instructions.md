@@ -1,16 +1,15 @@
 # urmom-bot Architecture Refactoring Plan
 
 ## Current Problems
-- AIClient interface mixes low-level AI adapter methods with high-level domain-specific logic
+- AIClient still has `is_joke()` method that should be moved to domain logic
 - App class knows too much about request processor internals
 - Manual routing logic that becomes unwieldy as processors are added
-- Domain logic (joke detection, famous person detection) tightly coupled to AI client
 
 ## Target Architecture
 
 ### 1. Clean AI Client Interface
 - Single method: `generate_content(message, prompt, samples)` 
-- No domain-specific methods (remove `is_joke`, `is_famous_person_request`, etc.)
+- Remove `is_joke()` method and move to JokeGenerator
 - Pure adapter pattern for AI services
 
 ### 2. Multiple AI Client Instances
@@ -48,12 +47,11 @@ operation_mappings:
 Each handler:
 - Builds its own prompts
 - Calls AIRouter with operation names (not specific clients)
-- Handles its own logic (e.g., JokeGenerator handles joke detection and storage)
+- Handles its own logic and returns strings
 - Uses dependency injection for AIRouter
 
 Examples:
 - **JokeGenerator**: Handles `is_joke()`, `generate_joke()`
-- **FamousPersonGenerator**: Handles `is_famous_person_request()`, `generate_famous_person_response()`
 - **QueryHandler**: Handles `is_query()`, `handle_query()`
 
 ### 6. App Class Responsibilities
