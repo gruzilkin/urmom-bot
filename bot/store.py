@@ -181,5 +181,9 @@ class Store:
             self._guild_configs[config.guild_id] = config
 
     def __del__(self):
-        if hasattr(self, 'conn'):
-            self.conn.close()
+        try:
+            if self.conn is not None:
+                self.conn.close()
+        except Exception:
+            # Ignore exceptions during cleanup
+            pass

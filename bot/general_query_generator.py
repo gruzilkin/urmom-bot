@@ -19,6 +19,10 @@ class GeneralQueryGenerator:
         """
         # Use AI client's generate_content method with specialized prompt
         prompt = """You need to check if the user message is a reasonable general query or request that an AI assistant should answer.
+        
+        Do not try to answer the query itself, a follow up query will handle that.
+        Only respond with 'Yes' if the message contains a clear question or request for information/assistance.
+        Respond with 'No' if it's just a reaction, acknowledgment, or doesn't contain a clear query.
 
         A valid general query should contain:
         - A question (who, what, where, when, why, how)
@@ -55,10 +59,7 @@ class GeneralQueryGenerator:
 
         Example 8:
         Input: haha that's funny
-        Output: No
-
-        Only respond with 'Yes' if the message contains a clear question or request for information/assistance.
-        Respond with 'No' if it's just a reaction, acknowledgment, or doesn't contain a clear query."""
+        Output: No"""
 
         async with self.telemetry.async_create_span("is_general_query") as span:
             span.set_attribute("message", message)

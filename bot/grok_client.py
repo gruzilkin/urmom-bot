@@ -40,7 +40,7 @@ class GrokClient(AIClient):
                 attributes=attributes
             )
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None) -> str:
+    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False) -> str:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             messages = []
             if prompt:
@@ -55,10 +55,22 @@ class GrokClient(AIClient):
 
             print(messages)
 
+            # Configure search parameters based on grounding flag
+            if enable_grounding:
+                extra_body = {
+                    "search_parameters": {
+                        "mode": "on"
+                    }
+                }
+                print(f"[GROK] Grounding enabled with search mode: on")
+            else:
+                extra_body = None
+
             completion = self.model.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
-                temperature=self.temperature
+                temperature=self.temperature,
+                extra_body=extra_body
             )
 
             print(completion)
