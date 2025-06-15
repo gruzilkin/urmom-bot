@@ -1,5 +1,12 @@
+"""
+Gemini Client with Google Search grounding support.
+
+This client can use GoogleSearchRetrieval to provide more accurate and up-to-date responses
+by grounding responses with current web information, when supported by the model and API.
+"""
+
 from google import genai
-from google.genai.types import Content, Part, GenerateContentConfig, GenerateContentResponse
+from google.genai.types import Content, Part, GenerateContentConfig, GenerateContentResponse, Tool, GoogleSearch
 from ai_client import AIClient
 from typing import List, Tuple
 from opentelemetry.trace import SpanKind
@@ -46,7 +53,7 @@ class GeminiClient(AIClient):
             except Exception as e:
                 print(f"[GEMINI] Error tracking token usage: {e}")
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None) -> str:
+    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False) -> str:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             samples = samples or []
             contents = []
@@ -60,13 +67,23 @@ class GeminiClient(AIClient):
             print(f"[GEMINI] system_instruction: {prompt}")
             print(f"[GEMINI] Request contents: {contents}")
 
+            # Configure grounding based on enable_grounding flag
+            config = GenerateContentConfig(
+                temperature=self.temperature,
+                system_instruction=prompt
+            )
+            
+            if enable_grounding:
+                tools = [Tool(google_search=GoogleSearch())]
+                config.tools = tools
+                print(f"[GEMINI] Grounding enabled with Google Search")
+            else:
+                print(f"[GEMINI] Grounding disabled")
+
             response = await self.client.aio.models.generate_content(
                 model=self.model_name,
                 contents=contents,
-                config=GenerateContentConfig(
-                    temperature=self.temperature,
-                    system_instruction = prompt,
-                )
+                config=config
             )
 
             print(response)

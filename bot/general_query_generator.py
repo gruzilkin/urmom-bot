@@ -100,7 +100,7 @@ class GeneralQueryGenerator:
             Use the conversation context to better understand what the user is asking about.
             Keep your response conversational and appropriate for a Discord chat.
             If the question relates to something mentioned in the conversation, reference it appropriately.
-            Keep your response length reasonable for a chat message (not too long unless specifically asked for detail).
+            Keep your response length below 1000 symbols.
             
             User's question/request: '{extracted_message}'
             
@@ -113,7 +113,8 @@ class GeneralQueryGenerator:
             
             response = await self.ai_client.generate_content(
                 message="",  # The conversation is included in the prompt
-                prompt=prompt
+                prompt=prompt,
+                enable_grounding=True  # Enable grounding for general queries to get current information
             )
             
             print(f"[GENERAL_QUERY] Generated response: {response}")
