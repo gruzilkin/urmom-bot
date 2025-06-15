@@ -83,27 +83,27 @@ async def on_message(message: nextcord.Message):
         if is_command:
             return
             
-        # If not a command, check for famous person query
+        # If not a command, check for famous person query first
         extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
         famous_person = await container.famous_person_generator.is_famous_person_request(extracted_message)
         
         if famous_person:
-            # Create a parameterless lambda that encapsulates all conversation fetching logic
-            async def fetch_conversation():
-                reference_message = None
-                if message.reference and message.reference.message_id:
-                    reference_message = await message.channel.fetch_message(message.reference.message_id)
-                
-                return await get_recent_conversation(
-                    message.channel,
-                    min_messages=10,
-                    max_messages=30, 
-                    max_age_minutes=30, 
-                    reference_message=reference_message
-                )
+            conversation_fetcher = create_conversation_fetcher(message)
             
             response = await container.famous_person_generator.generate_famous_person_response(
-                extracted_message, famous_person, fetch_conversation
+                extracted_message, famous_person, conversation_fetcher
+            )
+            await message.reply(response)
+            return
+        
+        # If not a famous person query, check if it's a general query
+        is_query = await container.general_query_generator.is_general_query(extracted_message)
+        
+        if is_query:
+            conversation_fetcher = create_conversation_fetcher(message)
+            
+            response = await container.general_query_generator.generate_general_response(
+                extracted_message, conversation_fetcher
             )
             await message.reply(response)
 
@@ -264,6 +264,31 @@ async def get_recent_conversation(channel, min_messages=10, max_messages=30, max
     conversation_messages.reverse()
     
     return conversation_messages
+
+def create_conversation_fetcher(message: nextcord.Message):
+    """
+    Create a parameterless lambda that encapsulates conversation fetching logic.
+    
+    Args:
+        message: The Discord message to use for conversation context
+        
+    Returns:
+        async function: Parameterless function that returns conversation history
+    """
+    async def fetch_conversation():
+        reference_message = None
+        if message.reference and message.reference.message_id:
+            reference_message = await message.channel.fetch_message(message.reference.message_id)
+        
+        return await get_recent_conversation(
+            message.channel,
+            min_messages=10,
+            max_messages=30, 
+            max_age_minutes=30, 
+            reference_message=reference_message
+        )
+    
+    return fetch_conversation
 
 async def is_joke(payload) -> bool:
     channel = await bot.fetch_channel(payload.channel_id)

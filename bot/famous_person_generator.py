@@ -84,40 +84,32 @@ class FamousPersonGenerator:
             span.set_attribute("person", person)
             span.set_attribute("extracted_message", extracted_message)
             
-            try:
-                conversation = await conversation_fetcher()
-                
-                # Build conversation context as a single message
-                conversation_text = "\n".join([f"{username}: {content}" for username, content in conversation])
-                
-                prompt = f"""You are {person}. Generate a response as if you were {person}, 
-                using their communication style, beliefs, values, and knowledge.
-                Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
-                Stay in character completely and respond directly as {person} would.
-                Keep your response length similar to the average message length in the conversation.
-                Feel free to tease and poke fun at the message authors, especially Florent.
-                The user specifically asked: '{extracted_message}'
-                Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions.
-                
-                Here is the conversation context:
-                {conversation_text}"""
-                
-                print(f"[FAMOUS_PERSON] Generating response as {person}")
-                print(f"[FAMOUS_PERSON] Conversation: {conversation}")
-                
-                response = await self.ai_client.generate_content(
-                    message="",  # The conversation is included in the prompt
-                    prompt=prompt
-                )
-                
-                print(f"[FAMOUS_PERSON] Generated response: {response}")
-                span.set_attribute("success", True)
-                return f"**{person.title()} would say:**\n\n{response}"
-                
-            except Exception as e:
-                print(f"Error generating famous person response: {e}")
-                span.set_attribute("success", False)
-                span.set_attribute("error", str(e))
-                return f"Sorry, I couldn't determine what {person.title()} would say."
+            conversation = await conversation_fetcher()
+            
+            # Build conversation context as a single message
+            conversation_text = "\n".join([f"{username}: {content}" for username, content in conversation])
+            
+            prompt = f"""You are {person}. Generate a response as if you were {person}, 
+            using their communication style, beliefs, values, and knowledge.
+            Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
+            Stay in character completely and respond directly as {person} would.
+            Keep your response length similar to the average message length in the conversation.
+            Feel free to tease and poke fun at the message authors, especially Florent.
+            The user specifically asked: '{extracted_message}'
+            Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions.
+            
+            Here is the conversation context:
+            {conversation_text}"""
+            
+            print(f"[FAMOUS_PERSON] Generating response as {person}")
+            print(f"[FAMOUS_PERSON] Conversation: {conversation}")
+            
+            response = await self.ai_client.generate_content(
+                message="",  # The conversation is included in the prompt
+                prompt=prompt
+            )
+            
+            print(f"[FAMOUS_PERSON] Generated response: {response}")
+            return f"**{person.title()} would say:**\n\n{response}"
 
 

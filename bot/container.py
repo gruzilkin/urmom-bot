@@ -3,6 +3,7 @@ import os
 from store import Store
 from joke_generator import JokeGenerator
 from famous_person_generator import FamousPersonGenerator
+from general_query_generator import GeneralQueryGenerator
 from gemini_client import GeminiClient
 from grok_client import GrokClient
 from country_resolver import CountryResolver
@@ -37,6 +38,8 @@ class Container:
         )
 
         self.famous_person_generator = FamousPersonGenerator(self.ai_client, self.telemetry)
+
+        self.general_query_generator = GeneralQueryGenerator(self.ai_client, self.telemetry)
 
         self.country_resolver = CountryResolver(self.ai_client, self.telemetry)
     
