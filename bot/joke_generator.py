@@ -1,9 +1,13 @@
+import logging
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from store import Store
 from langdetect import detect, LangDetectException
 from typing import Dict
 from opentelemetry.trace import SpanKind
+
+
+logger = logging.getLogger(__name__)
 
 
 class JokeGenerator:
@@ -56,9 +60,9 @@ response: {response_message}
 No? Think again carefully. The response might be a joke, wordplay, or sarcastic remark.
 Is it actually a joke? Reply only yes or no."""
             
-            print(f"[JOKE_GENERATOR] Checking if message is a joke:")
-            print(f"[JOKE_GENERATOR] Original: {original_message}")
-            print(f"[JOKE_GENERATOR] Response: {response_message}")
+            logger.info("Checking if message is a joke:")
+            logger.info(f"Original: {original_message}")
+            logger.info(f"Response: {response_message}")
 
             response = await self.ai_client.generate_content(
                 message=prompt,
@@ -71,8 +75,8 @@ Is it actually a joke? Reply only yes or no."""
             if message_id is not None:
                 self._joke_cache[message_id] = result
                 
-            print(f"[JOKE_GENERATOR] AI response: {response}")
-            print(f"[JOKE_GENERATOR] Is joke: {result}")
+            logger.info(f"AI response: {response}")
+            logger.info(f"Is joke: {result}")
             return result
 
     async def save_joke(self, source_message_id: int, source_message_content: str, 
@@ -103,4 +107,4 @@ Is it actually a joke? Reply only yes or no."""
                 joke_language=joke_lang
             )
             
-            print(f"[JOKE_GENERATOR] Saved joke: {joke_message_content} (reactions: {reaction_count})")
+            logger.info(f"Saved joke: {joke_message_content} (reactions: {reaction_count})")

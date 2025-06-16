@@ -1,5 +1,9 @@
+import logging
 from ai_client import AIClient
 from open_telemetry import Telemetry
+
+
+logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
@@ -74,7 +78,7 @@ class GeneralQueryGenerator:
             
             span.set_attribute("is_query", is_query)
             
-            print(f"[GENERAL_QUERY] Detection result: {is_query}")
+            logger.info(f"Detection result: {is_query}")
             return is_query
 
     async def generate_general_response(self, extracted_message: str, conversation_fetcher) -> str:
@@ -108,9 +112,9 @@ class GeneralQueryGenerator:
             Conversation context:
             {conversation_text}"""
             
-            print(f"[GENERAL_QUERY] Generating response")
-            print(f"[GENERAL_QUERY] User message: {extracted_message}")
-            print(f"[GENERAL_QUERY] Conversation context: {conversation}")
+            logger.info(f"Generating response")
+            logger.info(f"User message: {extracted_message}")
+            logger.info(f"Conversation context: {conversation}")
             
             response = await self.ai_client.generate_content(
                 message="",  # The conversation is included in the prompt
@@ -118,5 +122,5 @@ class GeneralQueryGenerator:
                 enable_grounding=True  # Enable grounding for general queries to get current information
             )
             
-            print(f"[GENERAL_QUERY] Generated response: {response}")
+            logger.info(f"Generated response: {response}")
             return response

@@ -2,6 +2,10 @@ from typing import List, Tuple
 import nextcord
 from ai_client import AIClient
 from open_telemetry import Telemetry
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class FamousPersonGenerator:
@@ -65,7 +69,7 @@ class FamousPersonGenerator:
             if person_name:
                 span.set_attribute("person", person_name)
             
-            print(f"[FAMOUS_PERSON] Detection result: '{person_name}'")
+            logger.info(f"Detection result: '{person_name}'")
             return person_name
 
     async def generate_famous_person_response(self, extracted_message: str, person: str, conversation_fetcher) -> str:
@@ -101,15 +105,15 @@ class FamousPersonGenerator:
             Here is the conversation context:
             {conversation_text}"""
             
-            print(f"[FAMOUS_PERSON] Generating response as {person}")
-            print(f"[FAMOUS_PERSON] Conversation: {conversation}")
+            logger.info(f"Generating response as {person}")
+            logger.info(f"Conversation: {conversation}")
             
             response = await self.ai_client.generate_content(
                 message="",  # The conversation is included in the prompt
                 prompt=prompt
             )
             
-            print(f"[FAMOUS_PERSON] Generated response: {response}")
+            logger.info(f"Generated response: {response}")
             return f"**{person.title()} would say:**\n\n{response}"
 
 

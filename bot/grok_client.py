@@ -1,9 +1,12 @@
+import logging
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from ai_client import AIClient
 from typing import List, Tuple
 from opentelemetry.trace import SpanKind
 from open_telemetry import Telemetry
+
+logger = logging.getLogger(__name__)
 
 class GrokClient(AIClient):
     def __init__(self, api_key: str, model_name: str = "grok-2-latest", temperature: float = 0.7, telemetry: Telemetry = None):
@@ -53,7 +56,7 @@ class GrokClient(AIClient):
                 
             messages.append({"role": "user", "content": message})
 
-            print(messages)
+            logger.info(f"Grok input messages: {messages}")
 
             # Configure search parameters based on grounding flag
             if enable_grounding:
@@ -62,7 +65,7 @@ class GrokClient(AIClient):
                         "mode": "on"
                     }
                 }
-                print(f"[GROK] Grounding enabled with search mode: on")
+                logger.info("[GROK] Grounding enabled with search mode: on")
             else:
                 extra_body = None
 
@@ -73,7 +76,7 @@ class GrokClient(AIClient):
                 extra_body=extra_body
             )
 
-            print(completion)
+            logger.info(f"Grok completion: {completion}")
             self._track_completion_metrics(completion, method_name="generate_content")
 
             return completion.choices[0].message.content

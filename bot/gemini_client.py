@@ -11,6 +11,9 @@ from ai_client import AIClient
 from typing import List, Tuple
 from opentelemetry.trace import SpanKind
 from open_telemetry import Telemetry
+import logging
+
+logger = logging.getLogger(__name__)
 
 class GeminiClient(AIClient):
     def __init__(self, api_key: str, model_name: str, temperature: float = 1.2, telemetry: Telemetry = None):
@@ -49,9 +52,9 @@ class GeminiClient(AIClient):
                     total_tokens=total_tokens,
                     attributes=attributes
                 )
-                print(f"[GEMINI] Token usage tracked - Method: {method_name}, Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}")
+                logger.info(f"Token usage tracked - Method: {method_name}, Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}")
             except Exception as e:
-                print(f"[GEMINI] Error tracking token usage: {e}")
+                logger.error(f"Error tracking token usage: {e}", exc_info=True)
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False) -> str:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
@@ -64,8 +67,8 @@ class GeminiClient(AIClient):
 
             contents.append(Content(parts=[Part(text=message)], role="user"))
 
-            print(f"[GEMINI] system_instruction: {prompt}")
-            print(f"[GEMINI] Request contents: {contents}")
+            logger.info(f"system_instruction: {prompt}")
+            logger.info(f"Request contents: {contents}")
 
             # Configure grounding based on enable_grounding flag
             config = GenerateContentConfig(
@@ -76,9 +79,9 @@ class GeminiClient(AIClient):
             if enable_grounding:
                 tools = [Tool(google_search=GoogleSearch())]
                 config.tools = tools
-                print(f"[GEMINI] Grounding enabled with Google Search")
+                logger.info("Grounding enabled with Google Search")
             else:
-                print(f"[GEMINI] Grounding disabled")
+                logger.info("Grounding disabled")
 
             response = await self.client.aio.models.generate_content(
                 model=self.model_name,
@@ -86,7 +89,7 @@ class GeminiClient(AIClient):
                 config=config
             )
 
-            print(response)
-            print(f"[GEMINI] Response: {response}")
+            logger.info(response)
+            logger.info(f"Response: {response}")
             self._track_completion_metrics(response, method_name="generate_content")
             return response.text

@@ -1,5 +1,8 @@
 import psycopg2
 from dataclasses import dataclass
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class GuildConfig:
@@ -67,7 +70,7 @@ class Store:
             "source_language": source_language,
             "joke_language": joke_language
         }
-        print(f"Store saving joke: {joke_data}")
+        logger.info(f"Store saving joke: {joke_data}")
         
         try:
             self._ensure_connection()

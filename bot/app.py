@@ -3,6 +3,7 @@ import datetime
 import os
 from enum import Enum
 from types import SimpleNamespace
+import logging
 
 import nextcord
 from dotenv import load_dotenv
@@ -24,6 +25,9 @@ bot = nextcord.Client(intents=intents)
 cache = SimpleNamespace()
 cache.processed_messages = set()
 
+# Set up a module-level logger
+logger = logging.getLogger(__name__)
+
 class BotCommand(Enum):
     HELP = "help"
     SETTINGS = "settings"
@@ -41,7 +45,7 @@ class BotCommand(Enum):
 
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user}')
+    logger.info(f'Logged in as {bot.user}')
 
 @bot.event
 async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
@@ -65,7 +69,7 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
             elif await is_joke(payload):
                 await save_joke(payload)
         except ValueError as e:
-            print(f"Error processing reaction: {e}")
+            logger.error(f"Error processing reaction: {e}", exc_info=True)
 
 @bot.event
 async def on_message(message: nextcord.Message):
@@ -259,7 +263,11 @@ async def get_recent_conversation(channel, min_messages=10, max_messages=30, max
                         if article.cleaned_text:
                             conversation_messages.append(("article", article.cleaned_text))
                 except Exception as e:
-                    print(f"Error extracting article from {embed.url}: {str(e)}")
+                    logger.error(
+                        f"Error extracting article from {embed.url}: {e}",
+                        exc_info=True,
+                        extra={"article_url": embed.url}
+                    )
 
     conversation_messages.reverse()
     
@@ -366,7 +374,7 @@ async def process_joke_request(payload, country=None):
             archive_response = f"**Original message**: {message_link}\n{joke}"
             await archive_channel.send(archive_response)
         except Exception as e:
-            print(f"Failed to send to archive channel: {e}")
+            logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
     
     # Delete after timeout if configured
     if config.delete_jokes_after_minutes > 0:
