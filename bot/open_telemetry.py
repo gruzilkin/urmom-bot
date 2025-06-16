@@ -1,5 +1,8 @@
 import uuid
 import contextlib
+import logging
+import sys
+import os
 from types import SimpleNamespace
 
 import nextcord
@@ -15,6 +18,15 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from contextlib import asynccontextmanager, contextmanager
 
+# OpenTelemetry logging imports
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+
+# JSON logging for OpenTelemetry
+from pythonjsonlogger import jsonlogger
+
 class Telemetry:
     def __init__(self, service_name="urmom-bot", endpoint="192.168.0.2:4317"):
         self.service_name = service_name
@@ -25,6 +37,8 @@ class Telemetry:
             "service.name": self.service_name,
             "service.instance.id": self.get_container_id(),
         })
+        
+        self.setup_logging()
         
         # Setup both metrics and tracing
         self.metrics = self.setup_metrics()
@@ -53,7 +67,39 @@ class Telemetry:
             
         # Fall back to a generated UUID if we can't get container ID
         return uuid.uuid4().hex[:12]
-            
+
+    def setup_logging(self):
+        """Configure structured logging with standard stdout and OpenTelemetry integration."""
+        
+        stdout_handler = logging.StreamHandler(sys.stdout)
+        
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        root_logger.addHandler(stdout_handler)
+        
+        otel_logger_provider = LoggerProvider(resource=self.resource)
+        set_logger_provider(otel_logger_provider)
+
+        otlp_log_exporter = OTLPLogExporter(
+            endpoint=self.endpoint,
+            insecure=True
+        )
+        otel_logger_provider.add_log_record_processor(
+            BatchLogRecordProcessor(otlp_log_exporter)
+        )
+
+        otel_handler = LoggingHandler(
+            level=logging.NOTSET, 
+            logger_provider=otel_logger_provider
+        )
+
+        json_formatter = jsonlogger.JsonFormatter()
+        otel_handler.setFormatter(json_formatter)
+
+        root_logger.addHandler(otel_handler)
+
+        logging.getLogger(__name__).info("OpenTelemetry logging configured")
+
     def setup_metrics(self):
         """Set up OpenTelemetry metrics with debug logging"""
         print("Setting up OpenTelemetry metrics...")
