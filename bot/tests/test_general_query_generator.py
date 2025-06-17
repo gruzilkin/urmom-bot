@@ -1,9 +1,5 @@
 import unittest
 from unittest.mock import AsyncMock, Mock
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from general_query_generator import GeneralQueryGenerator
 from tests.null_telemetry import NullTelemetry
 

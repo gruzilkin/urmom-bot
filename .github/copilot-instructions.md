@@ -44,3 +44,23 @@ operation_mappings:
 **AI-driven routing** for everything else:
 - Use RequestProcessorRouter to determine appropriate handler
 - Pass requests to handlers without knowing their internals
+
+## Testing Standards
+
+**Use only `unittest.IsolatedAsyncioTestCase`** for async code - never pytest or other frameworks.
+
+**Project-specific mocking patterns:**
+```python
+# AI Client mocking
+self.ai_client = Mock()
+self.ai_client.generate_content = AsyncMock(return_value="expected response")
+
+# Telemetry - ALWAYS use NullTelemetry()
+from tests.null_telemetry import NullTelemetry
+self.telemetry = NullTelemetry()
+
+# Integration tests - skip if API keys missing
+api_key = os.getenv('API_KEY')
+if not api_key:
+    self.skipTest("API_KEY environment variable not set")
+```
