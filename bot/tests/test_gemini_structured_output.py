@@ -35,11 +35,9 @@ class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
     async def test_yes_no_structured_output_yes(self):
         """Test YES/NO structured output returns YES for affirmative question."""
         message = "Is the sky blue?"
-        prompt = "Answer with YES or NO only. Be direct and concise."
         
         result = await self.client.generate_content(
             message=message,
-            prompt=prompt,
             response_schema=YesNo
         )
         
@@ -50,11 +48,9 @@ class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
     async def test_yes_no_structured_output_no(self):
         """Test YES/NO structured output returns NO for negative question."""
         message = "Is 2025 a leap year?"
-        prompt = "Answer with YES or NO only. Be direct and concise."
         
         result = await self.client.generate_content(
             message=message,
-            prompt=prompt,
             response_schema=YesNo
         )
         
@@ -79,13 +75,11 @@ class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
     async def test_structured_output_with_grounding(self):
         """Test that using structured output with grounding raises appropriate error."""
         message = "Is Python a programming language?"
-        prompt = "Answer with YES or NO only."
         
         # This should raise an error since structured output and grounding can't be used together
         with self.assertRaises(Exception) as context:
             await self.client.generate_content(
                 message=message,
-                prompt=prompt,
                 enable_grounding=True,
                 response_schema=YesNo
             )
