@@ -8,12 +8,15 @@ by grounding responses with current web information, when supported by the model
 from google import genai
 from google.genai.types import Content, Part, GenerateContentConfig, GenerateContentResponse, Tool, GoogleSearch
 from ai_client import AIClient
-from typing import List, Tuple
+from typing import List, Tuple, Type, TypeVar, Union, Optional
 from opentelemetry.trace import SpanKind
 from open_telemetry import Telemetry
+from pydantic import BaseModel
 import logging
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
 
 class GeminiClient(AIClient):
     def __init__(self, api_key: str, model_name: str, temperature: float = 1.2, telemetry: Telemetry = None):
@@ -56,7 +59,7 @@ class GeminiClient(AIClient):
             except Exception as e:
                 logger.error(f"Error tracking token usage: {e}", exc_info=True)
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False) -> str:
+    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Optional[Type[T]] = None) -> Union[str, T]:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             samples = samples or []
             contents = []
@@ -76,6 +79,12 @@ class GeminiClient(AIClient):
                 system_instruction=prompt
             )
             
+            # Configure structured output if response_schema is provided
+            if response_schema:
+                config.response_mime_type = "application/json"
+                config.response_schema = response_schema
+                logger.info(f"Structured output enabled with schema: {response_schema.__name__}")
+            
             if enable_grounding:
                 tools = [Tool(google_search=GoogleSearch())]
                 config.tools = tools
@@ -92,4 +101,11 @@ class GeminiClient(AIClient):
             logger.info(response)
             logger.info(f"Response: {response}")
             self._track_completion_metrics(response, method_name="generate_content")
-            return response.text
+            
+            # Return parsed object if schema was provided, otherwise return text
+            if response_schema:
+                if response.parsed is None:
+                    raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {response.text}")
+                return response.parsed
+            else:
+                return response.text

@@ -2,11 +2,14 @@ import logging
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from ai_client import AIClient
-from typing import List, Tuple
+from typing import List, Tuple, Type, TypeVar, Union, Optional
 from opentelemetry.trace import SpanKind
 from open_telemetry import Telemetry
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
 
 class GrokClient(AIClient):
     def __init__(self, api_key: str, model_name: str = "grok-2-latest", temperature: float = 0.7, telemetry: Telemetry = None):
@@ -43,7 +46,7 @@ class GrokClient(AIClient):
                 attributes=attributes
             )
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False) -> str:
+    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Optional[Type[T]] = None) -> Union[str, T]:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             messages = []
             if prompt:
@@ -69,14 +72,33 @@ class GrokClient(AIClient):
             else:
                 extra_body = None
 
-            completion = self.model.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature,
-                extra_body=extra_body
-            )
+            # Use structured output if schema is provided
+            if response_schema:
+                logger.info(f"Structured output enabled with schema: {response_schema.__name__}")
+                completion = self.model.beta.chat.completions.parse(
+                    model=self.model_name,
+                    messages=messages,
+                    temperature=self.temperature,
+                    response_format=response_schema,
+                    extra_body=extra_body
+                )
+                
+                logger.info(f"Grok completion: {completion}")
+                self._track_completion_metrics(completion, method_name="generate_content")
+                
+                parsed_result = completion.choices[0].message.parsed
+                if parsed_result is None:
+                    raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {completion.choices[0].message.content}")
+                return parsed_result
+            else:
+                completion = self.model.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    temperature=self.temperature,
+                    extra_body=extra_body
+                )
 
-            logger.info(f"Grok completion: {completion}")
-            self._track_completion_metrics(completion, method_name="generate_content")
+                logger.info(f"Grok completion: {completion}")
+                self._track_completion_metrics(completion, method_name="generate_content")
 
-            return completion.choices[0].message.content
+                return completion.choices[0].message.content
