@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from joke_generator import JokeGenerator
 from gemini_client import GeminiClient
 from store import Store
-from null_telemetry import NullTelemetry
+from tests.null_telemetry import NullTelemetry
 
 load_dotenv()
 

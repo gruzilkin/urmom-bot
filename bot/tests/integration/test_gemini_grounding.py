@@ -7,7 +7,7 @@ import unittest
 import os
 from dotenv import load_dotenv
 from gemini_client import GeminiClient
-from null_telemetry import NullTelemetry
+from tests.null_telemetry import NullTelemetry
 
 load_dotenv()
 
