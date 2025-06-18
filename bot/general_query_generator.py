@@ -1,6 +1,7 @@
 import logging
 from ai_client import AIClient
 from open_telemetry import Telemetry
+from schemas import YesNo
 
 
 logger = logging.getLogger(__name__)
@@ -21,60 +22,42 @@ class GeneralQueryGenerator:
         Returns:
             bool: True if it's a valid general query, False otherwise
         """
-        # Use AI client's generate_content method with specialized prompt
         prompt = """You need to check if the user message is a reasonable general query or request that an AI assistant should answer.
         
         Do not try to answer the query itself, a follow up query will handle that.
-        Only respond with 'Yes' if the message contains a clear question or request for information/assistance.
-        Respond with 'No' if it's just a reaction, acknowledgment, or doesn't contain a clear query.
+        Determine if the message contains a clear question or request for information/assistance.
 
         A valid general query should contain:
         - A question (who, what, where, when, why, how)
         - A request for information, explanation, or help
         - A request to do something (explain, analyze, summarize, etc.)
+        - Context-dependent questions that could make sense within a conversation
 
-        Example 1:
-        Input: What's the weather today?
-        Output: Yes
+        Valid general queries:
+        - What's the weather today?
+        - Can you explain quantum physics?
+        - How do I cook pasta?
+        - Tell me about the history of Rome
+        - Why is the sky blue?
+        - When was it? (context-dependent but valid)
+        - What about this? (context-dependent but valid)
+        - How does that work? (context-dependent but valid)
 
-        Example 2:
-        Input: Can you explain quantum physics?
-        Output: Yes
-
-        Example 3:
-        Input: lol
-        Output: No
-
-        Example 4:
-        Input: How do I cook pasta?
-        Output: Yes
-
-        Example 5:
-        Input: nice
-        Output: No
-
-        Example 6:
-        Input: Tell me about the history of Rome
-        Output: Yes
-
-        Example 7:
-        Input: Why is the sky blue?
-        Output: Yes
-
-        Example 8:
-        Input: haha that's funny
-        Output: No"""
+        Invalid queries (reactions, acknowledgments, no clear request):
+        - lol
+        - nice
+        - haha that's funny"""
 
         async with self.telemetry.async_create_span("is_general_query") as span:
             span.set_attribute("message", message)
             
-            response_text = await self.ai_client.generate_content(
+            response = await self.ai_client.generate_content(
                 message=message,
-                prompt=prompt
+                prompt=prompt,
+                response_schema=YesNo
             )
             
-            response_text = response_text.strip().lower()
-            is_query = response_text == "yes"
+            is_query = response.answer == "YES"
             
             span.set_attribute("is_query", is_query)
             

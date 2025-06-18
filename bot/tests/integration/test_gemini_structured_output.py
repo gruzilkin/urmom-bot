@@ -8,9 +8,12 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 import os
 import unittest
 from unittest.mock import Mock
+from dotenv import load_dotenv
 from gemini_client import GeminiClient
 from schemas import YesNo
 from tests.null_telemetry import NullTelemetry
+
+load_dotenv()
 
 
 class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
@@ -20,15 +23,19 @@ class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
         """Set up test dependencies."""
         self.telemetry = NullTelemetry()
         
-        # Check for API key
+        # Check for API key and model name
         self.api_key = os.getenv('GEMINI_API_KEY')
+        self.model_name = os.getenv('GEMINI_MODEL')
+        
         if not self.api_key:
             self.skipTest("GEMINI_API_KEY environment variable not set")
+        if not self.model_name:
+            self.skipTest("GEMINI_MODEL environment variable not set")
             
         self.client = GeminiClient(
             api_key=self.api_key,
-            model_name="gemini-2.5-flash",
-            temperature=0.1,  # Low temperature for consistent results
+            model_name=self.model_name,
+            temperature=0.1,  # Fixed temperature for test stability
             telemetry=self.telemetry
         )
     

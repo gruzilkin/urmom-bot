@@ -13,14 +13,19 @@ load_dotenv()
 
 class TestGeminiGrounding(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        # Check for API key and model name
         api_key = os.getenv('GEMINI_API_KEY')
+        model_name = os.getenv('GEMINI_MODEL')
+        
         if not api_key:
             self.skipTest("GEMINI_API_KEY environment variable not set")
+        if not model_name:
+            self.skipTest("GEMINI_MODEL environment variable not set")
         
         self.client = GeminiClient(
             api_key=api_key,
-            model_name=os.getenv('GEMINI_MODEL', 'gemini-2.0-flash-exp'),
-            temperature=float(os.getenv('GEMINI_TEMPERATURE', '1.2')),
+            model_name=model_name,
+            temperature=0.1,  # Fixed temperature for test stability
             telemetry=NullTelemetry()
         )
 

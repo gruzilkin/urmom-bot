@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, Mock
 from general_query_generator import GeneralQueryGenerator
+from schemas import YesNo
 from tests.null_telemetry import NullTelemetry
 
 
@@ -13,7 +14,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
 
     async def test_is_general_query_valid_question(self):
         """Test that valid questions are recognized as general queries"""
-        self.mock_ai_client.generate_content.return_value = "Yes"
+        self.mock_ai_client.generate_content.return_value = YesNo(answer="YES")
         
         result = await self.generator.is_general_query("What's the weather today?")
         
@@ -22,7 +23,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
 
     async def test_is_general_query_invalid_response(self):
         """Test that simple responses are not recognized as general queries"""
-        self.mock_ai_client.generate_content.return_value = "No"
+        self.mock_ai_client.generate_content.return_value = YesNo(answer="NO")
         
         result = await self.generator.is_general_query("lol")
         
