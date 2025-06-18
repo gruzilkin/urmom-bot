@@ -23,8 +23,6 @@ class GeneralQueryGenerator:
             bool: True if it's a valid general query, False otherwise
         """
         prompt = """You need to check if the user message is a reasonable general query or request that an AI assistant should answer.
-        
-        Do not try to answer the query itself, a follow up query will handle that.
         Determine if the message contains a clear question or request for information/assistance.
 
         A valid general query should contain:
