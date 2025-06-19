@@ -8,6 +8,7 @@ from gemini_client import GeminiClient
 from grok_client import GrokClient
 from country_resolver import CountryResolver
 from open_telemetry import Telemetry
+from ai_router import AiRouter
 
 class Container:
     def __init__(self):
@@ -40,6 +41,13 @@ class Container:
         self.famous_person_generator = FamousPersonGenerator(self.ai_client, self.telemetry)
 
         self.general_query_generator = GeneralQueryGenerator(self.ai_client, self.telemetry)
+
+        self.ai_router = AiRouter(
+            self.ai_client, 
+            self.telemetry, 
+            self.famous_person_generator, 
+            self.general_query_generator
+        )
 
         self.country_resolver = CountryResolver(self.ai_client, self.telemetry)
     

@@ -2,6 +2,7 @@ from typing import List, Tuple
 import nextcord
 from ai_client import AIClient
 from open_telemetry import Telemetry
+from schemas import FamousParams
 import logging
 
 
@@ -12,6 +13,16 @@ class FamousPersonGenerator:
     def __init__(self, ai_client: AIClient, telemetry: Telemetry):
         self.ai_client = ai_client
         self.telemetry = telemetry
+
+    def get_route_description(self) -> str:
+        return """
+        FAMOUS: For celebrity/character impersonation requests
+        - Detects when users ask what a famous person would say or how they would respond
+        - Examples: "What would Trump say?", "How would Darth Vader respond?", "What if Einstein explained this?"
+        - Handles variations like "What would X say about Y?" or "How would X feel about this?"
+        - Extract the person's name (can be real celebrities, fictional characters, historical figures)
+        - Parameter extraction: Set famous_person to the name of the person to impersonate
+        """
 
     async def is_famous_person_request(self, message: str) -> str | None:
         """
@@ -115,5 +126,19 @@ class FamousPersonGenerator:
             
             logger.info(f"Generated response: {response}")
             return f"**{person.title()} would say:**\n\n{response}"
+    
+    async def handle_request(self, params: FamousParams, extracted_message: str, conversation_fetcher) -> str:
+        """
+        Handle a famous person request using the provided parameters.
+        
+        Args:
+            params (FamousParams): Parameters containing the famous person's name
+            extracted_message (str): The user's message with bot mentions removed
+            conversation_fetcher: Parameterless async function that returns conversation history
+            
+        Returns:
+            str: The response string ready to be sent by the caller
+        """
+        return await self.generate_famous_person_response(extracted_message, params.famous_person, conversation_fetcher)
 
 

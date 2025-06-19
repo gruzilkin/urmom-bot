@@ -87,27 +87,23 @@ async def on_message(message: nextcord.Message):
         if is_command:
             return
             
-        # If not a command, check for famous person query first
+        # Use AiRouter to determine how to handle the message
         extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
-        famous_person = await container.famous_person_generator.is_famous_person_request(extracted_message)
+        router_decision = await container.ai_router.route_request(extracted_message)
         
-        if famous_person:
+        if router_decision.route == "FAMOUS":
             conversation_fetcher = create_conversation_fetcher(message)
             
-            response = await container.famous_person_generator.generate_famous_person_response(
-                extracted_message, famous_person, conversation_fetcher
+            response = await container.famous_person_generator.handle_request(
+                router_decision.parameters, extracted_message, conversation_fetcher
             )
             await message.reply(response)
-            return
         
-        # If not a famous person query, check if it's a general query
-        is_query = await container.general_query_generator.is_general_query(extracted_message)
-        
-        if is_query:
+        elif router_decision.route == "GENERAL":
             conversation_fetcher = create_conversation_fetcher(message)
             
-            response = await container.general_query_generator.generate_general_response(
-                extracted_message, conversation_fetcher
+            response = await container.general_query_generator.handle_request(
+                router_decision.parameters, conversation_fetcher
             )
             await message.reply(response)
 

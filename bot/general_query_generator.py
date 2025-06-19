@@ -1,7 +1,7 @@
 import logging
 from ai_client import AIClient
 from open_telemetry import Telemetry
-from schemas import YesNo
+from schemas import YesNo, GeneralParams
 
 
 logger = logging.getLogger(__name__)
@@ -11,6 +11,37 @@ class GeneralQueryGenerator:
     def __init__(self, ai_client: AIClient, telemetry: Telemetry):
         self.ai_client = ai_client
         self.telemetry = telemetry
+
+    def get_route_description(self) -> str:
+        return """
+        GENERAL: For valid questions/requests needing AI assistance
+        - Handles legitimate questions, requests for information, explanations, or help
+        - Valid queries: "What's the weather?", "Explain quantum physics", "How do I cook pasta?"
+        - Context-dependent questions: "What about this?", "How does that work?"
+        - Invalid: Simple reactions like "lol", "nice", "haha that's funny"
+        
+        Parameter extraction:
+        - ai_backend selection:
+          * gemini_pro: Complex reasoning, research, detailed explanations, technical questions
+          * gemini_flash: Simple questions, quick facts, basic explanations (faster, cheaper)  
+          * grok: Creative tasks, current events, social media context, unconventional perspectives
+          * Handle explicit requests: "ask grok about...", "use gemini pro for..."
+        
+        - temperature selection:
+          * 0.0-0.2: Factual data, calculations, precise information, technical explanations
+          * 0.3-0.6: Balanced responses, general questions, moderate creativity
+          * 0.7-1.0: Creative writing, brainstorming, "go crazy" requests, artistic content
+        
+        - cleaned_query extraction:
+          * Remove explicit backend requests: "ask grok to..." → just the actual question
+          * Remove temperature instructions: "use high temperature and..." → just the core request
+          * Remove routing hints: "be creative with..." → keep the creative context but remove routing language
+          * Examples:
+            - "ask grok to write a poem about cats" → "write a poem about cats"
+            - "use gemini pro to explain quantum physics" → "explain quantum physics"
+            - "with high creativity, write a story" → "write a story"
+            - "be factual and explain the weather" → "explain the weather"
+        """
 
     async def is_general_query(self, message: str) -> bool:
         """
@@ -105,3 +136,20 @@ class GeneralQueryGenerator:
             
             logger.info(f"Generated response: {response}")
             return response
+    
+    async def handle_request(self, params: GeneralParams, conversation_fetcher) -> str:
+        """
+        Handle a general query request using the provided parameters.
+        
+        Args:
+            params (GeneralParams): Parameters containing ai_backend, temperature, and cleaned_query
+            conversation_fetcher: Parameterless async function that returns conversation history
+            
+        Returns:
+            str: The response string ready to be sent by the caller
+        """
+        # Use the cleaned query from the router
+        # TODO: In the future, this should use params.ai_backend and params.temperature
+        # to select the appropriate AI client and configure temperature
+        logger.info(f"Processing general request with params: {params}")
+        return await self.generate_general_response(params.cleaned_query, conversation_fetcher)
