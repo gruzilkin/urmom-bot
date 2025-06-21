@@ -2,7 +2,7 @@ import logging
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from ai_client import AIClient
-from typing import List, Tuple, Type, TypeVar, Union, Optional
+from typing import List, Tuple, Type, TypeVar
 from opentelemetry.trace import SpanKind
 from open_telemetry import Telemetry
 from pydantic import BaseModel
@@ -46,7 +46,7 @@ class GrokClient(AIClient):
                 attributes=attributes
             )
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Optional[Type[T]] = None, temperature: Optional[float] = None) -> Union[str, T]:
+    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None) -> str | T:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             messages = []
             if prompt:

@@ -29,8 +29,6 @@ class Container:
         endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "192.168.0.2:4317")
         self.telemetry = Telemetry(service_name=service_name, endpoint=endpoint)
 
-        self.ai_client = self._get_ai_client()
-        
         # Create specific AI clients for GeneralQueryGenerator (both required)
         self.gemini_flash = GeminiClient(
             api_key=self._get_env("GEMINI_API_KEY"),
@@ -45,6 +43,8 @@ class Container:
             temperature=float(os.getenv("GROK_TEMPERATURE", "0.7")),
             telemetry=self.telemetry
         )
+
+        self.ai_client = self._get_ai_client()
 
         self.joke_generator = JokeGenerator(
             self.ai_client, 
