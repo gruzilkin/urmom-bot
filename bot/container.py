@@ -53,7 +53,7 @@ class Container:
             sample_count=int(self._get_env('SAMPLE_JOKES_COUNT'))
         )
 
-        self.famous_person_generator = FamousPersonGenerator(self.ai_client, self.telemetry)
+        self.famous_person_generator = FamousPersonGenerator(self.grok, self.telemetry)
 
         self.general_query_generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_flash, 
