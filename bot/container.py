@@ -47,7 +47,7 @@ class Container:
         self.ai_client = self._get_ai_client()
 
         self.joke_generator = JokeGenerator(
-            self.ai_client, 
+            self.grok, 
             self.store, 
             self.telemetry, 
             sample_count=int(self._get_env('SAMPLE_JOKES_COUNT'))
