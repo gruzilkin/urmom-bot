@@ -8,9 +8,22 @@ logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, ai_client: AIClient, telemetry: Telemetry):
-        self.ai_client = ai_client
+    def __init__(self, gemini_pro: AIClient, gemini_flash: AIClient, grok: AIClient, telemetry: Telemetry):
+        self.gemini_pro = gemini_pro
+        self.gemini_flash = gemini_flash
+        self.grok = grok
         self.telemetry = telemetry
+    
+    def _get_ai_client(self, ai_backend: str) -> AIClient:
+        """Select the appropriate AI client based on backend name."""
+        if ai_backend == "gemini_pro":
+            return self.gemini_pro
+        elif ai_backend == "gemini_flash":
+            return self.gemini_flash
+        elif ai_backend == "grok":
+            return self.grok
+        else:
+            raise ValueError(f"Unknown ai_backend: {ai_backend}")
 
     def get_route_description(self) -> str:
         return """
@@ -43,69 +56,28 @@ class GeneralQueryGenerator:
             - "be factual and explain the weather" → "explain the weather"
         """
 
-    async def is_general_query(self, message: str) -> bool:
+
+    
+    async def handle_request(self, params: GeneralParams, conversation_fetcher) -> str:
         """
-        Check if a message is a reasonable general query that should be answered by an LLM.
+        Handle a general query request using the provided parameters.
         
         Args:
-            message (str): The message to check
-            
-        Returns:
-            bool: True if it's a valid general query, False otherwise
-        """
-        prompt = """You need to check if the user message is a reasonable general query or request that an AI assistant should answer.
-        Determine if the message contains a clear question or request for information/assistance.
-
-        A valid general query should contain:
-        - A question (who, what, where, when, why, how)
-        - A request for information, explanation, or help
-        - A request to do something (explain, analyze, summarize, etc.)
-        - Context-dependent questions that could make sense within a conversation
-
-        Valid general queries:
-        - What's the weather today?
-        - Can you explain quantum physics?
-        - How do I cook pasta?
-        - Tell me about the history of Rome
-        - Why is the sky blue?
-        - When was it? (context-dependent but valid)
-        - What about this? (context-dependent but valid)
-        - How does that work? (context-dependent but valid)
-
-        Invalid queries (reactions, acknowledgments, no clear request):
-        - lol
-        - nice
-        - haha that's funny"""
-
-        async with self.telemetry.async_create_span("is_general_query") as span:
-            span.set_attribute("message", message)
-            
-            response = await self.ai_client.generate_content(
-                message=message,
-                prompt=prompt,
-                response_schema=YesNo
-            )
-            
-            is_query = response.answer == "YES"
-            
-            span.set_attribute("is_query", is_query)
-            
-            logger.info(f"Detection result: {is_query}")
-            return is_query
-
-    async def generate_general_response(self, extracted_message: str, conversation_fetcher) -> str:
-        """
-        Generate a general response to a user query using conversation context.
-        
-        Args:
-            extracted_message (str): The user's message with bot mentions removed
+            params (GeneralParams): Parameters containing ai_backend, temperature, and cleaned_query
             conversation_fetcher: Parameterless async function that returns conversation history
             
         Returns:
             str: The response string ready to be sent by the caller
         """
+        logger.info(f"Processing general request with params: {params}")
+        
+        # Select the appropriate AI client based on parameters
+        ai_client = self._get_ai_client(params.ai_backend)
+        
         async with self.telemetry.async_create_span("generate_general_response") as span:
-            span.set_attribute("extracted_message", extracted_message)
+            span.set_attribute("ai_backend", params.ai_backend)
+            span.set_attribute("temperature", params.temperature)
+            span.set_attribute("cleaned_query", params.cleaned_query)
             
             conversation = await conversation_fetcher()
             
@@ -119,37 +91,22 @@ class GeneralQueryGenerator:
             If the question relates to something mentioned in the conversation, reference it appropriately.
             Keep your response length below 1000 symbols.
             
-            User's question/request: '{extracted_message}'
+            User's question/request: '{params.cleaned_query}'
             
             Conversation context:
             {conversation_text}"""
             
-            logger.info(f"Generating response")
-            logger.info(f"User message: {extracted_message}")
+            logger.info(f"Generating response using {params.ai_backend}")
+            logger.info(f"User message: {params.cleaned_query}")
             logger.info(f"Conversation context: {conversation}")
             
-            response = await self.ai_client.generate_content(
+            # Use the selected AI client with the specified temperature
+            response = await ai_client.generate_content(
                 message="",  # The conversation is included in the prompt
                 prompt=prompt,
+                temperature=params.temperature,
                 enable_grounding=True  # Enable grounding for general queries to get current information
             )
             
             logger.info(f"Generated response: {response}")
             return response
-    
-    async def handle_request(self, params: GeneralParams, conversation_fetcher) -> str:
-        """
-        Handle a general query request using the provided parameters.
-        
-        Args:
-            params (GeneralParams): Parameters containing ai_backend, temperature, and cleaned_query
-            conversation_fetcher: Parameterless async function that returns conversation history
-            
-        Returns:
-            str: The response string ready to be sent by the caller
-        """
-        # Use the cleaned query from the router
-        # TODO: In the future, this should use params.ai_backend and params.temperature
-        # to select the appropriate AI client and configure temperature
-        logger.info(f"Processing general request with params: {params}")
-        return await self.generate_general_response(params.cleaned_query, conversation_fetcher)

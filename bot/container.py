@@ -30,6 +30,28 @@ class Container:
         self.telemetry = Telemetry(service_name=service_name, endpoint=endpoint)
 
         self.ai_client = self._create_ai_client()
+        
+        # Create specific AI clients for GeneralQueryGenerator
+        self.gemini_pro = GeminiClient(
+            api_key=self._get_env("GEMINI_API_KEY"),
+            model_name=self._get_env("GEMINI_PRO_MODEL"),
+            temperature=float(self._get_env("GEMINI_PRO_TEMPERATURE")),
+            telemetry=self.telemetry
+        )
+        
+        self.gemini_flash = GeminiClient(
+            api_key=self._get_env("GEMINI_API_KEY"),
+            model_name=self._get_env("GEMINI_FLASH_MODEL"),
+            temperature=float(self._get_env("GEMINI_FLASH_TEMPERATURE")),
+            telemetry=self.telemetry
+        )
+        
+        self.grok = GrokClient(
+            api_key=self._get_env("GROK_API_KEY"),
+            model_name=self._get_env("GROK_MODEL"),
+            temperature=float(self._get_env("GROK_TEMPERATURE")),
+            telemetry=self.telemetry
+        )
 
         self.joke_generator = JokeGenerator(
             self.ai_client, 
@@ -40,7 +62,12 @@ class Container:
 
         self.famous_person_generator = FamousPersonGenerator(self.ai_client, self.telemetry)
 
-        self.general_query_generator = GeneralQueryGenerator(self.ai_client, self.telemetry)
+        self.general_query_generator = GeneralQueryGenerator(
+            gemini_pro=self.gemini_pro,
+            gemini_flash=self.gemini_flash, 
+            grok=self.grok,
+            telemetry=self.telemetry
+        )
 
         self.ai_router = AiRouter(
             self.ai_client, 
@@ -58,18 +85,25 @@ class Container:
         return value
 
     def _create_ai_client(self):
-        GEMINI = "GEMINI"
+        PRO = "PRO"
+        FLASH = "FLASH"
         GROK = "GROK"
         ai_provider = self._get_env("AI_PROVIDER").upper()
         
-        if ai_provider == GEMINI:
+        if ai_provider == PRO:
             return GeminiClient(
                 api_key=self._get_env("GEMINI_API_KEY"),
-                model_name=self._get_env("GEMINI_MODEL"),
-                temperature=float(self._get_env("GEMINI_TEMPERATURE")),
+                model_name=self._get_env("GEMINI_PRO_MODEL"),
+                temperature=float(self._get_env("GEMINI_PRO_TEMPERATURE")),
                 telemetry=self.telemetry
             )
-            
+        elif ai_provider == FLASH:
+            return GeminiClient(
+                api_key=self._get_env("GEMINI_API_KEY"),
+                model_name=self._get_env("GEMINI_FLASH_MODEL"),
+                temperature=float(self._get_env("GEMINI_FLASH_TEMPERATURE")),
+                telemetry=self.telemetry
+            )
         elif ai_provider == GROK:
             return GrokClient(
                 api_key=self._get_env("GROK_API_KEY"),
@@ -78,7 +112,7 @@ class Container:
                 telemetry=self.telemetry
             )
         else:
-            raise ValueError(f"Invalid AI_PROVIDER: {ai_provider}. Must be either {GEMINI} or {GROK}")
+            raise ValueError(f"Invalid AI_PROVIDER: {ai_provider}. Must be either {PRO}, {FLASH}, or {GROK}")
 
 # Create a single instance to be imported by other modules
 container = Container()
