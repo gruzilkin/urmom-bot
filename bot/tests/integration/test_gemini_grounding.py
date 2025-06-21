@@ -15,12 +15,12 @@ class TestGeminiGrounding(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # Check for API key and model name
         api_key = os.getenv('GEMINI_API_KEY')
-        model_name = os.getenv('GEMINI_MODEL')
+        model_name = os.getenv('GEMINI_FLASH_MODEL')
         
         if not api_key:
             self.skipTest("GEMINI_API_KEY environment variable not set")
         if not model_name:
-            self.skipTest("GEMINI_MODEL environment variable not set")
+            self.skipTest("GEMINI_FLASH_MODEL environment variable not set")
         
         self.client = GeminiClient(
             api_key=api_key,

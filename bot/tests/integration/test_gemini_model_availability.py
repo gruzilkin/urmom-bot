@@ -1,7 +1,7 @@
 """
-Integration tests for Gemini Pro and Flash model availability.
+Integration tests for Gemini Flash model availability.
 
-Tests that both Gemini Pro and Flash models are accessible and can handle basic requests.
+Tests that Gemini Flash model is accessible and can handle basic requests.
 This is useful for detecting when Google changes model names or availability on different tiers.
 """
 
@@ -15,7 +15,7 @@ load_dotenv()
 
 
 class TestGeminiModelAvailability(unittest.IsolatedAsyncioTestCase):
-    """Integration tests to verify Gemini Pro and Flash models are available."""
+    """Integration tests to verify Gemini Flash model is available."""
     
     def setUp(self):
         """Set up test dependencies."""
@@ -26,27 +26,6 @@ class TestGeminiModelAvailability(unittest.IsolatedAsyncioTestCase):
         if not self.api_key:
             self.skipTest("GEMINI_API_KEY environment variable not set")
     
-    async def test_gemini_pro_model_availability(self):
-        """Test that Gemini Pro model is available and can handle a basic request."""
-        model_name = os.getenv('GEMINI_PRO_MODEL')
-        if not model_name:
-            self.skipTest("GEMINI_PRO_MODEL environment variable not set")
-        
-        client = GeminiClient(
-            api_key=self.api_key,
-            model_name=model_name,
-            temperature=0.1,
-            telemetry=self.telemetry
-        )
-        
-        # Simple test request - successful API call is enough
-        response = await client.generate_content(
-            message="Hello",
-            prompt="Respond briefly."
-        )
-        
-        self.assertIsInstance(response, str)
-        self.assertGreater(len(response), 0)
     
     async def test_gemini_flash_model_availability(self):
         """Test that Gemini Flash model is available and can handle a basic request."""

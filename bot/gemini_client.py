@@ -59,7 +59,7 @@ class GeminiClient(AIClient):
             except Exception as e:
                 logger.error(f"Error tracking token usage: {e}", exc_info=True)
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Optional[Type[T]] = None) -> Union[str, T]:
+    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Optional[Type[T]] = None, temperature: Optional[float] = None) -> Union[str, T]:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             samples = samples or []
             contents = []
@@ -74,8 +74,10 @@ class GeminiClient(AIClient):
             logger.info(f"Request contents: {contents}")
 
             # Configure grounding based on enable_grounding flag
+            # Use provided temperature or fallback to instance temperature
+            actual_temperature = temperature if temperature is not None else self.temperature
             config = GenerateContentConfig(
-                temperature=self.temperature,
+                temperature=actual_temperature,
                 system_instruction=prompt
             )
             

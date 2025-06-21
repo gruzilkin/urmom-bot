@@ -46,7 +46,7 @@ class GrokClient(AIClient):
                 attributes=attributes
             )
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Optional[Type[T]] = None) -> Union[str, T]:
+    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Optional[Type[T]] = None, temperature: Optional[float] = None) -> Union[str, T]:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             messages = []
             if prompt:
@@ -72,13 +72,16 @@ class GrokClient(AIClient):
             else:
                 extra_body = None
 
+            # Use provided temperature or fallback to instance temperature
+            actual_temperature = temperature if temperature is not None else self.temperature
+            
             # Use structured output if schema is provided
             if response_schema:
                 logger.info(f"Structured output enabled with schema: {response_schema.__name__}")
                 completion = self.model.beta.chat.completions.parse(
                     model=self.model_name,
                     messages=messages,
-                    temperature=self.temperature,
+                    temperature=actual_temperature,
                     response_format=response_schema,
                     extra_body=extra_body
                 )
@@ -94,7 +97,7 @@ class GrokClient(AIClient):
                 completion = self.model.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
-                    temperature=self.temperature,
+                    temperature=actual_temperature,
                     extra_body=extra_body
                 )
 

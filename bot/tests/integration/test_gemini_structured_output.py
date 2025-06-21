@@ -25,12 +25,12 @@ class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
         
         # Check for API key and model name
         self.api_key = os.getenv('GEMINI_API_KEY')
-        self.model_name = os.getenv('GEMINI_MODEL')
+        self.model_name = os.getenv('GEMINI_FLASH_MODEL')
         
         if not self.api_key:
             self.skipTest("GEMINI_API_KEY environment variable not set")
         if not self.model_name:
-            self.skipTest("GEMINI_MODEL environment variable not set")
+            self.skipTest("GEMINI_FLASH_MODEL environment variable not set")
             
         self.client = GeminiClient(
             api_key=self.api_key,

@@ -8,17 +8,14 @@ logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, gemini_pro: AIClient, gemini_flash: AIClient, grok: AIClient, telemetry: Telemetry):
-        self.gemini_pro = gemini_pro
+    def __init__(self, gemini_flash: AIClient, grok: AIClient, telemetry: Telemetry):
         self.gemini_flash = gemini_flash
         self.grok = grok
         self.telemetry = telemetry
     
     def _get_ai_client(self, ai_backend: str) -> AIClient:
         """Select the appropriate AI client based on backend name."""
-        if ai_backend == "gemini_pro":
-            return self.gemini_pro
-        elif ai_backend == "gemini_flash":
+        if ai_backend == "gemini_flash":
             return self.gemini_flash
         elif ai_backend == "grok":
             return self.grok
@@ -35,10 +32,9 @@ class GeneralQueryGenerator:
         
         Parameter extraction:
         - ai_backend selection:
-          * gemini_pro: Complex reasoning, research, detailed explanations, technical questions
-          * gemini_flash: Simple questions, quick facts, basic explanations (faster, cheaper)  
-          * grok: Creative tasks, current events, social media context, unconventional perspectives
-          * Handle explicit requests: "ask grok about...", "use gemini pro for..."
+          * gemini_flash: General questions, explanations, coding help, factual information
+          * grok: Creative tasks, uncensored content, real-time news/current events, wild requests
+          * Handle explicit requests: "ask grok about...", "use gemini flash for..."
         
         - temperature selection:
           * 0.0-0.2: Factual data, calculations, precise information, technical explanations
@@ -51,7 +47,7 @@ class GeneralQueryGenerator:
           * Remove routing hints: "be creative with..." → keep the creative context but remove routing language
           * Examples:
             - "ask grok to write a poem about cats" → "write a poem about cats"
-            - "use gemini pro to explain quantum physics" → "explain quantum physics"
+            - "use gemini flash to explain quantum physics" → "explain quantum physics"
             - "with high creativity, write a story" → "write a story"
             - "be factual and explain the weather" → "explain the weather"
         """
@@ -87,9 +83,8 @@ class GeneralQueryGenerator:
             prompt = f"""You are a helpful AI assistant in a Discord chat. Please respond to the user's question or request.
 
             Use the conversation context to better understand what the user is asking about.
-            Keep your response conversational and appropriate for a Discord chat.
             If the question relates to something mentioned in the conversation, reference it appropriately.
-            Keep your response length below 1000 symbols.
+            CRITICAL: Keep your response under 1000 characters. Be concise and direct.
             
             User's question/request: '{params.cleaned_query}'
             
