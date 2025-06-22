@@ -1,66 +1,82 @@
-# urmom-bot Architecture Refactoring Plan
+# CLAUDE.md
 
-## Target Architecture
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-### 1. Multiple AI Client Instances
-Four instances of AiClient:
-- **Local**: OpenAI llama (http://localhost:1234/v1)
-- **Cheap**: Gemini Flash (via OpenAI API format)
-- **Witty**: Grok (https://api.x.ai/v1) 
-- **Smart**: Gemini Pro 2.5 (via OpenAI API format)
+## urmom-bot Project Information
 
-### 2. AI Router with YAML Configuration
-- Contains all 4 AI client instances
-- Routes operations based on YAML config (MultiMap: operation -> ordered list of clients)
-- Provides fallback mechanism (tries clients in order until one succeeds)
-- Handles telemetry, logging, error handling
+urmom-bot is a Discord bot that generates AI-powered "ur mom" jokes, country-specific humor, and impersonates famous people. The bot uses multiple AI providers (Gemini, Grok, Claude) and includes adaptive learning from user reactions.
 
-Example mapping:
-```yaml
-operation_mappings:
-  IS_JOKE: [local, cheap]
-  GENERATE_JOKE: [witty, smart]
-  IS_FAMOUS_PERSON_REQUEST: [local, cheap]
-  GENERATE_FAMOUS_PERSON_RESPONSE: [witty, smart]
-  IS_QUERY: [local, cheap]
-  QUERY: [smart]
-  ROUTE_REQUEST: [local, cheap]
+## Development Setup
+
+### Environment Setup
+1. Create virtual environment: `python -m venv .venv`
+2. Activate: `source .venv/bin/activate`
+3. Install dependencies: `pip install -r requirements.txt`
+4. Set up environment variables in `.env` file (see README.md)
+
+### Running the Bot
+- Local development: `cd bot && python app.py`
+- Production: `docker compose up -d`
+- View logs: `docker compose logs -f`
+
+## Testing
+
+### Unit Tests
+Run unit tests only (excludes integration tests):
+```bash
+source .venv/bin/activate && PYTHONPATH=bot python -m unittest discover -s bot/tests/unit -p "*test*.py" -v
 ```
 
-### 3. Feature Base Interface
-- Abstract base class for all feature handlers
-- Unified interface for feature registration and execution
-- Standardized method signatures across all features
-
-### 4. Request Processor Router
-- Uses AI to intelligently route user messages to appropriate handlers
-- Handlers register themselves with descriptions
-- App doesn't need to know handler internals
-
-### 5. App Class Responsibilities
-**Direct handling** (no AI routing):
-- Configuration commands (`!config`)
-
-**AI-driven routing** for everything else:
-- Use RequestProcessorRouter to determine appropriate handler
-- Pass requests to handlers without knowing their internals
-
-## Testing Standards
-
-**Use only `unittest.IsolatedAsyncioTestCase`** for async code - never pytest or other frameworks.
-
-**Project-specific mocking patterns:**
-```python
-# AI Client mocking
-self.ai_client = Mock()
-self.ai_client.generate_content = AsyncMock(return_value="expected response")
-
-# Telemetry - ALWAYS use NullTelemetry()
-from tests.null_telemetry import NullTelemetry
-self.telemetry = NullTelemetry()
-
-# Integration tests - skip if API keys missing
-api_key = os.getenv('API_KEY')
-if not api_key:
-    self.skipTest("API_KEY environment variable not set")
+### Integration Tests
+Run integration tests (requires API keys):
+```bash
+source .venv/bin/activate && PYTHONPATH=bot python -m unittest discover -s bot/tests/integration -p "*test*.py" -v
 ```
+
+### Test Structure
+- Unit tests: `bot/tests/unit/`
+- Integration tests: `bot/tests/integration/`
+- Testing framework: `unittest.IsolatedAsyncioTestCase` for async code
+- Telemetry mocking: Use `NullTelemetry()` from `tests.null_telemetry`
+
+## Architecture Overview
+
+### Core Components
+- **app.py**: Main Discord bot entry point with event handlers
+- **container.py**: Dependency injection container for all services
+- **ai_router.py**: Routes user messages to appropriate AI handlers
+- **store.py**: PostgreSQL database interactions and guild configuration
+- **schemas.py**: Pydantic schemas for structured AI responses
+
+### AI Clients
+- **gemini_client.py**: Google Gemini API integration
+- **grok_client.py**: xAI Grok API integration  
+- **claude_client.py**: Anthropic Claude API integration
+- **ai_client.py**: Abstract base class for AI providers
+
+### Generators
+- **joke_generator.py**: Core joke generation with adaptive learning
+- **famous_person_generator.py**: Celebrity impersonation responses
+- **general_query_generator.py**: General AI query handling
+- **country_resolver.py**: Flag emoji to country mapping
+
+### Supporting Services
+- **open_telemetry.py**: Observability and metrics collection
+- **store.py**: Database operations and guild settings
+
+### Database Schema
+- **messages**: Stores Discord message content and language
+- **jokes**: Links source messages to joke responses with reaction counts
+- **guild_configs**: Per-server bot configuration
+
+### Message Flow
+1. Discord message → **app.py** event handler
+2. **ai_router.py** determines handling strategy (famous person, general query, etc.)
+3. Appropriate generator creates response using configured AI client
+4. Response sent to Discord with optional archiving/auto-deletion
+
+## Project Structure
+- Main code: `bot/` directory
+- Virtual environment: `.venv/`
+- Database: PostgreSQL with Docker setup
+- Use `PYTHONPATH=bot` to set Python path instead of `cd bot`
