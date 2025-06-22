@@ -8,9 +8,10 @@ logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, gemini_flash: AIClient, grok: AIClient, telemetry: Telemetry):
+    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, telemetry: Telemetry):
         self.gemini_flash = gemini_flash
         self.grok = grok
+        self.claude = claude
         self.telemetry = telemetry
     
     def _get_ai_client(self, ai_backend: str) -> AIClient:
@@ -19,6 +20,8 @@ class GeneralQueryGenerator:
             return self.gemini_flash
         elif ai_backend == "grok":
             return self.grok
+        elif ai_backend == "claude":
+            return self.claude
         else:
             raise ValueError(f"Unknown ai_backend: {ai_backend}")
 
@@ -32,9 +35,10 @@ class GeneralQueryGenerator:
         
         Parameter extraction:
         - ai_backend selection:
-          * gemini_flash: General questions, explanations, coding help, factual information
+          * gemini_flash: General questions, explanations, factual information
           * grok: Creative tasks, uncensored content, real-time news/current events, wild requests
-          * Handle explicit requests: "ask grok about...", "use gemini flash for..."
+          * claude: Coding help, technical explanations, detailed analysis, complex reasoning
+          * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
         
         - temperature selection:
           * 0.0-0.2: Factual data, calculations, precise information, technical explanations
@@ -86,8 +90,6 @@ class GeneralQueryGenerator:
             If the question relates to something mentioned in the conversation, reference it appropriately.
             CRITICAL: Keep your response under 1000 characters. Be concise and direct.
             
-            User's question/request: '{params.cleaned_query}'
-            
             Conversation context:
             {conversation_text}"""
             
@@ -97,7 +99,7 @@ class GeneralQueryGenerator:
             
             # Use the selected AI client with the specified temperature
             response = await ai_client.generate_content(
-                message="",  # The conversation is included in the prompt
+                message=params.cleaned_query,
                 prompt=prompt,
                 temperature=params.temperature,
                 enable_grounding=True  # Enable grounding for general queries to get current information
