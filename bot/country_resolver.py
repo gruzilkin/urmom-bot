@@ -1,7 +1,10 @@
+import logging
 import traceback
 
 from ai_client import AIClient
 from open_telemetry import Telemetry
+
+logger = logging.getLogger(__name__)
 
 class CountryResolver:
     def __init__(self, ai_client: AIClient, telemetry: Telemetry):
@@ -44,7 +47,7 @@ class CountryResolver:
             self.flag_to_country[emoji] = country
             return country
         
-        print(f'Unknown flag emoji: "{emoji}"')
+        logger.warning(f'Unknown flag emoji: "{emoji}"')
         return None
 
     async def _resolve_flag_with_ai(self, emoji: str) -> str | None:
@@ -54,7 +57,5 @@ class CountryResolver:
         try:
             return await self.ai_client.generate_content(emoji, prompt, samples)
         except Exception as e:
-            print(f"Error resolving flag with AI: {str(e)}")
-            print("Stack trace:")
-            print(traceback.format_exc())
+            logger.error(f"Error resolving flag with AI: {str(e)}", exc_info=True)
             return None

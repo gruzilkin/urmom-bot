@@ -5,16 +5,25 @@ from dotenv import load_dotenv
 from joke_generator import JokeGenerator
 from gemini_client import GeminiClient
 from store import Store
-from null_telemetry import NullTelemetry
+from tests.null_telemetry import NullTelemetry
 
 load_dotenv()
 
 class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        # Check for API key and model name
+        api_key = os.getenv('GEMINI_API_KEY')
+        model_name = os.getenv('GEMINI_FLASH_MODEL')
+        
+        if not api_key:
+            self.skipTest("GEMINI_API_KEY environment variable not set")
+        if not model_name:
+            self.skipTest("GEMINI_FLASH_MODEL environment variable not set")
+            
         ai_client = GeminiClient(
-            api_key=os.getenv('GEMINI_API_KEY'),
-            model_name=os.getenv('GEMINI_MODEL'),
-            temperature=float(os.getenv('GEMINI_TEMPERATURE', '1.2')),
+            api_key=api_key,
+            model_name=model_name,
+            temperature=0.1,  # Fixed temperature for test stability
             telemetry=NullTelemetry()
         )
         self.store = Mock(spec=Store)

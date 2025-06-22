@@ -1,9 +1,15 @@
+import logging
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from ai_client import AIClient
-from typing import List, Tuple
+from typing import List, Tuple, Type, TypeVar
 from opentelemetry.trace import SpanKind
 from open_telemetry import Telemetry
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
 
 class GrokClient(AIClient):
     def __init__(self, api_key: str, model_name: str = "grok-2-latest", temperature: float = 0.7, telemetry: Telemetry = None):
@@ -40,7 +46,7 @@ class GrokClient(AIClient):
                 attributes=attributes
             )
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None) -> str:
+    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None) -> str | T:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:
             messages = []
             if prompt:
@@ -53,152 +59,49 @@ class GrokClient(AIClient):
                 
             messages.append({"role": "user", "content": message})
 
-            print(messages)
+            logger.info(f"Grok input messages: {messages}")
 
-            completion = self.model.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature
-            )
+            # Configure search parameters based on grounding flag
+            if enable_grounding:
+                extra_body = {
+                    "search_parameters": {
+                        "mode": "on"
+                    }
+                }
+                logger.info("[GROK] Grounding enabled with search mode: on")
+            else:
+                extra_body = None
 
-            print(completion)
-            self._track_completion_metrics(completion, method_name="generate_content")
-
-            return completion.choices[0].message.content
-
-    async def is_joke(self, original_message: str, response_message: str) -> bool:
-        async with self.telemetry.async_create_span("is_joke", kind=SpanKind.CLIENT) as span:
-            prompt = f"""Tell me if the response is a joke, a wordplay or a sarcastic remark to the original message, reply in English with only yes or no:
-    original message: {original_message}
-    response: {response_message}
-    No? Think again carefully. The response might be a joke, wordplay, or sarcastic remark.
-    Is it actually a joke? Reply only yes or no."""
-
-            print(f"[GROK] Checking if message is a joke:")
-            print(f"[GROK] Original: {original_message}")
-            print(f"[GROK] Response: {response_message}")
-
-            completion = self.model.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1
-            )
+            # Use provided temperature or fallback to instance temperature
+            actual_temperature = temperature if temperature is not None else self.temperature
             
-            print(f"[GROK] Raw completion object: {completion}")
-            response_text = completion.choices[0].message.content.strip().lower()
-            # Remove any punctuation and check if the response is 'yes'
-            result = response_text.rstrip('.,!?') == "yes"
-            self._track_completion_metrics(completion, method_name="is_joke", is_joke=result)
-            print(f"[GROK] AI response: {response_text}")
-            print(f"[GROK] Is joke: {result}")
-            return result
-
-    async def generate_famous_person_response(self, conversation: List[Tuple[str, str]], person: str, original_message: str = "") -> str:
-        """
-        Generate a response in the style of a famous person based on the conversation context.
-        
-        Args:
-            conversation (List[Tuple[str, str]]): List of (username, message) tuples
-            person (str): The name of the famous person
-            original_message (str): The original user request with bot mention removed
-            
-        Returns:
-            str: A response in the style of the famous person
-        """
-        async with self.telemetry.async_create_span("generate_famous_person_response", kind=SpanKind.CLIENT) as span:
-            system_content = f"""You are {person}. Generate a response as if you were {person}, 
-                using their communication style, beliefs, values, and knowledge.
-                Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
-                Stay in character completely and respond directly as {person} would.
-                Try to keep your response short but make sure to go over all main talking points.
-                Feel free to tease and poke fun at the message authors, especially Florent.
-                The user specifically asked: '{original_message}'
-                Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions."""
+            # Use structured output if schema is provided
+            if response_schema:
+                logger.info(f"Structured output enabled with schema: {response_schema.__name__}")
+                completion = self.model.beta.chat.completions.parse(
+                    model=self.model_name,
+                    messages=messages,
+                    temperature=actual_temperature,
+                    response_format=response_schema,
+                    extra_body=extra_body
+                )
                 
-            system_message = {
-                "role": "system", 
-                "content": system_content
-            }
-            
-            messages = [system_message]
-            
-            for username, content in conversation:
-                messages.append({
-                    "role": "user",
-                    "content": f"{username}: {content}"
-                })
-            
-            print(f"[GROK] Generating response as {person}")
-            print(f"[GROK] Messages: {messages}")
-            
-            completion = self.model.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature
-            )
-            
-            print(f"[GROK] Raw completion object: {completion}")
-            self._track_completion_metrics(completion, 
-                                        method_name="generate_famous_person_response", 
-                                        person=person)
-            
-            return completion.choices[0].message.content
+                logger.info(f"Grok completion: {completion}")
+                self._track_completion_metrics(completion, method_name="generate_content")
+                
+                parsed_result = completion.choices[0].message.parsed
+                if parsed_result is None:
+                    raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {completion.choices[0].message.content}")
+                return parsed_result
+            else:
+                completion = self.model.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    temperature=actual_temperature,
+                    extra_body=extra_body
+                )
 
-    async def is_famous_person_request(self, message: str) -> str | None:
-        """Check if a message is asking what a famous person would say"""
-        async with self.telemetry.async_create_span("is_famous_person_request", kind=SpanKind.CLIENT) as span:
-            prompt = """You need to check if the user message is asking to impersonate a famous person and reply with the person's name.
+                logger.info(f"Grok completion: {completion}")
+                self._track_completion_metrics(completion, method_name="generate_content")
 
-            Example 1:
-            Input: What would Trump say?
-            Output: Trump
-
-            Example 2:
-            Input: What's the weather today?
-            Output: None
-
-            Example 3:
-            Input: What would Jesus say if he spoke like Trump?
-            Output: Jesus
-
-            Example 4:
-            Input: How would Darth Vader feel about this?
-            Output: Darth Vader
-
-            Example 5:
-            Input: What if Eminen did tldr?
-            Output: Eminen
-
-            Example 5:
-            Input: How would Sigmund Freud respond to this?
-            Output: Sigmund Freud
-
-            Only extract the person's name if the message is clearly asking to impersonate them.
-            If it's not a request to impersonate someone then respond with 'None'."""
-            
-
-            messages = [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": message}
-            ]
-            print(f"[GROK] Request messages: {messages}")
-            
-            completion = self.model.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=0.1
-            )
-            
-            print(f"[GROK] Response object: {completion}")
-            response_text = completion.choices[0].message.content.strip()
-            
-            # Convert "None" string to actual None
-            person = None if response_text == "None" else response_text
-            self._track_completion_metrics(completion, 
-                                        method_name="is_famous_person_request", 
-                                        person_detected=(person is not None),
-                                        person=person)
-            
-            print(f"[GROK] Famous person detection result: '{person}'")
-            
-            return person
+                return completion.choices[0].message.content

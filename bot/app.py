@@ -3,6 +3,7 @@ import datetime
 import os
 from enum import Enum
 from types import SimpleNamespace
+import logging
 
 import nextcord
 from dotenv import load_dotenv
@@ -23,7 +24,9 @@ bot = nextcord.Client(intents=intents)
 # Create cache object to hold bot state
 cache = SimpleNamespace()
 cache.processed_messages = set()
-cache.joke_cache = {}  # message_id -> bool
+
+# Set up a module-level logger
+logger = logging.getLogger(__name__)
 
 class BotCommand(Enum):
     HELP = "help"
@@ -42,7 +45,7 @@ class BotCommand(Enum):
 
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user}')
+    logger.info(f'Logged in as {bot.user}')
 
 @bot.event
 async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
@@ -66,7 +69,7 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
             elif await is_joke(payload):
                 await save_joke(payload)
         except ValueError as e:
-            print(f"Error processing reaction: {e}")
+            logger.error(f"Error processing reaction: {e}", exc_info=True)
 
 @bot.event
 async def on_message(message: nextcord.Message):
@@ -84,12 +87,25 @@ async def on_message(message: nextcord.Message):
         if is_command:
             return
             
-        # If not a command, check for famous person query
+        # Use AiRouter to determine how to handle the message
         extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
-        famous_person = await container.ai_client.is_famous_person_request(extracted_message)
+        router_decision = await container.ai_router.route_request(extracted_message)
         
-        if famous_person:
-            await process_famous_person_query(message, famous_person)
+        if router_decision.route == "FAMOUS":
+            conversation_fetcher = create_conversation_fetcher(message)
+            
+            response = await container.famous_person_generator.handle_request(
+                router_decision.parameters, extracted_message, conversation_fetcher
+            )
+            await message.reply(response)
+        
+        elif router_decision.route == "GENERAL":
+            conversation_fetcher = create_conversation_fetcher(message)
+            
+            response = await container.general_query_generator.handle_request(
+                router_decision.parameters, conversation_fetcher
+            )
+            await message.reply(response)
 
 async def process_bot_commands(message: nextcord.Message) -> bool:
     """
@@ -183,31 +199,6 @@ Current settings:
         
     return False
 
-async def process_famous_person_query(message, famous_person):
-    try:
-        reference_message = None
-        if message.reference and message.reference.message_id:
-            reference_message = await message.channel.fetch_message(message.reference.message_id)
-        
-        conversation = await get_recent_conversation(message.channel,
-                                                    min_messages=10,
-                                                    max_messages=30, 
-                                                    max_age_minutes=30, 
-                                                    reference_message=reference_message)
-        
-        # Extract original message with bot mention removed
-        extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
-        
-        response = await container.ai_client.generate_famous_person_response(
-            conversation=conversation,
-            person=famous_person,
-            original_message=extracted_message
-        )
-        
-        await message.reply(f"**{famous_person.title()} would say:**\n\n{response}")
-    except Exception as e:
-        print(f"Error generating famous person response: {e}")
-        await message.reply(f"Sorry, I couldn't determine what {famous_person.title()} would say.")
 
 async def get_recent_conversation(channel, min_messages=10, max_messages=30, max_age_minutes=30, reference_message=None):
     """
@@ -268,34 +259,58 @@ async def get_recent_conversation(channel, min_messages=10, max_messages=30, max
                         if article.cleaned_text:
                             conversation_messages.append(("article", article.cleaned_text))
                 except Exception as e:
-                    print(f"Error extracting article from {embed.url}: {str(e)}")
+                    logger.error(
+                        f"Error extracting article from {embed.url}: {e}",
+                        exc_info=True,
+                        extra={"article_url": embed.url}
+                    )
 
     conversation_messages.reverse()
     
     return conversation_messages
 
-async def is_joke(payload) -> bool:
-    if payload.message_id in cache.joke_cache:
-        return cache.joke_cache[payload.message_id]
+def create_conversation_fetcher(message: nextcord.Message):
+    """
+    Create a parameterless lambda that encapsulates conversation fetching logic.
     
+    Args:
+        message: The Discord message to use for conversation context
+        
+    Returns:
+        async function: Parameterless function that returns conversation history
+    """
+    async def fetch_conversation():
+        reference_message = None
+        if message.reference and message.reference.message_id:
+            reference_message = await message.channel.fetch_message(message.reference.message_id)
+        
+        return await get_recent_conversation(
+            message.channel,
+            min_messages=10,
+            max_messages=30, 
+            max_age_minutes=30, 
+            reference_message=reference_message
+        )
+    
+    return fetch_conversation
+
+async def is_joke(payload) -> bool:
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
     
     # First check if this is a reply
     if not message.reference:
-                return False
+        return False
         
     # Get the source message that was replied to
     source_message = await channel.fetch_message(message.reference.message_id)
     
-    is_joke_result = await container.ai_client.is_joke(
+    # Use JokeGenerator's is_joke method with caching
+    return await container.joke_generator.is_joke(
         source_message.content,
-        message.content
+        message.content,
+        message_id=payload.message_id
     )
-    
-    # Cache the result
-    cache.joke_cache[payload.message_id] = is_joke_result
-    return is_joke_result
 
 async def save_joke(payload):
     channel = await bot.fetch_channel(payload.channel_id)
@@ -304,29 +319,16 @@ async def save_joke(payload):
     # Get the source message that was replied to
     source_message = await channel.fetch_message(joke_message.reference.message_id)
     
-        # Detect languages with "unknown" fallback
-    try:
-        source_lang = detect(source_message.content)
-    except LangDetectException:
-        source_lang = 'unknown'
-        
-    try:
-        joke_lang = detect(joke_message.content)
-    except LangDetectException:
-        joke_lang = 'unknown'
-    
     # Calculate total reactions
     reaction_count = sum(reaction.count for reaction in joke_message.reactions)
     
-    # Use container.store instead of store
-    container.store.save(
+    # Use JokeGenerator's save method
+    await container.joke_generator.save_joke(
         source_message_id=source_message.id,
-        joke_message_id=joke_message.id,
         source_message_content=source_message.content,
+        joke_message_id=joke_message.id,
         joke_message_content=joke_message.content,
-        reaction_count=reaction_count,
-        source_language=source_lang,
-        joke_language=joke_lang
+        reaction_count=reaction_count
     )
 
 async def retract_joke(payload):
@@ -368,7 +370,7 @@ async def process_joke_request(payload, country=None):
             archive_response = f"**Original message**: {message_link}\n{joke}"
             await archive_channel.send(archive_response)
         except Exception as e:
-            print(f"Failed to send to archive channel: {e}")
+            logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
     
     # Delete after timeout if configured
     if config.delete_jokes_after_minutes > 0:

@@ -1,6 +1,13 @@
+import logging
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from store import Store
+from langdetect import detect, LangDetectException
+from typing import Dict
+from opentelemetry.trace import SpanKind
+
+
+logger = logging.getLogger(__name__)
 
 
 class JokeGenerator:
@@ -9,6 +16,7 @@ class JokeGenerator:
         self.store = store
         self.sample_count = sample_count
         self.telemetry = telemetry
+        self._joke_cache: Dict[int, bool] = {}  # message_id -> bool cache
         self.base_prompt = """You are a chatbot that receives a message and you should generate a ur mom joke.
         Response should be fully in the language of the user message which includes translating "your mom" or "ur mom" into the user's language. 
         ur mom joke follows the pattern of replacing the subject or the object in a phrase with \"ur mom\" without adding much extra details.
@@ -35,3 +43,68 @@ class JokeGenerator:
         async with self.telemetry.async_create_span("generate_country_joke") as span:
             response = await self.ai_client.generate_content(message=message, prompt=prompt)
             return response
+
+    async def is_joke(self, original_message: str, response_message: str, message_id: int = None) -> bool:
+        """
+        Determine if a response message is a joke to the original message.
+        Includes caching to avoid redundant AI calls.
+        """
+        # Check cache first if message_id is provided
+        if message_id is not None and message_id in self._joke_cache:
+            return self._joke_cache[message_id]
+            
+        async with self.telemetry.async_create_span("is_joke", kind=SpanKind.INTERNAL) as span:
+            prompt = f"""Tell me if the response is a joke, a wordplay or a sarcastic remark to the original message, reply in English with only yes or no:
+original message: {original_message}
+response: {response_message}
+No? Think again carefully. The response might be a joke, wordplay, or sarcastic remark.
+Is it actually a joke? Reply only yes or no."""
+            
+            logger.info("Checking if message is a joke:")
+            logger.info(f"Original: {original_message}")
+            logger.info(f"Response: {response_message}")
+
+            response = await self.ai_client.generate_content(
+                message=prompt,
+                prompt="You are a joke detection AI. Respond only with 'yes' or 'no'."
+            )
+            
+            result = response.strip().lower().rstrip('.,!?') == "yes"
+            
+            # Cache the result if message_id is provided
+            if message_id is not None:
+                self._joke_cache[message_id] = result
+                
+            logger.info(f"AI response: {response}")
+            logger.info(f"Is joke: {result}")
+            return result
+
+    async def save_joke(self, source_message_id: int, source_message_content: str, 
+                                    joke_message_id: int, joke_message_content: str, 
+                                    reaction_count: int) -> None:
+        """
+        Save a joke to the store with language detection.
+        """
+        async with self.telemetry.async_create_span("save_joke") as span:
+            # Detect languages with "unknown" fallback
+            try:
+                source_lang = detect(source_message_content)
+            except LangDetectException:
+                source_lang = 'unknown'
+                
+            try:
+                joke_lang = detect(joke_message_content)
+            except LangDetectException:
+                joke_lang = 'unknown'
+            
+            self.store.save(
+                source_message_id=source_message_id,
+                joke_message_id=joke_message_id,
+                source_message_content=source_message_content,
+                joke_message_content=joke_message_content,
+                reaction_count=reaction_count,
+                source_language=source_lang,
+                joke_language=joke_lang
+            )
+            
+            logger.info(f"Saved joke: {joke_message_content} (reactions: {reaction_count})")

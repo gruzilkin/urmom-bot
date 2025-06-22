@@ -1,5 +1,8 @@
 import psycopg2
 from dataclasses import dataclass
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class GuildConfig:
@@ -67,7 +70,7 @@ class Store:
             "source_language": source_language,
             "joke_language": joke_language
         }
-        print(f"Store saving joke: {joke_data}")
+        logger.info(f"Store saving joke: {joke_data}")
         
         try:
             self._ensure_connection()
@@ -181,5 +184,9 @@ class Store:
             self._guild_configs[config.guild_id] = config
 
     def __del__(self):
-        if hasattr(self, 'conn'):
-            self.conn.close()
+        try:
+            if self.conn is not None:
+                self.conn.close()
+        except Exception:
+            # Ignore exceptions during cleanup
+            pass
