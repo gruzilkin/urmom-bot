@@ -88,7 +88,7 @@ class GeneralQueryGenerator:
 
             Use the conversation context to better understand what the user is asking about.
             If the question relates to something mentioned in the conversation, reference it appropriately.
-            CRITICAL: Keep your response under 1000 characters. Be concise and direct.
+            Keep your response reasonably sized for Discord chat - be concise and direct.
             
             Conversation context:
             {conversation_text}"""
