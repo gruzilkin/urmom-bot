@@ -1,50 +1,42 @@
-# Conversation History Refactor
+# Graph-Based Conversation History
 
-## Problem Statement
+## Overview
 
-The current conversation fetching logic in `app.py` has several limitations:
+The conversation history system uses a graph-based approach to intelligently gather contextual messages for AI responses. This system preserves bot messages, follows explicit reply relationships, and handles temporal conversation boundaries effectively.
 
-1. **Bot message filtering**: Removes all bot messages, breaking iterative conversations where follow-up questions need previous AI responses for context
-2. **Simple time-based cutoff**: Uses fixed time windows that don't capture logical conversation boundaries
-3. **Inadequate for small friend groups**: Conversations can be slow with gaps, but still logically connected
+## Core Architecture
 
-## Current Implementation Issues
+### Graph-Based Message Clustering
 
-Located in `app.py:203-270` (`get_recent_conversation`):
-- Filters out all bot messages at line 230
-- Uses simple time cutoff that doesn't follow conversation threads
-- Doesn't handle reply chains or referenced messages effectively
+The system builds a conversation graph where messages are nodes connected by two types of edges:
 
-## Proposed Solution: Graph-Based Conversation Clustering
-
-### Core Concept
-
-Build a conversation graph where messages are nodes connected by two types of edges:
-1. **Temporal edges**: Messages within a time threshold (10 minutes)
+1. **Temporal edges**: Messages within a time threshold (30 minutes)
 2. **Reference edges**: Discord reply relationships (always followed regardless of age)
 
-### Algorithm Design
+This approach ensures that both explicit user connections (replies) and implicit temporal continuity are preserved while maintaining logical conversation boundaries.
 
-#### Tik/Tok Alternating Exploration
+## Algorithm: Tik/Tok Alternating Exploration
+
+The conversation building algorithm uses alternating exploration phases:
 
 ```python
-async def build_conversation_graph(channel, trigger_message, min_linear=10, max_total=30, time_threshold_minutes=10):
+async def build_conversation_graph(trigger_message, min_linear=10, max_total=30, time_threshold_minutes=30):
     graph = MessageGraph()
     
     # Seed with guaranteed linear history
-    linear_messages = await get_linear_history(channel, trigger_message, min_linear)
+    linear_messages = await get_linear_history(trigger_message, min_linear)
     for msg in linear_messages:
         graph.add_node(msg)
     
     while len(graph) < max_total:
         # TIK: Reference step - follow all unexplored references
-        reference_step_added = await explore_references(graph, channel)
+        reference_step_added = await explore_references(graph)
         
         if len(graph) >= max_total:
             break
             
         # TOK: Temporal step - explore neighbors with sealing
-        temporal_step_added = await explore_temporal_neighbors(graph, channel, time_threshold)
+        temporal_step_added = await explore_temporal_neighbors(graph, time_threshold)
         
         # Exit if neither step found new messages
         if not reference_step_added and not temporal_step_added:
@@ -53,11 +45,11 @@ async def build_conversation_graph(channel, trigger_message, min_linear=10, max_
     return graph.to_chronological_conversation()
 ```
 
-#### Key Features
+### Key Features
 
 1. **Guaranteed Minimum Context**
-   - Always include `min_linear` recent messages regardless of time gaps
-   - Handles implicit conversation continuity (someone responding to yesterday's topic)
+   - Always includes `min_linear` recent messages regardless of time gaps
+   - Handles implicit conversation continuity when users respond to older topics
 
 2. **Reference Following**
    - All Discord reply references are followed (explicit user connections)
@@ -65,9 +57,10 @@ async def build_conversation_graph(channel, trigger_message, min_linear=10, max_
    - Natural deduplication (same message reached via multiple paths = single node)
 
 3. **Temporal Sealing**
-   - When exploring temporal neighbors, if time gap > threshold, seal that path
+   - When exploring temporal neighbors, if time gap > threshold, seals that path
    - Prevents exploration of unrelated conversation clusters
    - Allows algorithm to explore other directions
+   - Default threshold: 30 minutes
 
 4. **Balanced Exploration**
    - Alternates between reference exploration (TIK) and temporal exploration (TOK)
@@ -79,7 +72,11 @@ async def build_conversation_graph(channel, trigger_message, min_linear=10, max_
    - Stops when no new messages found in either exploration type
    - Bounded performance with predictable limits
 
-### Benefits
+6. **Rich Content Support**
+   - Extracts article content from embedded URLs in messages
+   - Includes article content in conversation context for AI responses
+
+## Benefits
 
 - **Preserves bot messages**: Enables iterative conversations with AI
 - **Logical conversation boundaries**: Isolates related message clusters
@@ -87,28 +84,44 @@ async def build_conversation_graph(channel, trigger_message, min_linear=10, max_
 - **Explicit connection preservation**: Reply chains always followed
 - **Transparent logic**: Clear, predictable decision making
 - **Performance bounded**: Max size limits prevent runaway exploration
+- **Rich content support**: Extracts and includes article content from embedded URLs
 
-### Implementation Requirements
+## Implementation Components
 
-1. **MessageGraph class**: Node deduplication, edge management
-2. **Reference exploration**: Follow `message.reference` relationships
-3. **Temporal exploration**: Channel history with time-based sealing
-4. **Chronological output**: Convert graph to time-ordered conversation format
-5. **Integration**: Replace current `get_recent_conversation` and update `create_conversation_fetcher`
+### MessageGraph Class
 
-### Edge Cases Handled
+Provides graph data structure with:
+- **Node deduplication**: Same message ID creates single node
+- **Reference tracking**: Maintains unexplored reference connections
+- **Temporal frontier**: Tracks messages available for temporal exploration
+- **Chronological output**: Converts graph to time-ordered conversation format
+
+### ConversationGraphBuilder Class
+
+Implements the core algorithm with:
+- **Dependency injection**: Abstract message fetching to work with any message source
+- **Reference exploration**: Follows `message.reference` relationships
+- **Temporal exploration**: Channel history with time-based sealing
+- **Article extraction**: Processes embedded URLs for additional context
+
+### Integration Points
+
+- **get_recent_conversation()**: Main entry point in `app.py` that uses the graph system
+- **create_conversation_fetcher()**: Creates parameterless lambda for AI generators
+- **Discord API abstraction**: Converts Discord messages to MessageNode format
+
+## Edge Cases Handled
 
 - **Implicit continuity**: Minimum linear messages for non-referenced context
 - **Explicit connections**: References always followed regardless of age
 - **Graph size limits**: Tik/tok exploration with max message bounds
 - **Conversation isolation**: Temporal sealing prevents cluster bleeding
 - **Circular paths**: Natural deduplication handles multiple paths to same message
+- **Article extraction**: Safely handles embed processing with error recovery
 
-## Next Steps
+## Configuration
 
-1. Implement `MessageGraph` data structure
-2. Implement reference and temporal exploration functions  
-3. Replace existing conversation fetching logic
-4. Update conversation fetcher creation
-5. Test with various conversation patterns
-6. Ensure bot message inclusion works for iterative queries
+Default parameters:
+- `min_linear=10`: Minimum guaranteed linear messages
+- `max_total=30`: Maximum total messages in graph
+- `time_threshold_minutes=30`: Temporal connection threshold
