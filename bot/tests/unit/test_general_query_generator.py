@@ -7,17 +7,21 @@ from tests.null_telemetry import NullTelemetry
 
 class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        # Create two mock AI clients
+        # Create three mock AI clients
         self.mock_gemini_flash = Mock()
         self.mock_gemini_flash.generate_content = AsyncMock()
         
         self.mock_grok = Mock()
         self.mock_grok.generate_content = AsyncMock()
         
+        self.mock_claude = Mock()
+        self.mock_claude.generate_content = AsyncMock()
+        
         self.telemetry = NullTelemetry()
         self.generator = GeneralQueryGenerator(
             self.mock_gemini_flash, 
             self.mock_grok, 
+            self.mock_claude,
             self.telemetry
         )
 
