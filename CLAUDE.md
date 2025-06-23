@@ -80,3 +80,36 @@ source .venv/bin/activate && PYTHONPATH=bot python -m unittest discover -s bot/t
 - Virtual environment: `.venv/`
 - Database: PostgreSQL with Docker setup
 - Use `PYTHONPATH=bot` to set Python path instead of `cd bot`
+
+## Code Style Guidelines
+
+### Type Hints
+- **Required**: All functions and methods must have complete type hints
+- **Modern syntax**: Use modern union syntax (`int | None` instead of `Optional[int]`)
+- **Return types**: Always specify return types, including `None` when applicable
+- **Parameters**: Type hint all parameters including `self` context when needed
+- **Collections**: Use specific collection types (`list[str]` instead of `List[str]` when possible)
+
+### Examples
+```python
+# Good - Complete type hints with modern syntax
+async def fetch_message(message_id: int) -> MessageNode | None:
+    pass
+
+def process_data(items: list[str], count: int = 10) -> dict[str, Any]:
+    pass
+
+def create_handler() -> Callable[[str], Awaitable[None]]:
+    pass
+
+# Avoid - Missing or old-style type hints
+def fetch_message(message_id):  # Missing types
+    pass
+
+def process_data(items: Optional[List[str]]) -> Dict[str, Any]:  # Old syntax
+    pass
+```
+
+### Import Guidelines
+- Use `from typing import Callable, Awaitable` for function type hints
+- Import specific types needed rather than importing everything from typing
