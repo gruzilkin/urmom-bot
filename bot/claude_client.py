@@ -92,24 +92,16 @@ class ClaudeClient(AIClient):
                 # Parse structured response if schema was provided
                 if response_schema:
                     try:
-                        # Try to extract JSON from response
-                        json_str = None
-                        
-                        # Look for JSON block or direct JSON
-                        if "```json" in response_text:
-                            start = response_text.find("```json") + 7
-                            end = response_text.find("```", start)
-                            json_str = response_text[start:end].strip()
-                        elif response_text.strip().startswith("{") and response_text.strip().endswith("}"):
-                            json_str = response_text.strip()
-                        else:
-                            # Try to parse the entire response as JSON
-                            json_str = response_text.strip()
+                        # Extract JSON from markdown block if present, otherwise use raw text
+                        json_str = response_text.strip()
+                        if "```json" in json_str:
+                            start = json_str.find("```json") + 7
+                            end = json_str.find("```", start)
+                            json_str = json_str[start:end].strip()
                         
                         response_data = json.loads(json_str)
                         parsed_result = response_schema.model_validate(response_data)
                         return parsed_result
-                        
                     except (json.JSONDecodeError, ValueError) as e:
                         logger.error(f"Failed to parse structured response: {e}")
                         raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {response_text}")
