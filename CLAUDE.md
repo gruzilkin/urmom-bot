@@ -37,7 +37,11 @@ source .venv/bin/activate && PYTHONPATH=bot python -m unittest discover -s bot/t
 - Unit tests: `bot/tests/unit/`
 - Integration tests: `bot/tests/integration/`
 - Testing framework: `unittest.IsolatedAsyncioTestCase` for async code
-- Telemetry mocking: Use `NullTelemetry()` from `tests.null_telemetry`
+- **Telemetry Guidelines**: 
+  - Use `NullTelemetry()` from `tests.null_telemetry` in tests for classes requiring telemetry
+  - Telemetry is a required dependency - never None or optional
+  - Don't add defensive checks like `if self.telemetry:` - assume it's always present
+  - Classes can safely call telemetry methods without null checks
 
 ## Architecture Overview
 
