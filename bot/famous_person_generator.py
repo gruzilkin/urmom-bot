@@ -128,7 +128,16 @@ class FamousPersonGenerator:
             )
             
             logger.info(f"Generated response: {response}")
-            return f"**{person.title()} would say:**\n\n{response}"
+            
+            # Calculate formatting overhead and truncate if needed
+            prefix = f"**{person.title()} would say:**\n\n"
+            max_response_length = 2000 - len(prefix)
+            
+            if len(response) > max_response_length:
+                response = response[:max_response_length - 3] + "..."
+                logger.warn(f"Response truncated to fit Discord limit with formatting: {len(prefix + response)} chars")
+            
+            return f"{prefix}{response}"
     
     async def handle_request(self, params: FamousParams, extracted_message: str, conversation_fetcher) -> str:
         """
