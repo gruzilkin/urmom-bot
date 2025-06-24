@@ -1,23 +1,22 @@
 """
-Integration tests for GeminiClient structured output functionality.
+Integration tests for GemmaClient structured output functionality.
 
-Tests the ability to generate structured responses using Pydantic models.
+Tests the ability to generate structured responses using Pydantic models with manual JSON parsing.
 Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards.
 """
 
 import os
 import unittest
-from unittest.mock import Mock
 from dotenv import load_dotenv
-from gemini_client import GeminiClient
+from gemma_client import GemmaClient
 from schemas import YesNo
 from tests.null_telemetry import NullTelemetry
 
 load_dotenv()
 
 
-class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
-    """Integration tests for Gemini structured output with Pydantic models."""
+class TestGemmaStructuredOutput(unittest.IsolatedAsyncioTestCase):
+    """Integration tests for Gemma structured output with manual JSON parsing."""
     
     def setUp(self):
         """Set up test dependencies."""
@@ -25,14 +24,14 @@ class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
         
         # Check for API key and model name
         self.api_key = os.getenv('GEMINI_API_KEY')
-        self.model_name = os.getenv('GEMINI_FLASH_MODEL')
+        self.model_name = os.getenv('GEMINI_GEMMA_MODEL')
         
         if not self.api_key:
             self.skipTest("GEMINI_API_KEY environment variable not set")
         if not self.model_name:
-            self.skipTest("GEMINI_FLASH_MODEL environment variable not set")
+            self.skipTest("GEMINI_GEMMA_MODEL environment variable not set")
             
-        self.client = GeminiClient(
+        self.client = GemmaClient(
             api_key=self.api_key,
             model_name=self.model_name,
             telemetry=self.telemetry,
@@ -79,21 +78,36 @@ class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(result, str)
         self.assertIn("blue", result.lower())
     
-    async def test_structured_output_with_grounding(self):
-        """Test that using structured output with grounding raises appropriate error."""
+    async def test_structured_output_with_grounding_warning(self):
+        """Test that using structured output with grounding logs warning but continues."""
         message = "Is Python a programming language?"
         
-        # This should raise an error since structured output and grounding can't be used together
-        with self.assertRaises(Exception) as context:
-            await self.client.generate_content(
-                message=message,
-                enable_grounding=True,
-                response_schema=YesNo
-            )
+        # This should work but log a warning since grounding is not supported by Gemma
+        result = await self.client.generate_content(
+            message=message,
+            enable_grounding=True,
+            response_schema=YesNo
+        )
         
-        # Verify that the error mentions the conflict
-        error_msg = str(context.exception)
-        self.assertIn("Tool use with a response mime type", error_msg)
+        # Verify we still get a structured response despite grounding not being supported
+        self.assertIsInstance(result, YesNo)
+        self.assertEqual(result.answer, "YES")
+    
+    async def test_samples_warning(self):
+        """Test that using samples logs warning but continues."""
+        message = "Is Python a programming language?"
+        samples = [("Test question", "Test answer")]
+        
+        # This should work but log a warning since samples are not supported in simplified mode
+        result = await self.client.generate_content(
+            message=message,
+            samples=samples,
+            response_schema=YesNo
+        )
+        
+        # Verify we still get a structured response despite samples not being supported
+        self.assertIsInstance(result, YesNo)
+        self.assertEqual(result.answer, "YES")
 
 
 if __name__ == '__main__':
