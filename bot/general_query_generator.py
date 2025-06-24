@@ -88,7 +88,7 @@ class GeneralQueryGenerator:
             ])
             
             prompt = f"""You are a helpful AI assistant in a Discord chat. Please respond to the user's question or request.
-            Keep responses under 2000 characters due to Discord's message limit.
+            Keep responses under 2000 characters due to Discord's message limit but no need to report on the length of the response.
 
             Use the conversation context to better understand what the user is asking about.
             If the question relates to something mentioned in the conversation, reference it appropriately.

@@ -114,7 +114,7 @@ class FamousPersonGenerator:
             The user specifically asked: '{extracted_message}'
             Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions.
             
-            Keep responses under 2000 characters due to Discord's message limit.
+            Keep responses under 2000 characters due to Discord's message limit but no need to report on the length of the response.
             
             Here is the conversation context:
             {conversation_text}"""
