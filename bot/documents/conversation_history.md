@@ -20,7 +20,7 @@ This approach ensures that both explicit user connections (replies) and implicit
 The conversation building algorithm uses alternating exploration phases:
 
 ```python
-async def build_conversation_graph(trigger_message, min_linear=10, max_total=30, time_threshold_minutes=30):
+async def build_conversation_graph(trigger_message, min_linear, max_total, time_threshold_minutes):
     graph = MessageGraph()
     
     # Seed with guaranteed linear history
@@ -121,7 +121,7 @@ Implements the core algorithm with:
 
 ## Configuration
 
-Default parameters:
-- `min_linear=10`: Minimum guaranteed linear messages
-- `max_total=30`: Maximum total messages in graph
-- `time_threshold_minutes=30`: Temporal connection threshold
+Parameters are configured in `create_conversation_fetcher()` in `app.py`:
+- `min_messages=10`: Minimum guaranteed linear messages
+- `max_messages=30`: Maximum total messages in graph
+- `max_age_minutes=30`: Temporal connection threshold

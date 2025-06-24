@@ -329,6 +329,9 @@ async def get_recent_conversation(
         
         conversation = await builder.build_conversation_graph(
             trigger_message=trigger_message,
+            min_linear=min_messages,
+            max_total=max_messages,
+            time_threshold_minutes=max_age_minutes,
             article_extractor=article_extractor
         )
         

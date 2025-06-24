@@ -173,9 +173,9 @@ class ConversationGraphBuilder:
     
     async def build_conversation_graph(self, 
                                      trigger_message: MessageNode,
-                                     min_linear: int = 10,
-                                     max_total: int = 30, 
-                                     time_threshold_minutes: int = 10,
+                                     min_linear: int,
+                                     max_total: int, 
+                                     time_threshold_minutes: int,
                                      article_extractor: Callable[[str], str] | None = None) -> List[Tuple[str, str]]:
         """
         Build conversation graph using tik/tok alternating exploration.
