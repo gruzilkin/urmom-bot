@@ -8,10 +8,11 @@ logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, telemetry: Telemetry):
+    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, telemetry: Telemetry):
         self.gemini_flash = gemini_flash
         self.grok = grok
         self.claude = claude
+        self.gemma = gemma
         self.telemetry = telemetry
     
     def _get_ai_client(self, ai_backend: str) -> AIClient:
@@ -22,6 +23,8 @@ class GeneralQueryGenerator:
             return self.grok
         elif ai_backend == "claude":
             return self.claude
+        elif ai_backend == "gemma":
+            return self.gemma
         else:
             raise ValueError(f"Unknown ai_backend: {ai_backend}")
 
@@ -38,6 +41,7 @@ class GeneralQueryGenerator:
           * gemini_flash: General questions, explanations, factual information
           * grok: Creative tasks, uncensored content, real-time news/current events, wild requests
           * claude: Coding help, technical explanations, detailed analysis, complex reasoning
+          * gemma: Do not select unless explicitly requested
           * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
         
         - temperature selection:

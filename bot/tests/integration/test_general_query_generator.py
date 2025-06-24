@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from conversation_graph import ConversationMessage
 from gemini_client import GeminiClient
+from gemma_client import GemmaClient
 from general_query_generator import GeneralQueryGenerator
 from grok_client import GrokClient
 from schemas import GeneralParams
@@ -31,6 +32,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         # Check for API keys and model names
         gemini_api_key = os.getenv('GEMINI_API_KEY')
         gemini_model = os.getenv('GEMINI_FLASH_MODEL')
+        gemma_model = os.getenv('GEMINI_GEMMA_MODEL')
         grok_api_key = os.getenv('GROK_API_KEY')
         grok_model = os.getenv('GROK_MODEL')
         
@@ -38,6 +40,8 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             self.skipTest("GEMINI_API_KEY environment variable not set")
         if not gemini_model:
             self.skipTest("GEMINI_FLASH_MODEL environment variable not set")
+        if not gemma_model:
+            self.skipTest("GEMINI_GEMMA_MODEL environment variable not set")
         if not grok_api_key:
             self.skipTest("GROK_API_KEY environment variable not set")
         if not grok_model:
@@ -46,21 +50,29 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.gemini_client = GeminiClient(
             api_key=gemini_api_key,
             model_name=gemini_model,
-            temperature=0.1,
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            temperature=0.1
+        )
+        
+        self.gemma_client = GemmaClient(
+            api_key=gemini_api_key,
+            model_name=gemma_model,
+            telemetry=self.telemetry,
+            temperature=0.1
         )
         
         self.grok_client = GrokClient(
             api_key=grok_api_key,
             model_name=grok_model,
-            temperature=0.1,
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            temperature=0.1
         )
         
         self.generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_client,
             grok=self.grok_client,
             claude=None,
+            gemma=self.gemma_client,
             telemetry=self.telemetry
         )
     

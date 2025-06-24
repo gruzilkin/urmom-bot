@@ -72,6 +72,7 @@ class Container:
             gemini_flash=self.gemini_flash, 
             grok=self.grok,
             claude=self.claude,
+            gemma=self.gemma,
             telemetry=self.telemetry
         )
 

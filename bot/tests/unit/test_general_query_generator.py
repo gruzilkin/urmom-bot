@@ -8,7 +8,7 @@ from tests.null_telemetry import NullTelemetry
 
 class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        # Create three mock AI clients
+        # Create four mock AI clients
         self.mock_gemini_flash = Mock()
         self.mock_gemini_flash.generate_content = AsyncMock()
         
@@ -18,11 +18,15 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_claude = Mock()
         self.mock_claude.generate_content = AsyncMock()
         
+        self.mock_gemma = Mock()
+        self.mock_gemma.generate_content = AsyncMock()
+        
         self.telemetry = NullTelemetry()
         self.generator = GeneralQueryGenerator(
             self.mock_gemini_flash, 
             self.mock_grok, 
             self.mock_claude,
+            self.mock_gemma,
             self.telemetry
         )
 
@@ -93,6 +97,8 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         """Test that _get_ai_client selects the correct client"""
         self.assertEqual(self.generator._get_ai_client("gemini_flash"), self.mock_gemini_flash)
         self.assertEqual(self.generator._get_ai_client("grok"), self.mock_grok)
+        self.assertEqual(self.generator._get_ai_client("claude"), self.mock_claude)
+        self.assertEqual(self.generator._get_ai_client("gemma"), self.mock_gemma)
         
         with self.assertRaises(ValueError):
             self.generator._get_ai_client("invalid_backend")
