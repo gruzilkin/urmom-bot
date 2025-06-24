@@ -5,6 +5,7 @@ from enum import Enum
 from types import SimpleNamespace
 import logging
 from typing import Callable, Awaitable
+from functools import lru_cache
 
 import nextcord
 from dotenv import load_dotenv
@@ -218,26 +219,26 @@ def discord_to_message_node(message: nextcord.Message) -> MessageNode:
     )
 
 
-def create_article_extractor() -> Callable[[str], str]:
-    """Create article extractor function for conversation graph."""
-    def extract_article(url: str) -> str:
-        with container.telemetry.create_span("extract_article") as span:
-            span.set_attribute("url", url)
-            try:
-                article = Goose().extract(url)
-                content = article.cleaned_text if article.cleaned_text else ""
-                span.set_attribute("content_length", len(content))
-                if content:
-                    logger.info(f"Extracted article content from {url}: {content[:500]}{'...' if len(content) > 500 else ''}")
-                else:
-                    logger.info(f"No content extracted from {url}")
-                return content
-            except Exception as e:
-                span.record_exception(e)
-                span.set_status(Status(StatusCode.ERROR))
-                logger.error(f"Error extracting article from {url}: {e}", exc_info=True)
-                return ""
-    return extract_article
+@lru_cache(maxsize=128)
+def extract_article(url: str) -> str:
+    """Extract article content with LRU caching."""
+    with container.telemetry.create_span("extract_article") as span:
+        span.set_attribute("url", url)
+        try:
+            article = Goose().extract(url)
+            content = article.cleaned_text if article.cleaned_text else ""
+            span.set_attribute("content_length", len(content))
+            if content:
+                logger.info(f"Extracted article content from {url}: {content[:500]}{'...' if len(content) > 500 else ''}")
+            else:
+                logger.info(f"No content extracted from {url}")
+            return content
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR))
+            logger.error(f"Error extracting article from {url}: {e}", exc_info=True)
+            return ""
+
 
 
 async def get_recent_conversation(
@@ -327,15 +328,12 @@ async def get_recent_conversation(
             telemetry=container.telemetry
         )
         
-        # Create article extractor
-        article_extractor = create_article_extractor()
-        
         conversation = await builder.build_conversation_graph(
             trigger_message=trigger_message,
             min_linear=min_messages,
             max_total=max_messages,
             time_threshold_minutes=max_age_minutes,
-            article_extractor=article_extractor
+            article_extractor=extract_article
         )
         
         span.set_attribute("total_messages", len(conversation))
