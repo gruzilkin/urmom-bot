@@ -68,7 +68,9 @@ class GeminiClient(AIClient):
                 contents.append(Content(parts=[Part(text=msg)], role="user"))
                 contents.append(Content(parts=[Part(text=joke)], role="model"))
 
-            contents.append(Content(parts=[Part(text=message)], role="user"))
+            # Add length constraint specifically for Gemini since it doesn't respect max_output_tokens well
+            gemini_message = f"{message}\n\nIMPORTANT: Keep your response under 1800 characters to fit Discord's 2000 character limit."
+            contents.append(Content(parts=[Part(text=gemini_message)], role="user"))
 
             logger.info(f"system_instruction: {prompt}")
             logger.info(f"Request contents: {contents}")
