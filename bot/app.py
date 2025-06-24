@@ -4,15 +4,18 @@ import os
 from enum import Enum
 from types import SimpleNamespace
 import logging
+from typing import Callable, Awaitable
+from functools import lru_cache
 
 import nextcord
 from dotenv import load_dotenv
 from langdetect import detect, LangDetectException
 from goose3 import Goose
 
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from container import container  # Import the instance instead of the class
+from conversation_graph import ConversationGraphBuilder, MessageNode, ConversationMessage
 
 load_dotenv()
 
@@ -44,7 +47,7 @@ class BotCommand(Enum):
             return None
 
 @bot.event
-async def on_ready():
+async def on_ready() -> None:
     logger.info(f'Logged in as {bot.user}')
 
 @bot.event
@@ -200,76 +203,144 @@ Current settings:
     return False
 
 
-async def get_recent_conversation(channel, min_messages=10, max_messages=30, max_age_minutes=30, reference_message=None):
+def discord_to_message_node(message: nextcord.Message) -> MessageNode:
+    """Convert Discord message to MessageNode."""
+    reference_id = None
+    if message.reference and message.reference.message_id:
+        reference_id = message.reference.message_id
+    
+    return MessageNode(
+        id=message.id,
+        content=message.content,
+        author_name=message.author.name,
+        created_at=message.created_at,
+        reference_id=reference_id,
+        embeds=message.embeds
+    )
+
+
+@lru_cache(maxsize=128)
+def extract_article(url: str) -> str:
+    """Extract article content with LRU caching."""
+    with container.telemetry.create_span("extract_article") as span:
+        span.set_attribute("url", url)
+        try:
+            article = Goose().extract(url)
+            content = article.cleaned_text if article.cleaned_text else ""
+            span.set_attribute("content_length", len(content))
+            if content:
+                logger.info(f"Extracted article content from {url}: {content[:500]}{'...' if len(content) > 500 else ''}")
+            else:
+                logger.info(f"No content extracted from {url}")
+            return content
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR))
+            logger.error(f"Error extracting article from {url}: {e}", exc_info=True)
+            return ""
+
+
+
+async def get_recent_conversation(
+    channel: nextcord.TextChannel,
+    min_messages: int = 10,
+    max_messages: int = 30,
+    max_age_minutes: int = 30,
+    reference_message: nextcord.Message | None = None
+) -> list[ConversationMessage]:
     """
-    Fetch recent messages from the channel to build conversation context.
+    Fetch recent conversation using graph-based clustering.
     
     Args:
         channel: The Discord channel to get messages from
-        min_messages: Minimum number of messages to retrieve, regardless of age
-        max_messages: Maximum number of messages to retrieve
-        max_age_minutes: Maximum age of messages in minutes from the reference point
+        min_messages: Minimum number of messages to retrieve (now min_linear)
+        max_messages: Maximum number of messages to retrieve (now max_total)
+        max_age_minutes: Time threshold for temporal connections (now time_threshold_minutes)
         reference_message: If provided, use this as the starting point for the conversation
+        
+    Returns:
+        List of ConversationMessage objects with timestamps in chronological order
     """
-    all_messages = []
+    # Create Discord API adapter functions
+    async def fetch_message(message_id: int) -> MessageNode | None:
+        async with container.telemetry.async_create_span("fetch_message") as span:
+            span.set_attribute("message_id", message_id)
+            try:
+                message = await channel.fetch_message(message_id)
+                result = discord_to_message_node(message)
+                span.set_attribute("found", True)
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR))
+                span.set_attribute("found", False)
+                logger.error(f"Failed to fetch message {message_id}: {e}", exc_info=True)
+                return None
     
-    with container.telemetry.create_span("get_recent_conversation") as span:
-        if reference_message:
-            all_messages.append(reference_message)
-            async for msg in channel.history(limit=max_messages, before=reference_message):
-                all_messages.append(msg)
-        else:
-            async for msg in channel.history(limit=max_messages):
-                all_messages.append(msg)
-    
-    if not all_messages:
-        return []
-    
-    filtered_messages = []
-    for msg in all_messages: 
-        if not msg.author.bot and not msg.content.startswith(f"<@{bot.user.id}>"):
-            filtered_messages.append(msg)
-    
-    if not filtered_messages:
-        return []
-    
-    reference_time = filtered_messages[0].created_at
-    cutoff_time = reference_time - datetime.timedelta(minutes=max_age_minutes)
-    
-    # Always include the minimum number of messages
-    guaranteed_messages = filtered_messages[:min_messages]
-    
-    # Apply time filter only to the remaining messages
-    time_filtered_messages = [msg for msg in filtered_messages[min_messages:] 
-                             if msg.created_at >= cutoff_time]
-    
-    # Combine guaranteed messages with time-filtered messages
-    result_messages = guaranteed_messages + time_filtered_messages
-
-    # Format messages as conversation tuples and reverse them for chronological order
-    conversation_messages = [(msg.author.name, msg.content) for msg in result_messages]
-
-    for message in result_messages:
-        for embed in message.embeds:
-            if embed.url:
+    async def fetch_history(message_id: int | None) -> list[MessageNode]:
+        async with container.telemetry.async_create_span("fetch_history") as span:
+            span.set_attribute("message_id", message_id or "channel_start")
+            
+            message = None
+            if message_id:
                 try:
-                    with container.telemetry.create_span("extract_article") as span:
-                        span.set_attribute("url", embed.url)
-                        article = Goose().extract(embed.url)
-                        if article.cleaned_text:
-                            conversation_messages.append(("article", article.cleaned_text))
+                    message = await channel.fetch_message(message_id)
                 except Exception as e:
-                    logger.error(
-                        f"Error extracting article from {embed.url}: {e}",
-                        exc_info=True,
-                        extra={"article_url": embed.url}
-                    )
-
-    conversation_messages.reverse()
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR))
+                    logger.error(f"Failed to fetch message {message_id} for history: {e}", exc_info=True)
+                    return []
+            
+            messages = []
+            try:
+                async for msg in channel.history(limit=100, before=message):
+                    messages.append(discord_to_message_node(msg))
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR))
+                logger.error(f"Error fetching history: {e}", exc_info=True)
+            
+            span.set_attribute("messages_fetched", len(messages))
+            return messages
     
-    return conversation_messages
+    # Determine trigger message
+    trigger_message = None
+    if reference_message:
+        trigger_message = discord_to_message_node(reference_message)
+    else:
+        # Get most recent message as trigger
+        try:
+            async for msg in channel.history(limit=1):
+                trigger_message = discord_to_message_node(msg)
+                break
+        except Exception as e:
+            logger.error(f"Failed to fetch most recent message from channel: {e}", exc_info=True)
+            return []
+    
+    if not trigger_message:
+        return []
+    
+    # Build conversation graph with telemetry
+    with container.telemetry.create_span("build_conversation_graph") as span:
+        builder = ConversationGraphBuilder(
+            fetch_message=fetch_message,
+            fetch_history=fetch_history,
+            telemetry=container.telemetry
+        )
+        
+        conversation = await builder.build_conversation_graph(
+            trigger_message=trigger_message,
+            min_linear=min_messages,
+            max_total=max_messages,
+            time_threshold_minutes=max_age_minutes,
+            article_extractor=extract_article
+        )
+        
+        span.set_attribute("total_messages", len(conversation))
+    
+    return conversation
 
-def create_conversation_fetcher(message: nextcord.Message):
+def create_conversation_fetcher(message: nextcord.Message) -> Callable[[], Awaitable[list[ConversationMessage]]]:
     """
     Create a parameterless lambda that encapsulates conversation fetching logic.
     
@@ -294,7 +365,7 @@ def create_conversation_fetcher(message: nextcord.Message):
     
     return fetch_conversation
 
-async def is_joke(payload) -> bool:
+async def is_joke(payload: nextcord.RawReactionActionEvent) -> bool:
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
     
@@ -312,7 +383,7 @@ async def is_joke(payload) -> bool:
         message_id=payload.message_id
     )
 
-async def save_joke(payload):
+async def save_joke(payload: nextcord.RawReactionActionEvent) -> None:
     channel = await bot.fetch_channel(payload.channel_id)
     joke_message = await channel.fetch_message(payload.message_id)
     
@@ -331,14 +402,14 @@ async def save_joke(payload):
         reaction_count=reaction_count
     )
 
-async def retract_joke(payload):
+async def retract_joke(payload: nextcord.RawReactionActionEvent) -> None:
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
 
     if message.author.id == bot.user.id and await check_should_delete(message):
         await message.delete()
 
-async def process_joke_request(payload, country=None):
+async def process_joke_request(payload: nextcord.RawReactionActionEvent, country: str | None = None) -> None:
     config = container.store.get_guild_config(payload.guild_id)
     
     # Skip country jokes if disabled
@@ -376,7 +447,7 @@ async def process_joke_request(payload, country=None):
     if config.delete_jokes_after_minutes > 0:
         asyncio.create_task(delete_message_later(reply_message, config.delete_jokes_after_minutes * 60))
 
-async def delete_message_later(message, delay_seconds):
+async def delete_message_later(message: nextcord.Message, delay_seconds: int) -> None:
     """Delete a message after a delay without blocking the caller."""
     await asyncio.sleep(delay_seconds)
     try:

@@ -6,6 +6,7 @@ from famous_person_generator import FamousPersonGenerator
 from general_query_generator import GeneralQueryGenerator
 from gemini_client import GeminiClient
 from grok_client import GrokClient
+from claude_client import ClaudeClient
 from country_resolver import CountryResolver
 from open_telemetry import Telemetry
 from ai_router import AiRouter
@@ -43,6 +44,10 @@ class Container:
             temperature=float(os.getenv("GROK_TEMPERATURE", "0.7")),
             telemetry=self.telemetry
         )
+        
+        self.claude = ClaudeClient(
+            telemetry=self.telemetry
+        )
 
         self.ai_client = self._get_ai_client()
 
@@ -58,6 +63,7 @@ class Container:
         self.general_query_generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_flash, 
             grok=self.grok,
+            claude=self.claude,
             telemetry=self.telemetry
         )
 
@@ -79,14 +85,17 @@ class Container:
     def _get_ai_client(self):
         FLASH = "FLASH"
         GROK = "GROK"
+        CLAUDE = "CLAUDE"
         ai_provider = self._get_env("AI_PROVIDER").upper()
         
         if ai_provider == FLASH:
             return self.gemini_flash
         elif ai_provider == GROK:
             return self.grok
+        elif ai_provider == CLAUDE:
+            return self.claude
         else:
-            raise ValueError(f"Invalid AI_PROVIDER: {ai_provider}. Must be either {FLASH} or {GROK}")
+            raise ValueError(f"Invalid AI_PROVIDER: {ai_provider}. Must be either {FLASH}, {GROK}, or {CLAUDE}")
 
 # Create a single instance to be imported by other modules
 container = Container()

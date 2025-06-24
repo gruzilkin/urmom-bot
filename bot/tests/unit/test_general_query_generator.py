@@ -2,22 +2,27 @@ import unittest
 from unittest.mock import AsyncMock, Mock
 from general_query_generator import GeneralQueryGenerator
 from schemas import GeneralParams
+from conversation_graph import ConversationMessage
 from tests.null_telemetry import NullTelemetry
 
 
 class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        # Create two mock AI clients
+        # Create three mock AI clients
         self.mock_gemini_flash = Mock()
         self.mock_gemini_flash.generate_content = AsyncMock()
         
         self.mock_grok = Mock()
         self.mock_grok.generate_content = AsyncMock()
         
+        self.mock_claude = Mock()
+        self.mock_claude.generate_content = AsyncMock()
+        
         self.telemetry = NullTelemetry()
         self.generator = GeneralQueryGenerator(
             self.mock_gemini_flash, 
             self.mock_grok, 
+            self.mock_claude,
             self.telemetry
         )
 
@@ -53,7 +58,11 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
-            return [("user1", "Let's get creative")]
+            return [ConversationMessage(
+                author_name="user1",
+                content="Let's get creative",
+                timestamp="2024-01-01 12:00:00"
+            )]
         
         result = await self.generator.handle_request(params, mock_conversation_fetcher)
         

@@ -1,16 +1,17 @@
 import logging
+
 from ai_client import AIClient
 from open_telemetry import Telemetry
-from schemas import YesNo, GeneralParams
-
+from schemas import GeneralParams
 
 logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, gemini_flash: AIClient, grok: AIClient, telemetry: Telemetry):
+    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, telemetry: Telemetry):
         self.gemini_flash = gemini_flash
         self.grok = grok
+        self.claude = claude
         self.telemetry = telemetry
     
     def _get_ai_client(self, ai_backend: str) -> AIClient:
@@ -19,6 +20,8 @@ class GeneralQueryGenerator:
             return self.gemini_flash
         elif ai_backend == "grok":
             return self.grok
+        elif ai_backend == "claude":
+            return self.claude
         else:
             raise ValueError(f"Unknown ai_backend: {ai_backend}")
 
@@ -32,9 +35,10 @@ class GeneralQueryGenerator:
         
         Parameter extraction:
         - ai_backend selection:
-          * gemini_flash: General questions, explanations, coding help, factual information
+          * gemini_flash: General questions, explanations, factual information
           * grok: Creative tasks, uncensored content, real-time news/current events, wild requests
-          * Handle explicit requests: "ask grok about...", "use gemini flash for..."
+          * claude: Coding help, technical explanations, detailed analysis, complex reasoning
+          * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
         
         - temperature selection:
           * 0.0-0.2: Factual data, calculations, precise information, technical explanations
@@ -77,16 +81,18 @@ class GeneralQueryGenerator:
             
             conversation = await conversation_fetcher()
             
-            # Build conversation context as a single message
-            conversation_text = "\n".join([f"{username}: {content}" for username, content in conversation])
+            # Build conversation context as a single message with timestamps
+            conversation_text = "\n".join([
+                f"{msg.timestamp} {msg.author_name}: {msg.content}" 
+                for msg in conversation
+            ])
             
             prompt = f"""You are a helpful AI assistant in a Discord chat. Please respond to the user's question or request.
+            CRITICAL CONSTRAINT: Your response MUST be under 450 tokens (approximately 1800 characters). Discord has a 2000 character limit and responses over this limit will be rejected. Keep responses concise and focused.
 
             Use the conversation context to better understand what the user is asking about.
             If the question relates to something mentioned in the conversation, reference it appropriately.
-            CRITICAL: Keep your response under 1000 characters. Be concise and direct.
-            
-            User's question/request: '{params.cleaned_query}'
+            For complex topics, provide a brief summary with key points rather than detailed explanations.
             
             Conversation context:
             {conversation_text}"""
@@ -96,8 +102,11 @@ class GeneralQueryGenerator:
             logger.info(f"Conversation context: {conversation}")
             
             # Use the selected AI client with the specified temperature
+            # Modify the user message to include length constraint
+            modified_message = f"{params.cleaned_query}\n\nIMPORTANT: Keep your response under 1800 characters."
+            
             response = await ai_client.generate_content(
-                message="",  # The conversation is included in the prompt
+                message=modified_message,
                 prompt=prompt,
                 temperature=params.temperature,
                 enable_grounding=True  # Enable grounding for general queries to get current information

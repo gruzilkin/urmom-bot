@@ -1,10 +1,8 @@
-from typing import List, Tuple
-import nextcord
+import logging
+
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import FamousParams
-import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -101,8 +99,11 @@ class FamousPersonGenerator:
             
             conversation = await conversation_fetcher()
             
-            # Build conversation context as a single message
-            conversation_text = "\n".join([f"{username}: {content}" for username, content in conversation])
+            # Build conversation context as a single message with timestamps
+            conversation_text = "\n".join([
+                f"{msg.timestamp} {msg.author_name}: {msg.content}" 
+                for msg in conversation
+            ])
             
             prompt = f"""You are {person}. Generate a response as if you were {person}, 
             using their communication style, beliefs, values, and knowledge.
@@ -112,6 +113,8 @@ class FamousPersonGenerator:
             Feel free to tease and poke fun at the message authors, especially Florent.
             The user specifically asked: '{extracted_message}'
             Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions.
+            
+            IMPORTANT: Keep your response under 450 tokens (approximately 1800 characters) to stay within Discord's 2000 character limit.
             
             Here is the conversation context:
             {conversation_text}"""

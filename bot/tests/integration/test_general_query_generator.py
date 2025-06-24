@@ -7,10 +7,12 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 
 import os
 import unittest
-from unittest.mock import AsyncMock
+
 from dotenv import load_dotenv
-from general_query_generator import GeneralQueryGenerator
+
+from conversation_graph import ConversationMessage
 from gemini_client import GeminiClient
+from general_query_generator import GeneralQueryGenerator
 from grok_client import GrokClient
 from schemas import GeneralParams
 from tests.null_telemetry import NullTelemetry
@@ -58,6 +60,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_client,
             grok=self.grok_client,
+            claude=None,
             telemetry=self.telemetry
         )
     
@@ -66,8 +69,16 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         # Mock conversation that mentions a specific item
         async def mock_conversation_fetcher():
             return [
-                ("alice", "I love my pet dragon named Sparkles"),
-                ("bob", "That's so cool!")
+                ConversationMessage(
+                    author_name="alice",
+                    content="I love my pet dragon named Sparkles",
+                    timestamp="2024-01-01 11:55:00"
+                ),
+                ConversationMessage(
+                    author_name="bob",
+                    content="That's so cool!",
+                    timestamp="2024-01-01 11:58:00"
+                )
             ]
         
         params = GeneralParams(
@@ -86,7 +97,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(context_mentioned, f"Response should mention context from conversation: {result}")
     
     async def test_handle_request_respects_length_limit(self):
-        """Test handle_request respects the 1000 character length limit."""
+        """Test handle_request keeps responses reasonably sized for Discord chat."""
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
             return []
@@ -101,8 +112,8 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
-        # Verify response respects the character limit (allow some variance from 1000 char prompt instruction)
-        self.assertLessEqual(len(result), 1500, f"Response should be under 1500 characters but was {len(result)}: {result}")
+        # Verify response is reasonably sized for Discord chat (Discord limit is 2000 chars)
+        self.assertLessEqual(len(result), 2000, f"Response should be under 2000 characters but was {len(result)}: {result}")
 
 
 if __name__ == '__main__':

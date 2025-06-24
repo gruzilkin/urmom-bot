@@ -45,7 +45,10 @@ services:
     restart: unless-stopped
     depends_on:
       - db
+    volumes:
+      - claude_auth:/root/.claude
 
 volumes:
     pgadmin:
     db:
+    claude_auth:

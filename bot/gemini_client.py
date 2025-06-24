@@ -101,7 +101,6 @@ class GeminiClient(AIClient):
             )
 
             logger.info(response)
-            logger.info(f"Response: {response}")
             self._track_completion_metrics(response, method_name="generate_content")
             
             # Return parsed object if schema was provided, otherwise return text
