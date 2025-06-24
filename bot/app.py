@@ -14,7 +14,7 @@ from goose3 import Goose
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from container import container  # Import the instance instead of the class
-from conversation_graph import ConversationGraphBuilder, MessageNode
+from conversation_graph import ConversationGraphBuilder, MessageNode, ConversationMessage
 
 load_dotenv()
 
@@ -246,7 +246,7 @@ async def get_recent_conversation(
     max_messages: int = 30,
     max_age_minutes: int = 30,
     reference_message: nextcord.Message | None = None
-) -> list[tuple[str, str]]:
+) -> list[ConversationMessage]:
     """
     Fetch recent conversation using graph-based clustering.
     
@@ -256,6 +256,9 @@ async def get_recent_conversation(
         max_messages: Maximum number of messages to retrieve (now max_total)
         max_age_minutes: Time threshold for temporal connections (now time_threshold_minutes)
         reference_message: If provided, use this as the starting point for the conversation
+        
+    Returns:
+        List of ConversationMessage objects with timestamps in chronological order
     """
     # Create Discord API adapter functions
     async def fetch_message(message_id: int) -> MessageNode | None:
@@ -339,7 +342,7 @@ async def get_recent_conversation(
     
     return conversation
 
-def create_conversation_fetcher(message: nextcord.Message) -> Callable[[], Awaitable[list[tuple[str, str]]]]:
+def create_conversation_fetcher(message: nextcord.Message) -> Callable[[], Awaitable[list[ConversationMessage]]]:
     """
     Create a parameterless lambda that encapsulates conversation fetching logic.
     

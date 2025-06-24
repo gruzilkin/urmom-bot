@@ -21,6 +21,14 @@ class MessageNode:
             self.embeds = []
 
 
+@dataclass
+class ConversationMessage:
+    """Represents a message in chronological conversation format."""
+    author_name: str
+    content: str
+    timestamp: str  # Pre-formatted LLM-friendly timestamp
+
+
 class MessageGraph:
     """
     Graph data structure for conversation messages with deduplication.
@@ -61,14 +69,18 @@ class MessageGraph:
     def __len__(self) -> int:
         return len(self.nodes)
     
-    def to_chronological_conversation(self, article_extractor: Callable[[str], str] | None = None) -> List[Tuple[str, str]]:
+    def to_chronological_conversation(self, article_extractor: Callable[[str], str] | None = None) -> List[ConversationMessage]:
         """Convert graph to chronological conversation format."""
         messages = sorted(self.nodes.values(), key=lambda m: m.created_at)
         conversation_messages = []
         
         for message in messages:
             if message.content.strip():
-                conversation_messages.append((message.author_name, message.content))
+                conversation_messages.append(ConversationMessage(
+                    author_name=message.author_name,
+                    content=message.content,
+                    timestamp=message.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                ))
             
             # Process embeds for article extraction if extractor provided
             if article_extractor and message.embeds:
@@ -76,7 +88,11 @@ class MessageGraph:
                     if hasattr(embed, 'url') and embed.url:
                         article_content = article_extractor(embed.url)
                         if article_content:
-                            conversation_messages.append(("article", article_content))
+                            conversation_messages.append(ConversationMessage(
+                                author_name="article",
+                                content=article_content,
+                                timestamp=message.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                            ))
         
         return conversation_messages
 
@@ -176,7 +192,7 @@ class ConversationGraphBuilder:
                                      min_linear: int,
                                      max_total: int, 
                                      time_threshold_minutes: int,
-                                     article_extractor: Callable[[str], str] | None = None) -> List[Tuple[str, str]]:
+                                     article_extractor: Callable[[str], str] | None = None) -> List[ConversationMessage]:
         """
         Build conversation graph using tik/tok alternating exploration.
         
@@ -187,7 +203,7 @@ class ConversationGraphBuilder:
             time_threshold_minutes: Time threshold for temporal connections
         
         Returns:
-            List of (author_name, content) tuples in chronological order
+            List of ConversationMessage objects in chronological order
         """
         graph = MessageGraph()
         

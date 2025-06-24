@@ -1,8 +1,8 @@
 import logging
+
 from ai_client import AIClient
 from open_telemetry import Telemetry
-from schemas import YesNo, GeneralParams
-
+from schemas import GeneralParams
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +81,11 @@ class GeneralQueryGenerator:
             
             conversation = await conversation_fetcher()
             
-            # Build conversation context as a single message
-            conversation_text = "\n".join([f"{username}: {content}" for username, content in conversation])
+            # Build conversation context as a single message with timestamps
+            conversation_text = "\n".join([
+                f"{msg.timestamp} {msg.author_name}: {msg.content}" 
+                for msg in conversation
+            ])
             
             prompt = f"""You are a helpful AI assistant in a Discord chat. Please respond to the user's question or request.
 

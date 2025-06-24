@@ -7,10 +7,12 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 
 import os
 import unittest
-from unittest.mock import AsyncMock
+
 from dotenv import load_dotenv
-from general_query_generator import GeneralQueryGenerator
+
+from conversation_graph import ConversationMessage
 from gemini_client import GeminiClient
+from general_query_generator import GeneralQueryGenerator
 from grok_client import GrokClient
 from schemas import GeneralParams
 from tests.null_telemetry import NullTelemetry
@@ -67,8 +69,16 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         # Mock conversation that mentions a specific item
         async def mock_conversation_fetcher():
             return [
-                ("alice", "I love my pet dragon named Sparkles"),
-                ("bob", "That's so cool!")
+                ConversationMessage(
+                    author_name="alice",
+                    content="I love my pet dragon named Sparkles",
+                    timestamp="2024-01-01 11:55:00"
+                ),
+                ConversationMessage(
+                    author_name="bob",
+                    content="That's so cool!",
+                    timestamp="2024-01-01 11:58:00"
+                )
             ]
         
         params = GeneralParams(

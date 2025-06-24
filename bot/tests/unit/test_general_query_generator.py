@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import AsyncMock, Mock
 from general_query_generator import GeneralQueryGenerator
 from schemas import GeneralParams
+from conversation_graph import ConversationMessage
 from tests.null_telemetry import NullTelemetry
 
 
@@ -57,7 +58,11 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
-            return [("user1", "Let's get creative")]
+            return [ConversationMessage(
+                author_name="user1",
+                content="Let's get creative",
+                timestamp="2024-01-01 12:00:00"
+            )]
         
         result = await self.generator.handle_request(params, mock_conversation_fetcher)
         

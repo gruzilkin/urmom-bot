@@ -137,8 +137,13 @@ class TestMessageGraph(unittest.TestCase):
         
         self.assertEqual(len(conversation), 2)
         # Should be in chronological order
-        self.assertEqual(conversation[0], ("user1", "first message"))
-        self.assertEqual(conversation[1], ("user2", "second message"))
+        self.assertEqual(conversation[0].author_name, "user1")
+        self.assertEqual(conversation[0].content, "first message")
+        self.assertEqual(conversation[1].author_name, "user2")
+        self.assertEqual(conversation[1].content, "second message")
+        # Verify timestamps are formatted correctly
+        self.assertIsInstance(conversation[0].timestamp, str)
+        self.assertIsInstance(conversation[1].timestamp, str)
 
 
 class TestConversationGraphBuilder(BaseMessageGraphTest):
