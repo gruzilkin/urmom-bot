@@ -109,4 +109,10 @@ class GeneralQueryGenerator:
             )
             
             logger.info(f"Generated response: {response}")
+            
+            # Truncate response if it exceeds Discord's 2000 character limit
+            if len(response) > 2000:
+                response = response[:1997] + "..."
+                logger.warn(f"Response truncated to fit Discord limit: {len(response)} chars")
+            
             return response
