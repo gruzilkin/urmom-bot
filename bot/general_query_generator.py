@@ -88,10 +88,11 @@ class GeneralQueryGenerator:
             ])
             
             prompt = f"""You are a helpful AI assistant in a Discord chat. Please respond to the user's question or request.
+            CRITICAL CONSTRAINT: Your response MUST be under 450 tokens (approximately 1800 characters). Discord has a 2000 character limit and responses over this limit will be rejected. Keep responses concise and focused.
 
             Use the conversation context to better understand what the user is asking about.
             If the question relates to something mentioned in the conversation, reference it appropriately.
-            Keep your response reasonably sized for Discord chat - be concise and direct.
+            For complex topics, provide a brief summary with key points rather than detailed explanations.
             
             Conversation context:
             {conversation_text}"""
@@ -101,8 +102,11 @@ class GeneralQueryGenerator:
             logger.info(f"Conversation context: {conversation}")
             
             # Use the selected AI client with the specified temperature
+            # Modify the user message to include length constraint
+            modified_message = f"{params.cleaned_query}\n\nIMPORTANT: Keep your response under 1800 characters."
+            
             response = await ai_client.generate_content(
-                message=params.cleaned_query,
+                message=modified_message,
                 prompt=prompt,
                 temperature=params.temperature,
                 enable_grounding=True  # Enable grounding for general queries to get current information
