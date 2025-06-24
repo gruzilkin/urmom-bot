@@ -22,7 +22,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class GemmaClient(AIClient):
-    def __init__(self, api_key: str, model_name: str, temperature: float = 1.2, telemetry: Telemetry = None):
+    def __init__(self, api_key: str, model_name: str, telemetry: Telemetry, temperature: float = 0.1):
         if not api_key:
             raise ValueError("Gemma API key not provided!")
         if not model_name:
@@ -35,31 +35,30 @@ class GemmaClient(AIClient):
         
     def _track_completion_metrics(self, response: GenerateContentResponse, method_name: str, **additional_attributes):
         """Track metrics from Gemma response with detailed attributes"""
-        if self.telemetry:
-            try:
-                usage_metadata = response.usage_metadata
+        try:
+            usage_metadata = response.usage_metadata
+            
+            prompt_tokens = usage_metadata.prompt_token_count or 0
+            completion_tokens = usage_metadata.candidates_token_count or 0
+            total_tokens = usage_metadata.total_token_count or 0
                 
-                prompt_tokens = usage_metadata.prompt_token_count or 0
-                completion_tokens = usage_metadata.candidates_token_count or 0
-                total_tokens = usage_metadata.total_token_count or 0
-                    
-                attributes = {
-                    "service": "GEMMA",
-                    "model": self.model_name,
-                    "method": method_name
-                }
-                
-                # Add any additional attributes passed in
-                attributes.update(additional_attributes)
-                
-                self.telemetry.track_token_usage(
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=total_tokens,
-                    attributes=attributes
-                )
-            except Exception as e:
-                logger.error(f"Error tracking token usage: {e}", exc_info=True)
+            attributes = {
+                "service": "GEMMA",
+                "model": self.model_name,
+                "method": method_name
+            }
+            
+            # Add any additional attributes passed in
+            attributes.update(additional_attributes)
+            
+            self.telemetry.track_token_usage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                attributes=attributes
+            )
+        except Exception as e:
+            logger.error(f"Error tracking token usage: {e}", exc_info=True)
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None) -> str | T:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:

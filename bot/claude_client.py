@@ -21,9 +21,8 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class ClaudeClient(AIClient):
-    def __init__(self, model_name: str = "claude", temperature: float = 0.7, telemetry: Telemetry = None):
+    def __init__(self, telemetry: Telemetry, model_name: str = "claude"):
         self.model_name = model_name  # Kept for compatibility but not used
-        self.temperature = temperature  # Not used by CLI but kept for interface compatibility
         self.telemetry = telemetry
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None) -> str | T:

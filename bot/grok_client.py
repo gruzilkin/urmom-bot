@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 class GrokClient(AIClient):
-    def __init__(self, api_key: str, model_name: str = "grok-2-latest", temperature: float = 0.7, telemetry: Telemetry = None):
+    def __init__(self, api_key: str, model_name: str, telemetry: Telemetry, temperature: float = 0.1):
         if not api_key:
             raise ValueError("Grok API key not provided!")
         if not model_name:
@@ -28,23 +28,22 @@ class GrokClient(AIClient):
         
     def _track_completion_metrics(self, completion: ChatCompletion, method_name: str, **additional_attributes):
         """Track metrics from completion response with detailed attributes"""
-        if self.telemetry:
-            usage = completion.usage
-            attributes = {
-                "service": "GROK",
-                "model": self.model_name,
-                "method": method_name
-            }
-            
-            # Add any additional attributes passed in
-            attributes.update(additional_attributes)
-            
-            self.telemetry.track_token_usage(
-                prompt_tokens=usage.prompt_tokens,
-                completion_tokens=usage.completion_tokens,
-                total_tokens=usage.total_tokens,
-                attributes=attributes
-            )
+        usage = completion.usage
+        attributes = {
+            "service": "GROK",
+            "model": self.model_name,
+            "method": method_name
+        }
+        
+        # Add any additional attributes passed in
+        attributes.update(additional_attributes)
+        
+        self.telemetry.track_token_usage(
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
+            attributes=attributes
+        )
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None) -> str | T:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT) as span:

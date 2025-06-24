@@ -34,8 +34,8 @@ class TestGemmaStructuredOutput(unittest.IsolatedAsyncioTestCase):
         self.client = GemmaClient(
             api_key=self.api_key,
             model_name=self.model_name,
-            temperature=0.1,  # Fixed temperature for test stability
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            temperature=0.1  # Fixed temperature for test stability
         )
     
     async def test_yes_no_structured_output_yes(self):

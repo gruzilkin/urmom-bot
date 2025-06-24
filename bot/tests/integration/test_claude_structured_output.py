@@ -19,7 +19,6 @@ class TestClaudeStructuredOutput(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         
         self.client = ClaudeClient(
-            temperature=0.1,  # Fixed temperature for test stability
             telemetry=self.telemetry
         )
     

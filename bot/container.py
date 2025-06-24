@@ -35,22 +35,22 @@ class Container:
         self.gemini_flash = GeminiClient(
             api_key=self._get_env("GEMINI_API_KEY"),
             model_name=self._get_env("GEMINI_FLASH_MODEL"),
-            temperature=float(os.getenv("GEMINI_TEMPERATURE", "0.7")),
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            temperature=float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
         )
         
         self.gemma = GemmaClient(
             api_key=self._get_env("GEMINI_API_KEY"),
             model_name=self._get_env("GEMINI_GEMMA_MODEL"),
-            temperature=float(os.getenv("GEMINI_TEMPERATURE", "0.7")),
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            temperature=float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
         )
         
         self.grok = GrokClient(
             api_key=self._get_env("GROK_API_KEY"),
             model_name=self._get_env("GROK_MODEL"),
-            temperature=float(os.getenv("GROK_TEMPERATURE", "0.7")),
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            temperature=float(os.getenv("GROK_TEMPERATURE", "0.7"))
         )
         
         self.claude = ClaudeClient(
