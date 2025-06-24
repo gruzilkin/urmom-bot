@@ -1,6 +1,6 @@
 import datetime
 import logging
-from typing import List, Tuple, Callable, Awaitable, Any
+from typing import List, Tuple, Callable, Awaitable, Any, Dict
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -89,21 +89,29 @@ class ConversationGraphBuilder:
     
     def __init__(self, 
                  fetch_message: Callable[[int], Awaitable[MessageNode | None]],
-                 fetch_history: Callable[[int | None, int], Awaitable[List[MessageNode]]]):
+                 fetch_history: Callable[[int | None], Awaitable[List[MessageNode]]],
+                 telemetry=None):
         """
         Initialize with message fetching abstractions.
         
         Args:
             fetch_message: async function(message_id: int) -> MessageNode | None
-            fetch_history: async function(message_id: int | None, limit: int) -> List[MessageNode]
+            fetch_history: async function(message_id: int | None) -> List[MessageNode]
+            telemetry: Optional telemetry service for spans
         """
         self.fetch_message = fetch_message
         self.fetch_history = fetch_history
+        self.telemetry = telemetry
+        
+        # Set up cached history fetching for performance optimization
+        self.cached_fetcher = CachedHistoryFetcher(fetch_history, fetch_message)
+        self._get_history = self.cached_fetcher.get_previous_message
     
     
     async def explore_references(self, graph: MessageGraph) -> bool:
         """Explore one level of reference connections."""
         references_to_explore = graph.get_unexplored_references()
+        
         if not references_to_explore:
             return False
         
@@ -111,7 +119,9 @@ class ConversationGraphBuilder:
         for message in references_to_explore:
             try:
                 if message.reference_id:
-                    referenced_msg = await self.fetch_message(message.reference_id)
+                    # Use cached fetcher for all message fetching
+                    referenced_msg = await self.cached_fetcher.get_message_by_id(message.reference_id)
+                    
                     if referenced_msg and graph.add_node(referenced_msg):
                         added_any = True
             except Exception as e:
@@ -124,6 +134,7 @@ class ConversationGraphBuilder:
     async def explore_temporal_neighbors(self, graph: MessageGraph, time_threshold_minutes: int) -> bool:
         """Explore temporal neighbors with sealing."""
         frontier = graph.get_temporal_frontier()
+        
         if not frontier:
             return False
         
@@ -132,11 +143,10 @@ class ConversationGraphBuilder:
         
         for current_message in frontier:
             try:
-                # Get the next message before this one in channel history
-                prev_messages = await self.fetch_history(current_message.id, 1)
+                # Get the next message before this one in channel history (cached)
+                prev_message = await self._get_history(current_message.id)
                 
-                if prev_messages:
-                    prev_message = prev_messages[0]
+                if prev_message:
                     time_gap = current_message.created_at - prev_message.created_at
                     
                     if time_gap <= time_threshold:
@@ -153,11 +163,11 @@ class ConversationGraphBuilder:
     
     async def get_linear_history(self, trigger_message: MessageNode, min_linear: int) -> List[MessageNode]:
         """Get guaranteed linear message history."""
-        messages = [trigger_message]
+        min_linear = max(min_linear, 1)
         
-        if min_linear > 1:
-            prev_messages = await self.fetch_history(trigger_message.id, min_linear - 1)
-            messages.extend(prev_messages)
+        # Use cached fetcher for bulk linear history to populate cache for subsequent temporal exploration
+        prev_messages = await self.cached_fetcher.get_bulk_history(trigger_message.id)
+        messages = [trigger_message] + prev_messages[:min_linear - 1]
         
         return messages
     
@@ -201,4 +211,109 @@ class ConversationGraphBuilder:
             if not reference_step_added and not temporal_step_added:
                 break
         
+        # Convert to conversation format
         return graph.to_chronological_conversation(article_extractor)
+    
+
+
+class CachedHistoryFetcher:
+    """
+    Cached wrapper for fetch_history that reads in bulk but returns single messages.
+    Maintains a cache of message_id -> previous message to minimize Discord API calls.
+    """
+    
+    def __init__(self, fetch_history: Callable[[int | None], Awaitable[List[MessageNode]]], 
+                 fetch_message: Callable[[int], Awaitable[MessageNode | None]]):
+        """
+        Initialize cached history fetcher.
+        
+        Args:
+            fetch_history: Original fetch_history function
+            fetch_message: Original fetch_message function for individual messages
+        """
+        self.fetch_history = fetch_history
+        self.fetch_message = fetch_message
+        self.cache: Dict[int, MessageNode] = {}  # message_id -> previous message
+        self.message_cache: Dict[int, MessageNode] = {}  # message_id -> message (for individual fetches)
+        
+    async def get_previous_message(self, message_id: int) -> MessageNode | None:
+        """
+        Get the previous message, using cache when possible.
+        
+        Args:
+            message_id: ID of message to get history before
+            
+        Returns:
+            Previous message or None if not found
+        """
+        # Check if we have cached data for this message
+        if message_id in self.cache:
+            return self.cache[message_id]
+        
+        # Cache miss - use bulk fetch to populate cache and return first result
+        bulk_messages = await self.get_bulk_history(message_id)
+        
+        if bulk_messages:
+            return bulk_messages[0]
+        else:
+            return None
+    
+    async def get_bulk_history(self, message_id: int | None) -> List[MessageNode]:
+        """
+        Get bulk history messages, populating cache along the way.
+        
+        Args:
+            message_id: ID of message to get history before (None for channel start)
+            
+        Returns:
+            List of previous messages (fixed at 100)
+        """
+        # Always call the original fetch_history and populate cache with the results
+        try:
+            bulk_messages = await self.fetch_history(message_id)
+            
+            if bulk_messages:
+                # Populate both caches
+                # 1. Cache individual messages
+                for msg in bulk_messages:
+                    self.message_cache[msg.id] = msg
+                
+                # 2. Cache previous-message relationships
+                for current_msg, prev_msg in zip(bulk_messages, bulk_messages[1:]):
+                    if current_msg.id not in self.cache:
+                        self.cache[current_msg.id] = prev_msg
+                
+                # If we have a message_id, cache the relationship from it to first result
+                if message_id is not None:
+                    self.cache[message_id] = bulk_messages[0]
+                
+            return bulk_messages
+                
+        except Exception as e:
+            logger.error(f"Error fetching bulk history for message {message_id}: {e}", exc_info=True)
+            return []
+    
+    async def get_message_by_id(self, message_id: int) -> MessageNode | None:
+        """
+        Get a specific message by ID, using cache when possible.
+        
+        Args:
+            message_id: ID of message to fetch
+            
+        Returns:
+            MessageNode or None if not found
+        """
+        # Check if message is in individual message cache
+        if message_id in self.message_cache:
+            return self.message_cache[message_id]
+        
+        # Cache miss - fetch individual message
+        try:
+            message = await self.fetch_message(message_id)
+            if message:
+                self.message_cache[message_id] = message
+            return message
+        except Exception as e:
+            logger.error(f"Error fetching message {message_id}: {e}", exc_info=True)
+            return None
+    

@@ -225,7 +225,13 @@ def create_article_extractor() -> Callable[[str], str]:
             span.set_attribute("url", url)
             try:
                 article = Goose().extract(url)
-                return article.cleaned_text if article.cleaned_text else ""
+                content = article.cleaned_text if article.cleaned_text else ""
+                span.set_attribute("content_length", len(content))
+                if content:
+                    logger.info(f"Extracted article content from {url}: {content[:500]}{'...' if len(content) > 500 else ''}")
+                else:
+                    logger.info(f"No content extracted from {url}")
+                return content
             except Exception as e:
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR))
@@ -253,30 +259,45 @@ async def get_recent_conversation(
     """
     # Create Discord API adapter functions
     async def fetch_message(message_id: int) -> MessageNode | None:
-        try:
-            message = await channel.fetch_message(message_id)
-            return discord_to_message_node(message)
-        except Exception as e:
-            logger.error(f"Failed to fetch message {message_id}: {e}", exc_info=True)
-            return None
-    
-    async def fetch_history(message_id: int | None, limit: int) -> list[MessageNode]:
-        message = None
-        if message_id:
+        async with container.telemetry.async_create_span("fetch_message") as span:
+            span.set_attribute("message_id", message_id)
             try:
                 message = await channel.fetch_message(message_id)
+                result = discord_to_message_node(message)
+                span.set_attribute("found", True)
+                return result
             except Exception as e:
-                logger.error(f"Failed to fetch message {message_id} for history: {e}", exc_info=True)
-                return []
-        
-        messages = []
-        try:
-            async for msg in channel.history(limit=limit, before=message):
-                messages.append(discord_to_message_node(msg))
-        except Exception as e:
-            logger.error(f"Error fetching history: {e}", exc_info=True)
-        
-        return messages
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR))
+                span.set_attribute("found", False)
+                logger.error(f"Failed to fetch message {message_id}: {e}", exc_info=True)
+                return None
+    
+    async def fetch_history(message_id: int | None) -> list[MessageNode]:
+        async with container.telemetry.async_create_span("fetch_history") as span:
+            span.set_attribute("message_id", message_id or "channel_start")
+            
+            message = None
+            if message_id:
+                try:
+                    message = await channel.fetch_message(message_id)
+                except Exception as e:
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR))
+                    logger.error(f"Failed to fetch message {message_id} for history: {e}", exc_info=True)
+                    return []
+            
+            messages = []
+            try:
+                async for msg in channel.history(limit=100, before=message):
+                    messages.append(discord_to_message_node(msg))
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR))
+                logger.error(f"Error fetching history: {e}", exc_info=True)
+            
+            span.set_attribute("messages_fetched", len(messages))
+            return messages
     
     # Determine trigger message
     trigger_message = None
@@ -299,7 +320,8 @@ async def get_recent_conversation(
     with container.telemetry.create_span("build_conversation_graph") as span:
         builder = ConversationGraphBuilder(
             fetch_message=fetch_message,
-            fetch_history=fetch_history
+            fetch_history=fetch_history,
+            telemetry=container.telemetry
         )
         
         # Create article extractor
