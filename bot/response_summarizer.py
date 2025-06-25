@@ -85,9 +85,9 @@ class ResponseSummarizer:
         Raises:
             Exception: If summarization fails
         """
-        prompt = f"""Summarize the following response to under {target_length} characters while preserving all key information, main points, and the original tone. 
+        prompt = f"""Summarize the following response to approximately {target_length} characters while preserving all key information, main points, and the original tone. 
         
-The summary should be comprehensive and maintain the same style as the original response. Do not add any meta-commentary about the summarization process.
+The summary should be comprehensive and maintain the same style as the original response. Aim for close to {target_length} characters - use the full space available to provide a detailed summary. Do not add any meta-commentary about the summarization process.
 
 Original response to summarize:
 {original_response}"""
