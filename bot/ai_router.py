@@ -1,5 +1,5 @@
 import logging
-from typing import Union
+from typing import Union, Optional
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import FamousParams, GeneralParams
@@ -12,9 +12,13 @@ logger = logging.getLogger(__name__)
 class RouterDecision(BaseModel):
     """Schema for routing decisions."""
     route: Literal["FAMOUS", "GENERAL", "NONE"] = Field(description="Route decision")
-    parameters: Union[FamousParams, GeneralParams, None] = Field(
-        description="Parameters for the chosen route", 
-        default=None
+    famous_params: Optional[FamousParams] = Field(
+        default=None,
+        description="Parameters for the FAMOUS route. Only present if route is FAMOUS."
+    )
+    general_params: Optional[GeneralParams] = Field(
+        default=None,
+        description="Parameters for the GENERAL route. Only present if route is GENERAL."
     )
 
 
@@ -62,11 +66,11 @@ class AiRouter:
             )
             
             span.set_attribute("route", response.route)
-            if response.route == "FAMOUS" and response.parameters:
-                span.set_attribute("famous_person", response.parameters.famous_person)
-            elif response.route == "GENERAL" and response.parameters:
-                span.set_attribute("ai_backend", response.parameters.ai_backend)
-                span.set_attribute("temperature", response.parameters.temperature)
+            if response.route == "FAMOUS" and response.famous_params:
+                span.set_attribute("famous_person", response.famous_params.famous_person)
+            elif response.route == "GENERAL" and response.general_params:
+                span.set_attribute("ai_backend", response.general_params.ai_backend)
+                span.set_attribute("temperature", response.general_params.temperature)
             
             logger.info(f"Routing decision: {response.route}")
             return response

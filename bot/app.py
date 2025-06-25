@@ -82,23 +82,23 @@ async def on_message(message: nextcord.Message):
         if message.author.bot:
             return
         
-        if not message.content.startswith(f"<@{bot.user.id}>"):
+        if f"<@{bot.user.id}>" not in message.content:
             return
 
         # First check if this is a bot command
         is_command = await process_bot_commands(message)
         if is_command:
             return
-            
-        # Use AiRouter to determine how to handle the message
-        extracted_message = message.content.replace(f"<@{bot.user.id}>", "").strip()
-        router_decision = await container.ai_router.route_request(extracted_message)
+
+        # Replace bot mention with "BOT" and pass the whole message to the router
+        processed_message = message.content.replace(f"<@{bot.user.id}>", "BOT").strip()
+        router_decision = await container.ai_router.route_request(processed_message)
         
         if router_decision.route == "FAMOUS":
             conversation_fetcher = create_conversation_fetcher(message)
             
             response = await container.famous_person_generator.handle_request(
-                router_decision.parameters, extracted_message, conversation_fetcher
+                router_decision.famous_params, processed_message, conversation_fetcher
             )
             await message.reply(response)
         
@@ -106,7 +106,7 @@ async def on_message(message: nextcord.Message):
             conversation_fetcher = create_conversation_fetcher(message)
             
             response = await container.general_query_generator.handle_request(
-                router_decision.parameters, conversation_fetcher
+                router_decision.general_params, conversation_fetcher
             )
             await message.reply(response)
 

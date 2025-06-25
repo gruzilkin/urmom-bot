@@ -52,14 +52,20 @@ class GeneralQueryGenerator:
           * 0.7-1.0: Creative writing, brainstorming, "go crazy" requests, artistic content
         
         - cleaned_query extraction:
-          * Remove explicit backend requests: "ask grok to..." → just the actual question
-          * Remove temperature instructions: "use high temperature and..." → just the core request
-          * Remove routing hints: "be creative with..." → keep the creative context but remove routing language
+          * Goal: Produce a clean, direct query for the AI assistant. The user's message will contain the placeholder 'BOT' to refer to the assistant.
+          * Rule 1: Rephrase the query from the BOT's perspective. Convert the user's request into a direct, second-person command or question.
+          * Rule 2: Remove routing instructions like `use gemini`, `be creative`, or temperature hints.
           * Examples:
+            - "BOT, what is the capital of France?" → "what is the capital of France?"
+            - "what does BOT think about this?" → "what do you think about this?"
+            - "let's ask BOT to investigate this" → "investigate this"
+            - "BOT get me the latest news" → "get me the latest news"
             - "ask grok to write a poem about cats" → "write a poem about cats"
             - "use gemini flash to explain quantum physics" → "explain quantum physics"
             - "with high creativity, write a story" → "write a story"
             - "be factual and explain the weather" → "explain the weather"
+            - "let's have BOT use claude to write a technical blog post, be very detailed" → "write a technical blog post"
+            - "BOT, ask grok to give me 5 startup ideas, go wild with creativity" → "give me 5 startup ideas"
         """
 
 
