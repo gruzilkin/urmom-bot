@@ -43,7 +43,13 @@ class AiRouter:
 
         NONE: For everything else
         - Simple reactions, acknowledgments, or invalid queries
-        - Examples: "lol", "nice", "ok", "haha", random gibberish
+        - Conversations about the BOT without a direct request to it
+        - Examples:
+          - "lol", "nice", "ok", "haha", random gibberish
+          - "Did you see BOT's last response? It was hilarious."
+          - "I think BOT is getting smarter at answering questions."
+          - "You should ask BOT about that."
+          - "I like that new feature where you can mention BOT anywhere in the sentence."
         - No parameters needed
 
         Instructions:
