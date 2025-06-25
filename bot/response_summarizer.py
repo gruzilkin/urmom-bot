@@ -100,7 +100,13 @@ Original response to summarize:
             temperature=self.summarization_temperature
         )
         
-        return summarized.strip()
+        result = summarized.strip()
+        
+        # Check for empty or whitespace-only result to ensure fallback truncation
+        if not result:
+            raise ValueError("Gemma returned empty summary")
+            
+        return result
     
     def _truncate_response(self, response: str, max_length: int) -> str:
         """
