@@ -3,16 +3,18 @@ import logging
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import GeneralParams
+from response_summarizer import ResponseSummarizer
 
 logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, telemetry: Telemetry):
+    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry):
         self.gemini_flash = gemini_flash
         self.grok = grok
         self.claude = claude
         self.gemma = gemma
+        self.response_summarizer = response_summarizer
         self.telemetry = telemetry
     
     def _get_ai_client(self, ai_backend: str) -> AIClient:
@@ -114,9 +116,7 @@ class GeneralQueryGenerator:
             
             logger.info(f"Generated response: {response}")
             
-            # Truncate response if it exceeds Discord's 2000 character limit
-            if len(response) > 2000:
-                response = response[:1997] + "..."
-                logger.warn(f"Response truncated to fit Discord limit: {len(response)} chars")
+            # Process response (summarize if too long, or truncate as fallback)
+            processed_response = await self.response_summarizer.process_response(response)
             
-            return response
+            return processed_response

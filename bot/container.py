@@ -11,6 +11,7 @@ from claude_client import ClaudeClient
 from country_resolver import CountryResolver
 from open_telemetry import Telemetry
 from ai_router import AiRouter
+from response_summarizer import ResponseSummarizer
 
 class Container:
     def __init__(self):
@@ -59,6 +60,9 @@ class Container:
 
         self.ai_client = self._get_ai_client()
 
+        # Create response summarizer for handling long responses
+        self.response_summarizer = ResponseSummarizer(self.gemma, self.telemetry)
+
         self.joke_generator = JokeGenerator(
             self.grok, 
             self.store, 
@@ -66,13 +70,14 @@ class Container:
             sample_count=int(self._get_env('SAMPLE_JOKES_COUNT'))
         )
 
-        self.famous_person_generator = FamousPersonGenerator(self.grok, self.telemetry)
+        self.famous_person_generator = FamousPersonGenerator(self.grok, self.response_summarizer, self.telemetry)
 
         self.general_query_generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_flash, 
             grok=self.grok,
             claude=self.claude,
             gemma=self.gemma,
+            response_summarizer=self.response_summarizer,
             telemetry=self.telemetry
         )
 
