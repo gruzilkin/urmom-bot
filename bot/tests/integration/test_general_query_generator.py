@@ -15,6 +15,7 @@ from gemini_client import GeminiClient
 from gemma_client import GemmaClient
 from general_query_generator import GeneralQueryGenerator
 from grok_client import GrokClient
+from response_summarizer import ResponseSummarizer
 from schemas import GeneralParams
 from tests.null_telemetry import NullTelemetry
 
@@ -68,11 +69,15 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             temperature=0.1
         )
         
+        # Create response summarizer
+        self.response_summarizer = ResponseSummarizer(self.gemma_client, self.telemetry)
+        
         self.generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_client,
             grok=self.grok_client,
             claude=None,
             gemma=self.gemma_client,
+            response_summarizer=self.response_summarizer,
             telemetry=self.telemetry
         )
     

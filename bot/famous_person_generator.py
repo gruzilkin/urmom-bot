@@ -3,13 +3,15 @@ import logging
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import FamousParams
+from response_summarizer import ResponseSummarizer
 
 logger = logging.getLogger(__name__)
 
 
 class FamousPersonGenerator:
-    def __init__(self, ai_client: AIClient, telemetry: Telemetry):
+    def __init__(self, ai_client: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry):
         self.ai_client = ai_client
+        self.response_summarizer = response_summarizer
         self.telemetry = telemetry
 
     def get_route_description(self) -> str:
@@ -129,15 +131,13 @@ class FamousPersonGenerator:
             
             logger.info(f"Generated response: {response}")
             
-            # Calculate formatting overhead and truncate if needed
-            prefix = f"**{person.title()} would say:**\n\n"
-            max_response_length = 2000 - len(prefix)
+            # Build complete response with formatting
+            complete_response = f"**{person.title()} would say:**\n\n{response}"
             
-            if len(response) > max_response_length:
-                response = response[:max_response_length - 3] + "..."
-                logger.warn(f"Response truncated to fit Discord limit with formatting: {len(prefix + response)} chars")
+            # Process complete response (summarize if too long, or truncate as fallback)
+            processed_response = await self.response_summarizer.process_response(complete_response)
             
-            return f"{prefix}{response}"
+            return processed_response
     
     async def handle_request(self, params: FamousParams, extracted_message: str, conversation_fetcher) -> str:
         """

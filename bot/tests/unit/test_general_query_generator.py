@@ -21,12 +21,17 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_gemma = Mock()
         self.mock_gemma.generate_content = AsyncMock()
         
+        # Mock response summarizer that returns what it receives (passthrough)
+        self.mock_response_summarizer = Mock()
+        self.mock_response_summarizer.process_response = AsyncMock(side_effect=lambda x: x)
+        
         self.telemetry = NullTelemetry()
         self.generator = GeneralQueryGenerator(
             self.mock_gemini_flash, 
             self.mock_grok, 
             self.mock_claude,
             self.mock_gemma,
+            self.mock_response_summarizer,
             self.telemetry
         )
 
@@ -49,6 +54,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         self.assertEqual(result, "Quick answer!")
         self.mock_gemini_flash.generate_content.assert_called_once()
+        self.mock_response_summarizer.process_response.assert_called_once()
 
     async def test_handle_request_with_grok(self):
         """Test handling request with grok backend"""
@@ -72,6 +78,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         self.assertEqual(result, "Creative response!")
         self.mock_grok.generate_content.assert_called_once()
+        self.mock_response_summarizer.process_response.assert_called_once()
 
     async def test_handle_request_error_handling(self):
         """Test error handling in handle_request - exceptions should propagate"""
@@ -92,6 +99,8 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             await self.generator.handle_request(params, mock_conversation_fetcher)
         
         self.assertEqual(str(context.exception), "API error")
+        # Response summarizer should not be called due to exception
+        self.mock_response_summarizer.process_response.assert_not_called()
 
     def test_get_ai_client_selection(self):
         """Test that _get_ai_client selects the correct client"""
