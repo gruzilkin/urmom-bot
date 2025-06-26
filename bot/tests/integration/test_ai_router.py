@@ -70,7 +70,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(decision.route, "GENERAL")
         self.assertIsNotNone(decision.general_params)
         self.assertIsNotNone(decision.reason)
-        self.assertTrue(len(decision.reason) > 0) # Check that reason is not empty
+        self.assertTrue(len(decision.reason) > 0)
         self.assertEqual(decision.general_params.ai_backend, "grok")
         self.assertEqual(decision.general_params.cleaned_query.lower(), expected_cleaned_query.lower())
         self.assertGreaterEqual(decision.general_params.temperature, 0.7, "Temperature should be high for a 'creative' request")
@@ -90,7 +90,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(decision.route, "GENERAL")
         self.assertIsNotNone(decision.general_params)
         self.assertIsNotNone(decision.reason)
-        self.assertTrue(len(decision.reason) > 0) # Check that reason is not empty
+        self.assertTrue(len(decision.reason) > 0)
         self.assertEqual(decision.general_params.ai_backend, "claude")
         self.assertEqual(decision.general_params.cleaned_query.lower(), expected_cleaned_query.lower())
         self.assertLessEqual(decision.general_params.temperature, 0.3, "Temperature should be low for a 'detailed' request")

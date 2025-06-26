@@ -74,7 +74,7 @@ class AiRouter:
             )
             
             span.set_attribute("route", response.route)
-            span.set_attribute("reason", response.reason) # Reason is now mandatory
+            span.set_attribute("reason", response.reason)
             if response.route == "FAMOUS" and response.famous_params:
                 span.set_attribute("famous_person", response.famous_params.famous_person)
             elif response.route == "GENERAL" and response.general_params:
