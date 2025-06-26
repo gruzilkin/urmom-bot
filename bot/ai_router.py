@@ -20,6 +20,7 @@ class RouterDecision(BaseModel):
         default=None,
         description="Parameters for the GENERAL route. Only present if route is GENERAL."
     )
+    reason: str = Field(description="Reason for choosing the route.")
 
 
 class AiRouter:
@@ -53,10 +54,11 @@ class AiRouter:
         - No parameters needed
 
         Instructions:
-        1. Read the user message carefully
-        2. Determine which route best matches the intent
-        3. Follow the parameter extraction guidelines for your chosen route
-        4. Return your decision with the appropriate parameters filled in
+        1. Read the user message carefully.
+        2. Determine which route best matches the intent.
+        3. Follow the parameter extraction guidelines for your chosen route.
+        4. ALWAYS provide a brief (1-2 sentence) reason for your decision, regardless of the chosen route (including NONE).
+        5. Return your decision with the appropriate parameters and the mandatory reason field filled in.
         """
     
     async def route_request(self, message: str) -> RouterDecision:
@@ -72,11 +74,12 @@ class AiRouter:
             )
             
             span.set_attribute("route", response.route)
+            span.set_attribute("reason", response.reason)
             if response.route == "FAMOUS" and response.famous_params:
                 span.set_attribute("famous_person", response.famous_params.famous_person)
             elif response.route == "GENERAL" and response.general_params:
                 span.set_attribute("ai_backend", response.general_params.ai_backend)
                 span.set_attribute("temperature", response.general_params.temperature)
             
-            logger.info(f"Routing decision: {response.route}")
+            logger.info(f"Routing decision: {response.route}, Reason: {response.reason}")
             return response
