@@ -1,8 +1,8 @@
 import logging
 from typing import Union, Optional
-from bot.ai_client import AIClient
-from bot.open_telemetry import Telemetry
-from bot.schemas import FamousParams, GeneralParams
+from ai_client import AIClient
+from open_telemetry import Telemetry
+from schemas import FamousParams, GeneralParams
 from pydantic import BaseModel, Field
 from typing import Literal
 

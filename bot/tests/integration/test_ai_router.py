@@ -9,11 +9,11 @@ import os
 import unittest
 from dotenv import load_dotenv
 
-from bot.ai_router import AiRouter
-from bot.gemma_client import GemmaClient
-from bot.general_query_generator import GeneralQueryGenerator
-from bot.famous_person_generator import FamousPersonGenerator
-from bot.tests.null_telemetry import NullTelemetry
+from ai_router import AiRouter
+from gemma_client import GemmaClient
+from general_query_generator import GeneralQueryGenerator
+from famous_person_generator import FamousPersonGenerator
+from tests.null_telemetry import NullTelemetry
 
 load_dotenv()
 

@@ -6,8 +6,8 @@ Discord's 2000 character limit, with fallback to truncation if summarization fai
 """
 
 import logging
-from bot.ai_client import AIClient
-from bot.open_telemetry import Telemetry
+from ai_client import AIClient
+from open_telemetry import Telemetry
 from opentelemetry.trace import SpanKind
 
 logger = logging.getLogger(__name__)

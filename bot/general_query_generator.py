@@ -1,9 +1,9 @@
 import logging
 
-from bot.ai_client import AIClient
-from bot.open_telemetry import Telemetry
-from bot.schemas import GeneralParams
-from bot.response_summarizer import ResponseSummarizer
+from ai_client import AIClient
+from open_telemetry import Telemetry
+from schemas import GeneralParams
+from response_summarizer import ResponseSummarizer
 
 logger = logging.getLogger(__name__)
 
