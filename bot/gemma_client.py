@@ -11,8 +11,8 @@ from typing import List, Tuple, Type, TypeVar
 
 from google import genai
 from google.genai.types import GenerateContentConfig, GenerateContentResponse
-from ai_client import AIClient
-from open_telemetry import Telemetry
+from bot.ai_client import AIClient
+from bot.open_telemetry import Telemetry
 from opentelemetry.trace import SpanKind
 from pydantic import BaseModel
 

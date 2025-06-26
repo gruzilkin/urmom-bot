@@ -1,8 +1,8 @@
 import logging
 from typing import Union, Optional
-from ai_client import AIClient
-from open_telemetry import Telemetry
-from schemas import FamousParams, GeneralParams
+from bot.ai_client import AIClient
+from bot.open_telemetry import Telemetry
+from bot.schemas import FamousParams, GeneralParams
 from pydantic import BaseModel, Field
 from typing import Literal
 
@@ -19,6 +19,10 @@ class RouterDecision(BaseModel):
     general_params: Optional[GeneralParams] = Field(
         default=None,
         description="Parameters for the GENERAL route. Only present if route is GENERAL."
+    )
+    reason: Optional[str] = Field(
+        default=None,
+        description="Reason for choosing the route."
     )
 
 
@@ -56,7 +60,8 @@ class AiRouter:
         1. Read the user message carefully
         2. Determine which route best matches the intent
         3. Follow the parameter extraction guidelines for your chosen route
-        4. Return your decision with the appropriate parameters filled in
+        4. Provide a brief (1-2 sentence) reason for your decision.
+        5. Return your decision with the appropriate parameters and reason filled in.
         """
     
     async def route_request(self, message: str) -> RouterDecision:
@@ -72,11 +77,13 @@ class AiRouter:
             )
             
             span.set_attribute("route", response.route)
+            if response.reason:
+                span.set_attribute("reason", response.reason)
             if response.route == "FAMOUS" and response.famous_params:
                 span.set_attribute("famous_person", response.famous_params.famous_person)
             elif response.route == "GENERAL" and response.general_params:
                 span.set_attribute("ai_backend", response.general_params.ai_backend)
                 span.set_attribute("temperature", response.general_params.temperature)
             
-            logger.info(f"Routing decision: {response.route}")
+            logger.info(f"Routing decision: {response.route}, Reason: {response.reason}")
             return response
