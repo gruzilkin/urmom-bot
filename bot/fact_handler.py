@@ -21,19 +21,20 @@ class FactHandler:
     
     def get_route_description(self) -> str:
         return """
-        FACT: For memory operations (remember/forget facts about users)
-        - Commands to store or remove permanent facts about users
+        FACT: For imperative memory operations (remember/forget facts about users)
+        - Strictly for commands to store or remove permanent facts about users.
         - Examples:
           * "Bot remember that gruzilkin is Sergey"
           * "Bot, remember this about Florent: he likes pizza"
           * "Bot forget that gruzilkin likes pizza"
-          * "remember <@1333878858138652682> works at TechCorp"
-          * "forget <@1333878858138652682>'s birthday"
+          * "remember <@987654321098765432> works at TechCorp"
+          * "forget <@123456789012345678>'s birthday"
         
-        Non-examples (NOT a FACT request):
+        Non-examples (NOT a FACT request - these are GENERAL queries):
         - "What do you remember about X?"
         - "Does John like apples?"
         - "What is X's name?"
+        - "What food does <@123456789012345678> like?"
         """
 
     
