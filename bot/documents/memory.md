@@ -7,8 +7,8 @@ The urmom-bot memory system is a sophisticated hierarchical AI-powered memory ar
 **Key Design Decisions:**
 - Uses Gemma for cost-effective summarization (free tier with generous limits)
 - Optimized for small-scale deployment (5-100 users)
-- In-memory caching for minimal resource usage
-- User ID storage with nick translation for LLM readability
+- LRU cache decorators for efficient on-demand caching
+- Discord user ID storage with nickname translation only for LLM calls
 
 ## Architecture Principles
 
@@ -22,9 +22,9 @@ The urmom-bot memory system is a sophisticated hierarchical AI-powered memory ar
 - Bounded information growth through intelligent compression
 
 ### Cache Efficiency
-- Uses Discord message ID snowflake properties for stable cache keys
-- Cache keys remain valid as time windows slide
-- Minimal recomputation through strategic caching
+- Uses LRU cache decorators with absolute date keys for immutability
+- Sliding cache keys for efficient temporal queries
+- On-demand calculation with extensive caching to avoid redundant work
 
 ## Database Schema
 
@@ -32,10 +32,10 @@ The urmom-bot memory system is a sophisticated hierarchical AI-powered memory ar
 ```sql
 CREATE TABLE user_facts (
     guild_id BIGINT NOT NULL,
-    user_nick TEXT NOT NULL,
+    user_id BIGINT NOT NULL,
     memory_blob TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (guild_id, user_nick)
+    PRIMARY KEY (guild_id, user_id)
 );
 ```
 
@@ -51,33 +51,11 @@ CREATE TABLE messages (
 );
 ```
 
-### Daily Summaries Table
-```sql
--- Note: May be stored in-memory cache instead of database
-CREATE TABLE daily_summaries (
-    guild_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    date DATE NOT NULL,
-    start_message_id BIGINT NOT NULL,
-    end_message_id BIGINT NOT NULL,
-    summary_text TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (guild_id, user_id, date)
-);
-```
-
-### Weekly Summaries Table
-```sql
--- Note: May be stored in-memory cache instead of database
-CREATE TABLE weekly_summaries (
-    guild_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    week_start DATE NOT NULL,
-    summary_text TEXT NOT NULL,
-    source_days_hash TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (guild_id, user_id, week_start)
-);
+### Summaries Storage
+```python
+# Daily and weekly summaries are cached using LRU decorators
+# No database tables needed - computed on-demand with caching
+# Cache keys based on absolute dates for immutability
 ```
 
 ## AI Operations
@@ -128,30 +106,51 @@ def prepare_messages_for_llm(messages: List[Message]) -> str:
         readable_messages.append(f"{get_user_nick(msg.user_id)}: {readable_text}")
     return "\n".join(readable_messages)
 
-def daily_summarize(messages: List[Message]) -> str:
+@lru_cache(maxsize=1000)
+def daily_summarize(guild_id: int, date: str, messages_hash: str) -> Dict[int, str]:
     """
-    Summarize a day's worth of messages into key insights and events.
-    Uses Gemma for cost-effective summarization.
+    Summarize a complete day's worth of messages for all users in a guild.
+    Uses absolute date as cache key for immutability.
+    Returns mapping of user_id -> summary.
     """
-    formatted_messages = prepare_messages_for_llm(messages)
-    prompt = f"""
-    Summarize these messages from a user's day into key insights:
-    Messages: {formatted_messages}
+    messages = get_messages_for_date(guild_id, date)
+    user_messages = group_messages_by_user(messages)
     
-    Focus on:
-    - Notable events or experiences
-    - Mood and emotional state
-    - Important interactions or topics
-    - Behavioral patterns
+    summaries = {}
+    for user_id, user_msgs in user_messages.items():
+        formatted_messages = prepare_messages_for_llm(user_msgs, guild_id)
+        prompt = f"""
+        Summarize these messages from a user's day into key insights:
+        Messages: {formatted_messages}
+        
+        Focus on:
+        - Notable events or experiences
+        - Mood and emotional state
+        - Important interactions or topics
+        - Behavioral patterns
+        
+        Keep summary concise (~300 characters).
+        """
+        summaries[user_id] = gemma_call(prompt)
     
-    Keep summary concise (~300 characters).
-    """
-    return gemma_call(prompt)  # Using Gemma specifically
+    return summaries
 
-def weekly_summarize(daily_summaries: List[str]) -> str:
+@lru_cache(maxsize=500)
+def weekly_summarize(guild_id: int, user_id: int, week_start_date: str) -> str:
     """
-    Merge multiple daily summaries into a weekly behavioral/contextual summary.
+    Create weekly summary from daily summaries for a specific user.
+    Uses week start date as cache key for immutability.
     """
+    daily_summaries = []
+    for i in range(7):
+        date = get_date_offset(week_start_date, i)
+        day_summaries = daily_summarize(guild_id, date, get_messages_hash(guild_id, date))
+        if user_id in day_summaries:
+            daily_summaries.append(day_summaries[user_id])
+    
+    if not daily_summaries:
+        return ""
+    
     prompt = f"""
     Create a weekly summary from these daily summaries:
     {format_daily_summaries(daily_summaries)}
@@ -166,60 +165,59 @@ def weekly_summarize(daily_summaries: List[str]) -> str:
     """
     return llm_call(prompt)
 
-def merge_context(facts: str, daily: str, weekly: str) -> str:
+@lru_cache(maxsize=500)
+def merge_context(guild_id: int, user_id: int, facts: str, transient: str) -> str:
     """
-    Create final context blob by intelligently merging all memory sources.
+    Create final context blob by intelligently merging factual and transient memory.
     """
+    if not facts and not transient:
+        return ""
+    
     prompt = f"""
     Create a comprehensive but concise user context by merging:
     
     Permanent facts: {facts}
-    Recent activity (yesterday): {daily}
-    Historical context (past week): {weekly}
+    Recent behavioral context: {transient}
     
     Produce a unified context that:
     - Resolves any conflicts between sources
-    - Prioritizes recent information over historical
-    - Maintains factual accuracy
+    - Prioritizes factual information for accuracy
+    - Integrates recent behavioral insights
     - Provides relevant context for conversation
     """
     return llm_call(prompt)
 ```
 
-## Processing Workflows
-
-### Daily Processing Pipeline
-1. **Message Collection**: Fetch previous day's messages by user
-2. **Daily Summarization**: Generate daily summary using AI
-3. **Cache Storage**: Store with message ID boundary cache keys
-4. **Weekly Check**: If week boundary crossed, trigger weekly summarization
-
-### Weekly Processing Pipeline
-1. **Daily Summary Collection**: Fetch last 7 daily summaries
-2. **Weekly Summarization**: Generate weekly summary using AI
-3. **Cache Storage**: Store with hash-based cache key
-4. **Cleanup**: Archive or remove old daily summaries as needed
+## On-Demand Processing
 
 ### Context Assembly Pipeline
 1. **Retrieve Components**:
-   - User facts from `user_facts` table
-   - Yesterday's summary from cache/database
-   - Current week's summary from cache/database
-2. **AI Merge**: Create final context using `merge_context()`
-3. **Cache Result**: Cache final context for conversation use
-4. **Inject Context**: Provide to conversation processors
+   - User facts from `user_facts` table by user_id
+   - Raw messages from `messages` table for recent period
+   - Convert user IDs to nicknames only for LLM processing
+2. **Generate Transient Context**:
+   - Calculate weekly summary using cached daily summaries
+   - Use absolute date keys for immutable caching
+3. **AI Merge**: Create final context using `merge_context(facts, transient)`
+4. **Cache Result**: LRU cache stores final context
+5. **Inject Context**: Provide to conversation processors
+
+### Memory Operations Integration
+- **AI Router Integration**: Memory operations (remember/forget/query) integrated into AI routing
+- **Freeform Support**: Natural language memory commands
+- **Temperature 0**: Precise instruction following without creative interpretation
 
 ## Cache Strategy
 
 ### Storage Approach
-- **In-Memory Preferred**: LRU cache or Redis for summaries (small data size ~6KB per user)
-- **Daily boundaries**: Fixed day boundaries prevent overlapping windows
-- **No current-day cache**: Bot fetches recent conversation history directly
+- **LRU Cache Decorators**: Automatic caching with configurable max sizes
+- **Absolute Date Keys**: Immutable cache keys based on calendar dates
+- **Sliding Windows**: Efficient temporal queries using date arithmetic
 
 ### Cache Key Design
-- **Daily summaries**: `daily_{guild_id}_{user_id}_{start_msg_id}_{end_msg_id}`
-- **Weekly summaries**: `weekly_{guild_id}_{user_id}_{hash(daily_summaries)}`
-- **Final context**: `context_{guild_id}_{user_id}_{hash(facts+daily+weekly)}`
+- **Daily summaries**: Absolute date string (e.g., "2024-01-15")
+- **Weekly summaries**: Week start date (e.g., "2024-01-15" for Monday)
+- **Final context**: Hash of facts + transient context components
 
 ### Memory Footprint Analysis
 - **Per user**: ~6KB (facts: 400 chars, daily: 300 chars, weekly: 500 chars, context: 800 chars)
@@ -240,15 +238,15 @@ def merge_context(facts: str, daily: str, weekly: str) -> str:
 @urmom-bot remember @user <fact>     - Add permanent fact to user's memory
 @urmom-bot forget @user <fact>       - Remove specific fact from user's memory
 @urmom-bot memory @user              - Display current memory about user
-@urmom-bot clear-memory @user        - Clear all memory about user (admin only)
+@urmom-bot clear-memory @user        - Clear all memory about user
 ```
 
 ### Automated Processing
 - **Message Ingestion**: All messages automatically stored with user IDs in `messages` table
 - **User ID Translation**: IDs converted to readable nicks only for LLM processing
-- **Batch Processing**: Daily/weekly summaries generated via async scheduled jobs
+- **On-Demand Calculation**: Summaries and context generated when requested
+- **LRU Caching**: Extensive caching prevents redundant AI calls
 - **Context Injection**: Memory context automatically included in AI responses
-- **Failure Handling**: Failed daily summarizations are skipped, system continues with available data
 
 ## Implementation Examples
 
@@ -283,13 +281,13 @@ user_context = get_user_context(guild_id, user_nick)
 
 ### Efficiency Optimizations
 - **Lazy Loading**: Context generated only when needed for active conversations
-- **Batch Processing**: Daily/weekly jobs process multiple users simultaneously
-- **Cache Warming**: Precompute contexts for frequent participants
+- **LRU Caching**: Automatic cache management with size limits
+- **Immutable Keys**: Absolute date keys ensure cached results never invalidate
 - **Message Pruning**: Archive old raw messages, keep only summaries
 
 ### Scalability
 - **Target Scale**: Optimized for small deployments (5-100 users)
-- **Async Processing**: Non-blocking summarization jobs don't affect bot responsiveness
+- **On-Demand Processing**: No background jobs, everything calculated when needed
 - **Gemma Integration**: Free tier provides generous limits for hobby-scale usage
 - **Simple Architecture**: Minimal infrastructure requirements
 - **Data Retention**: Limited message history (1 week to 1 month) keeps storage bounded
@@ -297,27 +295,12 @@ user_context = get_user_context(guild_id, user_nick)
 ## Privacy and Safety
 
 ### Data Protection
-- **User Consent**: Memory features opt-in per guild
+- **Private Bot**: No consent needed - users are aware of functionality
 - **Data Retention**: Configurable retention periods for different memory types
-- **Anonymization**: Option to hash user identifiers for privacy
-- **Export/Delete**: Users can request memory export or deletion
+- **User ID Storage**: Discord user IDs in database, nicknames only for LLM calls
 
-### Content Filtering
-- **Sensitive Information**: Filter out personal information (addresses, phone numbers)
-- **Inappropriate Content**: Content moderation before memory storage
-- **Conflict Resolution**: Handle contradictory or false information gracefully
+### Content Processing
+- **Direct Storage**: All message content stored without filtering
+- **Temperature 0**: AI operations use deterministic responses
+- **Conflict Resolution**: Handle contradictory information through AI merging
 
-## Future Enhancements
-
-### Advanced Features
-- **Cross-Guild Memory**: Optional memory sharing across servers (with consent)
-- **Memory Importance Scoring**: Weight memories by relevance and user interaction
-- **Temporal Queries**: "What was X doing last month?" type queries
-- **Memory Relationships**: Track connections between users' memories
-- **Personality Modeling**: Build personality profiles from memory patterns
-
-### Technical Improvements
-- **Vector Embeddings**: Semantic similarity for better memory retrieval
-- **Graph Database**: Model complex memory relationships
-- **Real-time Processing**: Streaming memory updates instead of batch processing
-- **A/B Testing**: Compare different summarization strategies for effectiveness
