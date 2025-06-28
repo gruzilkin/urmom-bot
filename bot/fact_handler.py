@@ -36,12 +36,20 @@ class FactHandler:
         - "What is X's name?"
         """
 
-    def get_parameter_extraction_guidelines(self) -> str:
+    
+    def get_parameter_schema(self):
+        """Return the Pydantic schema for parameter extraction."""
+        from schemas import FactParams
+        return FactParams
+    
+    def get_parameter_extraction_prompt(self) -> str:
+        """Return focused prompt for extracting fact operation parameters."""
         return """
-        FACT route parameter extraction:
-        - operation: "remember" or "forget" based on an EXPLICIT and IMPERATIVE command.
-        - user_mention: Extract user reference (1333878858138652682 for <@1333878858138652682> or nickname)
-        - fact_content: The specific fact to remember or forget. This can be extracted from the current message or the conversation history, as long as the "remember" or "forget" command is explicit.
+        Extract parameters for a memory fact operation (remember/forget).
+        
+        operation: "remember" or "forget" based on an EXPLICIT and IMPERATIVE command.
+        user_mention: Extract user reference (Discord ID for <@1333878858138652682> or nickname)
+        fact_content: The specific fact to remember or forget. This can be extracted both from the user message and infered from the conversation history.
         
         Examples:
         - "Bot remember that gruzilkin is Sergey" → operation: "remember", user_mention: "gruzilkin", fact_content: "gruzilkin is Sergey"

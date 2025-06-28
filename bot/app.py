@@ -94,27 +94,27 @@ async def on_message(message: nextcord.Message):
 
         # Replace bot mention with "BOT" and pass the whole message to the router
         processed_message = message.content.replace(f"<@{bot.user.id}>", "BOT").strip()
-        router_decision = await container.ai_router.route_request(processed_message)
+        route, params = await container.ai_router.route_request(processed_message)
         
-        if router_decision.route == "FAMOUS":
+        if route == "FAMOUS":
             conversation_fetcher = create_conversation_fetcher(message)
             
             response = await container.famous_person_generator.handle_request(
-                router_decision.famous_params, processed_message, conversation_fetcher, message.guild.id
+                params, processed_message, conversation_fetcher, message.guild.id
             )
             await message.reply(response)
         
-        elif router_decision.route == "GENERAL":
+        elif route == "GENERAL":
             conversation_fetcher = create_conversation_fetcher(message)
             
             response = await container.general_query_generator.handle_request(
-                router_decision.general_params, conversation_fetcher, message.guild.id
+                params, conversation_fetcher, message.guild.id
             )
             await message.reply(response)
 
-        elif router_decision.route == "FACT" and router_decision.fact_params:
+        elif route == "FACT" and params:
             response = await container.fact_handler.handle_request(
-                router_decision.fact_params, message.guild.id
+                params, message.guild.id
             )
             await message.reply(response)
 

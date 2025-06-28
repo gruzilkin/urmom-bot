@@ -24,11 +24,24 @@ class FamousPersonGenerator:
         - Handles variations like "What would X say about Y?" or "How would X feel about this?"
         """
 
-    def get_parameter_extraction_guidelines(self) -> str:
+    
+    def get_parameter_schema(self):
+        """Return the Pydantic schema for parameter extraction."""
+        from schemas import FamousParams
+        return FamousParams
+    
+    def get_parameter_extraction_prompt(self) -> str:
+        """Return focused prompt for extracting famous person parameters."""
         return """
-        FAMOUS route parameter extraction:
-        - Extract the person's name (can be real celebrities, fictional characters, historical figures)
-        - Set famous_person to the name of the person to impersonate
+        Extract the famous person's name from the user message.
+        
+        Examples:
+        - "What would Trump say?" → famous_person: "Trump"
+        - "How would Darth Vader respond?" → famous_person: "Darth Vader"  
+        - "What if Einstein explained this?" → famous_person: "Einstein"
+        - "What would Jesus say if he spoke like Trump?" → famous_person: "Jesus"
+        
+        Extract the person's name (can be real celebrities, fictional characters, historical figures).
         """
 
     async def is_famous_person_request(self, message: str) -> str | None:

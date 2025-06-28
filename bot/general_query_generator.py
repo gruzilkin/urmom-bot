@@ -44,36 +44,40 @@ class GeneralQueryGenerator:
         - Invalid: Simple reactions like "lol", "nice", "haha that's funny"
         """
 
-    def get_parameter_extraction_guidelines(self) -> str:
+    
+    def get_parameter_schema(self):
+        """Return the Pydantic schema for parameter extraction."""
+        from schemas import GeneralParams
+        return GeneralParams
+    
+    def get_parameter_extraction_prompt(self) -> str:
+        """Return focused prompt for extracting general query parameters."""
         return """
-        GENERAL route parameter extraction:
-        - ai_backend selection:
-          * gemini_flash: General questions, explanations, factual information
-          * grok: Creative tasks, uncensored content, real-time news/current events, wild requests
-          * claude: Coding help, technical explanations, detailed analysis, complex reasoning
-          * gemma: Do not select unless explicitly requested
-          * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
+        Extract parameters for a general AI query request.
         
-        - temperature selection:
-          * Use a low temperature (<= 0.3) for factual data, calculations, precise information, technical explanations, or requests for "detailed" plans.
-          * Use a moderate temperature (0.4-0.6) for balanced responses and general questions.
-          * Use a high temperature (>= 0.7) for creative writing, brainstorming, "go crazy" requests, and artistic content.
+        ai_backend selection:
+        * gemini_flash: General questions, explanations, factual information
+        * grok: Creative tasks, uncensored content, real-time news/current events, wild requests
+        * claude: Coding help, technical explanations, detailed analysis, complex reasoning
+        * gemma: Do not select unless explicitly requested
+        * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
         
-        - cleaned_query extraction:
-          * Goal: Produce a clean, direct query for the AI assistant. The user's message will contain the placeholder 'BOT' to refer to the assistant.
-          * Rule 1: Rephrase the query from the BOT's perspective. Convert the user's request into a direct, second-person command or question.
-          * Rule 2: Remove routing instructions like `use gemini`, `be creative`, or temperature hints.
-          * Examples:
-            - "BOT, what is the capital of France?" → "what is the capital of France?"
-            - "what does BOT think about this?" → "what do you think about this?"
-            - "let's ask BOT to investigate this" → "investigate this"
-            - "BOT get me the latest news" → "get me the latest news"
-            - "ask grok to write a poem about cats" → "write a poem about cats"
-            - "use gemini flash to explain quantum physics" → "explain quantum physics"
-            - "with high creativity, write a story" → "write a story"
-            - "be factual and explain the weather" → "explain the weather"
-            - "let's have BOT use claude to write a technical blog post, be very detailed" → "write a technical blog post"
-            - "BOT, ask grok to give me 5 startup ideas, go wild with creativity" → "give me 5 startup ideas"
+        temperature selection:
+        * Use a low temperature (<= 0.3) for factual data, calculations, precise information, technical explanations, or requests for "detailed" plans.
+        * Use a moderate temperature (0.4-0.6) for balanced responses and general questions.
+        * Use a high temperature (>= 0.7) for creative writing, brainstorming, "go crazy" requests, and artistic content.
+        
+        cleaned_query extraction:
+        * Goal: Produce a clean, direct query for the AI assistant. The user's message will contain the placeholder 'BOT' to refer to the assistant.
+        * Rule 1: Rephrase the query from the BOT's perspective. Convert the user's request into a direct, second-person command or question.
+        * Rule 2: Remove routing instructions like `use gemini`, `be creative`, or temperature hints.
+        * Examples:
+          - "BOT, what is the capital of France?" → "what is the capital of France?"
+          - "what does BOT think about this?" → "what do you think about this?"
+          - "let's ask BOT to investigate this" → "investigate this"
+          - "ask grok to write a poem about cats" → "write a poem about cats"
+          - "use gemini flash to explain quantum physics" → "explain quantum physics"
+          - "with high creativity, write a story" → "write a story"
         """
 
     def _extract_unique_user_ids(self, conversation) -> Set[int]:

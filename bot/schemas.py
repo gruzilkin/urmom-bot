@@ -16,21 +16,26 @@ class YesNo(BaseModel):
 
 class FamousParams(BaseModel):
     """Parameters for famous person impersonation requests."""
-    famous_person: str = Field(description="Name of the famous person to impersonate")
+    famous_person: str = Field(description="Name of the famous person to impersonate (celebrity, fictional character, or historical figure)")
 
 
 class GeneralParams(BaseModel):
     """Parameters for general AI query requests."""
-    ai_backend: Literal["gemini_flash", "grok", "claude", "gemma"] = Field(description="AI backend to use")
-    temperature: float = Field(description="Temperature 0.0-1.0", ge=0.0, le=1.0)
-    cleaned_query: str = Field(description="The query with routing instructions removed")
+    ai_backend: Literal["gemini_flash", "grok", "claude", "gemma"] = Field(
+        description="AI backend to use: gemini_flash for general questions, grok for creative tasks, claude for technical work, gemma only if explicitly requested"
+    )
+    temperature: float = Field(
+        description="Response creativity level: 0.1-0.3 for factual/precise, 0.4-0.6 for balanced, 0.7-0.9 for creative", 
+        ge=0.0, le=1.0
+    )
+    cleaned_query: str = Field(description="User's request with 'BOT' mentions and routing instructions removed")
 
 
 class FactParams(BaseModel):
     """Parameters for memory fact operations."""
-    operation: Literal["remember", "forget"] = Field(description="Type of memory operation")
-    user_mention: str = Field(description="User being referenced (e.g., '@username' or 'gruzilkin')")
-    fact_content: str = Field(description="The fact to remember/forget")
+    operation: Literal["remember", "forget"] = Field(description="Memory operation type: 'remember' to store a fact, 'forget' to remove a fact")
+    user_mention: str = Field(description="User reference: Discord mention like '<@123456>' or nickname like 'gruzilkin'")
+    fact_content: str = Field(description="The specific fact to remember or forget about the user")
 
 
 class MemoryUpdate(BaseModel):
@@ -42,3 +47,9 @@ class MemoryForget(BaseModel):
     """Schema for memory forget operations."""
     updated_memory: str = Field(description="The updated memory blob after removing information")
     fact_found: bool = Field(description="Whether the specified fact was found and removed")
+
+
+class RouteSelection(BaseModel):
+    """Schema for AI router route selection (first tier)."""
+    route: Literal["FAMOUS", "GENERAL", "FACT", "NONE"] = Field(description="Route decision")
+    reason: str = Field(description="Brief reason for choosing this route")

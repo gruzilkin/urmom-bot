@@ -68,17 +68,20 @@ class GemmaClient(AIClient):
             if enable_grounding:
                 logger.warning("Grounding not supported by Gemma models")
 
-            # Build final message
-            final_message = message
-            
-            # Add system prompt by prepending (Gemma doesn't support system instructions)
-            if prompt:
-                final_message = f"System: {prompt}\n\nUser: {final_message}"
-            
-            # Add schema instruction for structured output
+            # Build structured message for Gemma
             if response_schema:
-                schema_instruction = f"\n\nPlease respond with a valid JSON object that matches this schema: {response_schema.model_json_schema()}"
-                final_message += schema_instruction
+                # Structured format for JSON responses
+                final_message = f"""<system>{prompt or 'You are a helpful assistant.'}</system>
+<user_message>{message}</user_message>
+<response_format>Respond with a valid JSON object matching the provided schema. Do not include explanations or multiple JSON blocks - return only the requested parameter values as a single JSON object.</response_format>
+
+Schema: {response_schema.model_json_schema()}"""
+            else:
+                # Simple format for text responses
+                if prompt:
+                    final_message = f"<system>{prompt or 'You are a helpful assistant.'}</system>\n<user_message>{message}</user_message>"
+                else:
+                    final_message = message
 
             logger.info(f"Gemma request: {final_message}")
 

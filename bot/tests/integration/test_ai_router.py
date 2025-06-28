@@ -74,16 +74,14 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         expected_cleaned_query = "tell me a joke"
 
         # Act
-        decision = await self.router.route_request(user_message)
+        route, params = await self.router.route_request(user_message)
 
         # Assert
-        self.assertEqual(decision.route, "GENERAL")
-        self.assertIsNotNone(decision.general_params)
-        self.assertIsNotNone(decision.reason)
-        self.assertTrue(len(decision.reason) > 0)
-        self.assertEqual(decision.general_params.ai_backend, "grok")
-        self.assertEqual(decision.general_params.cleaned_query.lower(), expected_cleaned_query.lower())
-        self.assertGreaterEqual(decision.general_params.temperature, 0.7, "Temperature should be high for a 'creative' request")
+        self.assertEqual(route, "GENERAL")
+        self.assertIsNotNone(params)
+        self.assertEqual(params.ai_backend, "grok")
+        self.assertEqual(params.cleaned_query.lower(), expected_cleaned_query.lower())
+        self.assertGreaterEqual(params.temperature, 0.7, "Temperature should be high for a 'creative' request")
 
     async def test_route_request_with_direct_command(self):
         """
@@ -94,16 +92,14 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         expected_cleaned_query = "write a technical blog post"
 
         # Act
-        decision = await self.router.route_request(user_message)
+        route, params = await self.router.route_request(user_message)
 
         # Assert
-        self.assertEqual(decision.route, "GENERAL")
-        self.assertIsNotNone(decision.general_params)
-        self.assertIsNotNone(decision.reason)
-        self.assertTrue(len(decision.reason) > 0)
-        self.assertEqual(decision.general_params.ai_backend, "claude")
-        self.assertEqual(decision.general_params.cleaned_query.lower(), expected_cleaned_query.lower())
-        self.assertLessEqual(decision.general_params.temperature, 0.3, "Temperature should be low for a 'detailed' request")
+        self.assertEqual(route, "GENERAL")
+        self.assertIsNotNone(params)
+        self.assertEqual(params.ai_backend, "claude")
+        self.assertEqual(params.cleaned_query.lower(), expected_cleaned_query.lower())
+        self.assertLessEqual(params.temperature, 0.3, "Temperature should be low for a 'detailed' request")
 
     async def test_route_request_memory_remember(self):
         """
@@ -112,16 +108,14 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         user_message = "Bot remember that <@1333878858138652682> works at TechCorp"
 
         # Act
-        decision = await self.router.route_request(user_message)
+        route, params = await self.router.route_request(user_message)
 
         # Assert
-        self.assertEqual(decision.route, "FACT")
-        self.assertIsNotNone(decision.fact_params)
-        self.assertIsNotNone(decision.reason)
-        self.assertTrue(len(decision.reason) > 0)
-        self.assertEqual(decision.fact_params.operation, "remember")
-        self.assertEqual(decision.fact_params.user_mention, "1333878858138652682")
-        self.assertIn("TechCorp", decision.fact_params.fact_content)
+        self.assertEqual(route, "FACT")
+        self.assertIsNotNone(params)
+        self.assertEqual(params.operation, "remember")
+        self.assertEqual(params.user_mention, "1333878858138652682")
+        self.assertIn("TechCorp", params.fact_content)
 
     async def test_route_request_memory_forget(self):
         """
@@ -130,16 +124,14 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         user_message = "Bot forget that gruzilkin likes pizza"
 
         # Act
-        decision = await self.router.route_request(user_message)
+        route, params = await self.router.route_request(user_message)
 
         # Assert
-        self.assertEqual(decision.route, "FACT")
-        self.assertIsNotNone(decision.fact_params)
-        self.assertIsNotNone(decision.reason)
-        self.assertTrue(len(decision.reason) > 0)
-        self.assertEqual(decision.fact_params.operation, "forget")
-        self.assertEqual(decision.fact_params.user_mention, "gruzilkin")
-        self.assertIn("likes pizza", decision.fact_params.fact_content)
+        self.assertEqual(route, "FACT")
+        self.assertIsNotNone(params)
+        self.assertEqual(params.operation, "forget")
+        self.assertEqual(params.user_mention, "gruzilkin")
+        self.assertIn("likes pizza", params.fact_content)
 
 
 if __name__ == '__main__':

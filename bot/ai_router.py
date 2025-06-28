@@ -1,30 +1,15 @@
 import logging
-from typing import Union, Optional
+from typing import Union, Optional, Tuple
 from ai_client import AIClient
 from open_telemetry import Telemetry
-from schemas import FamousParams, GeneralParams, FactParams
+from schemas import FamousParams, GeneralParams, FactParams, RouteSelection
 from pydantic import BaseModel, Field
 from typing import Literal
 
 logger = logging.getLogger(__name__)
 
 
-class RouterDecision(BaseModel):
-    """Schema for routing decisions."""
-    route: Literal["FAMOUS", "GENERAL", "FACT", "NONE"] = Field(description="Route decision")
-    famous_params: Optional[FamousParams] = Field(
-        default=None,
-        description="Parameters for the FAMOUS route. Only present if route is FAMOUS."
-    )
-    general_params: Optional[GeneralParams] = Field(
-        default=None,
-        description="Parameters for the GENERAL route. Only present if route is GENERAL."
-    )
-    fact_params: Optional[FactParams] = Field(
-        default=None,
-        description="Parameters for the FACT route. Only present if route is FACT."
-    )
-    reason: str = Field(description="Reason for choosing the route.")
+# RouterDecision class removed - now using tuple return (route_name, params_object)
 
 
 class AiRouter:
@@ -36,14 +21,11 @@ class AiRouter:
         self.general_generator = general_generator
         self.fact_handler = fact_handler
     
-    def _build_combined_prompt(self) -> str:
+    def _build_route_selection_prompt(self) -> str:
+        """Build focused prompt for route selection only (tier 1)."""
         famous_desc = self.famous_generator.get_route_description()
         general_desc = self.general_generator.get_route_description()
         fact_desc = self.fact_handler.get_route_description()
-        
-        famous_guidelines = self.famous_generator.get_parameter_extraction_guidelines()
-        general_guidelines = self.general_generator.get_parameter_extraction_guidelines()
-        fact_guidelines = self.fact_handler.get_parameter_extraction_guidelines()
         
         return f"""
 <system_instructions>
@@ -52,9 +34,8 @@ Analyze the user message and decide how to route it. Choose exactly one route.
 Instructions:
 1. Read the user message carefully.
 2. Determine which route best matches the intent.
-3. Follow the parameter extraction guidelines for your chosen route.
-4. ALWAYS provide a brief (1-2 sentence) reason for your decision, regardless of the chosen route (including NONE).
-5. Return your decision with the appropriate parameters and the mandatory reason field filled in.
+3. ALWAYS provide a brief (1-2 sentence) reason for your decision.
+4. Focus ONLY on route selection - parameter extraction happens later.
 </system_instructions>
 
 <route_definitions>
@@ -80,55 +61,77 @@ NONE: For everything else
   - "I think BOT is getting smarter at answering questions."
   - "You should ask BOT about that."
   - "I like that new feature where you can mention BOT anywhere in the sentence."
-- No parameters needed
 </route>
 </route_definitions>
-
-<parameter_extraction_guidelines>
-<route route="FAMOUS">
-{famous_guidelines}
-</route>
-
-<route route="GENERAL">
-{general_guidelines}
-</route>
-
-<route route="FACT">
-{fact_guidelines}
-</route>
-
-<route route="NONE">
-NONE route parameter extraction:
-- No parameters needed for NONE route
-</route>
-</parameter_extraction_guidelines>
 """
 
-    async def route_request(self, message: str) -> RouterDecision:
-        system_instructions = self._build_combined_prompt()
-        full_message_for_ai = f"{system_instructions}\n<user_input>{message}</user_input>"
+    async def _extract_parameters(self, route: str, message: str) -> Union[FamousParams, GeneralParams, FactParams, None]:
+        """Extract parameters for the selected route (tier 2)."""
+        if route == "NONE":
+            return None
+            
+        # Get the appropriate route handler
+        if route == "FAMOUS":
+            handler = self.famous_generator
+        elif route == "GENERAL":
+            handler = self.general_generator
+        elif route == "FACT":
+            handler = self.fact_handler
+        else:
+            raise ValueError(f"Unknown route: {route}")
         
+        # Get schema and prompt from the handler
+        param_schema = handler.get_parameter_schema()
+        extraction_prompt = handler.get_parameter_extraction_prompt()
+        
+        async with self.telemetry.async_create_span("extract_parameters") as span:
+            span.set_attribute("route", route)
+            span.set_attribute("message", message)
+            
+            params = await self.ai_client.generate_content(
+                message=message,
+                prompt=extraction_prompt,
+                temperature=0.0,  # Deterministic parameter extraction
+                response_schema=param_schema
+            )
+            
+            logger.info(f"Extracted parameters for {route}: {params}")
+            return params
+    
+    async def route_request(self, message: str) -> Tuple[str, Union[FamousParams, GeneralParams, FactParams, None]]:
+        """Route a message using 2-tier approach: route selection then parameter extraction."""
         async with self.telemetry.async_create_span("route_request") as span:
             span.set_attribute("message", message)
             
-            response = await self.ai_client.generate_content(
-                message=full_message_for_ai,
+            # Tier 1: Route selection
+            route_prompt = self._build_route_selection_prompt()
+            route_message = f"{route_prompt}\n<user_input>{message}</user_input>"
+            
+            route_selection = await self.ai_client.generate_content(
+                message=route_message,
                 prompt="",
-                response_schema=RouterDecision
+                temperature=0.0,  # Deterministic route selection
+                response_schema=RouteSelection
             )
             
-            span.set_attribute("route", response.route)
-            span.set_attribute("reason", response.reason)
-            if response.route == "FAMOUS" and response.famous_params:
-                span.set_attribute("famous_person", response.famous_params.famous_person)
-            elif response.route == "GENERAL" and response.general_params:
-                span.set_attribute("ai_backend", response.general_params.ai_backend)
-                span.set_attribute("temperature", response.general_params.temperature)
-            elif response.route == "FACT" and response.fact_params:
-                span.set_attribute("fact_operation", response.fact_params.operation)
-                span.set_attribute("fact_user_mention", response.fact_params.user_mention)
+            span.set_attribute("route", route_selection.route)
+            span.set_attribute("reason", route_selection.reason)
+            logger.info(f"Route selection: {route_selection.route}, Reason: {route_selection.reason}")
             
-            logger.info(f"Routing decision: {response.route}, Reason: {response.reason}")
-            return response
+            # Tier 2: Parameter extraction (if needed)
+            params = await self._extract_parameters(route_selection.route, message)
+            
+            # Add parameter details to telemetry
+            if params:
+                if route_selection.route == "FAMOUS":
+                    span.set_attribute("famous_person", params.famous_person)
+                elif route_selection.route == "GENERAL":
+                    span.set_attribute("ai_backend", params.ai_backend)
+                    span.set_attribute("temperature", params.temperature)
+                elif route_selection.route == "FACT":
+                    span.set_attribute("fact_operation", params.operation)
+                    span.set_attribute("fact_user_mention", params.user_mention)
+            
+            return (route_selection.route, params)
     
     
