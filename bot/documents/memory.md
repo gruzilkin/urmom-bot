@@ -1,5 +1,20 @@
 # Memory System Architecture
 
+## Implementation Status
+
+**✅ MILESTONE 1 COMPLETE: Factual Memory System**
+- Factual memory operations (remember/forget) with AI-powered merging
+- Database schema and storage
+- Discord integration with freeform commands
+- User resolution with proper Discord API integration
+- Memory injection into AI responses via XML-structured prompts
+- Natural memory queries through general query generator
+
+**🚧 IN PROGRESS: Transient Memory System**
+- Message ingestion and storage (TODO)
+- Daily/weekly summarization pipeline (TODO)
+- Context assembly and merging (TODO)
+
 ## Overview
 
 The urmom-bot memory system is a sophisticated hierarchical AI-powered memory architecture that maintains both permanent factual knowledge and transient episodic memories about users. The system is designed to provide rich contextual awareness while maintaining efficiency through intelligent summarization and caching.
@@ -28,7 +43,7 @@ The urmom-bot memory system is a sophisticated hierarchical AI-powered memory ar
 
 ## Database Schema
 
-### User Facts Table
+### User Facts Table ✅ IMPLEMENTED
 ```sql
 CREATE TABLE user_facts (
     guild_id BIGINT NOT NULL,
@@ -39,7 +54,7 @@ CREATE TABLE user_facts (
 );
 ```
 
-### Messages Table
+### Messages Table ✅ SCHEMA READY (ingestion TODO)
 ```sql
 CREATE TABLE messages (
     guild_id BIGINT NOT NULL,
@@ -53,7 +68,7 @@ CREATE TABLE messages (
 
 ## AI Operations
 
-### Factual Memory Operations
+### Factual Memory Operations ✅ IMPLEMENTED
 ```python
 def remember(current_memory_blob: str, new_fact: str) -> str:
     """
@@ -86,7 +101,7 @@ def forget(current_memory_blob: str, fact_to_forget: str) -> str:
     return llm_call(prompt)
 ```
 
-### Transient Memory Operations
+### Transient Memory Operations 🚧 TODO
 ```python
 def prepare_messages_for_llm(messages: List[Message]) -> str:
     """
@@ -222,7 +237,7 @@ def merge_context(guild_id: int, user_id: int, facts: str, transient: str) -> st
 
 ## Discord Integration
 
-### Freeform Commands
+### Freeform Commands ✅ IMPLEMENTED
 ```
 Bot remember that gruzilkin is Sergey
 Bot, remember this about Florent [conversation history]
@@ -231,11 +246,11 @@ Bot what do you remember about @user
 ```
 
 ### Automated Processing
-- **Message Ingestion**: All messages automatically stored with user IDs in `messages` table
-- **User ID Translation**: IDs converted to readable nicks only for LLM processing
-- **On-Demand Calculation**: Summaries and context generated when requested
-- **LRU Caching**: Extensive caching prevents redundant AI calls
-- **Context Injection**: Memory context automatically included in AI responses
+- **Message Ingestion**: All messages automatically stored with user IDs in `messages` table 🚧 TODO
+- **User ID Translation**: IDs converted to readable nicks only for LLM processing ✅ IMPLEMENTED
+- **On-Demand Calculation**: Summaries and context generated when requested 🚧 TODO  
+- **LRU Caching**: Extensive caching prevents redundant AI calls 🚧 TODO
+- **Context Injection**: Memory context automatically included in AI responses ✅ IMPLEMENTED
 
 ## Implementation Examples
 
