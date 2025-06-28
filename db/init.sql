@@ -19,6 +19,14 @@ CREATE TABLE guild_configs (
     enable_country_jokes BOOLEAN DEFAULT TRUE
 );
 
+CREATE TABLE user_facts (
+    guild_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    memory_blob TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (guild_id, user_id)
+);
+
 -- Insert messages
 INSERT INTO messages VALUES
 (1, 'en', 'My son is bioterrorising me. He walked in my office, sat down for a few minutes, farted, and then immediately left'),

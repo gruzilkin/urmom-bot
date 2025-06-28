@@ -11,7 +11,8 @@ class MessageNode:
     """Simplified message representation for graph operations."""
     id: int
     content: str
-    author_name: str
+    author_id: int
+    mentioned_user_ids: List[int]
     created_at: datetime.datetime
     reference_id: int | None = None
     embeds: List[Any] = None
@@ -19,14 +20,17 @@ class MessageNode:
     def __post_init__(self) -> None:
         if self.embeds is None:
             self.embeds = []
+        if self.mentioned_user_ids is None:
+            self.mentioned_user_ids = []
 
 
 @dataclass
 class ConversationMessage:
     """Represents a message in chronological conversation format."""
-    author_name: str
+    author_id: int
     content: str
     timestamp: str  # Pre-formatted LLM-friendly timestamp
+    mentioned_user_ids: List[int]
 
 
 class MessageGraph:
@@ -77,9 +81,10 @@ class MessageGraph:
         for message in messages:
             if message.content.strip():
                 conversation_messages.append(ConversationMessage(
-                    author_name=message.author_name,
+                    author_id=message.author_id,
                     content=message.content,
-                    timestamp=message.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                    timestamp=message.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    mentioned_user_ids=message.mentioned_user_ids
                 ))
             
             # Process embeds for article extraction if extractor provided
@@ -89,9 +94,10 @@ class MessageGraph:
                         article_content = article_extractor(embed.url)
                         if article_content:
                             conversation_messages.append(ConversationMessage(
-                                author_name="article",
+                                author_id=0,  # Use 0 for article/system messages
                                 content=article_content,
-                                timestamp=message.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                                timestamp=message.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                                mentioned_user_ids=[]
                             ))
         
         return conversation_messages

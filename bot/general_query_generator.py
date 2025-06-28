@@ -1,21 +1,26 @@
 import logging
+from typing import Dict, Set
 
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import GeneralParams
 from response_summarizer import ResponseSummarizer
+from store import Store
+from user_resolver import UserResolver
 
 logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry):
+    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry, store: Store, user_resolver: UserResolver):
         self.gemini_flash = gemini_flash
         self.grok = grok
         self.claude = claude
         self.gemma = gemma
         self.response_summarizer = response_summarizer
         self.telemetry = telemetry
+        self.store = store
+        self.user_resolver = user_resolver
     
     def _get_ai_client(self, ai_backend: str) -> AIClient:
         """Select the appropriate AI client based on backend name."""
@@ -34,11 +39,14 @@ class GeneralQueryGenerator:
         return """
         GENERAL: For valid questions/requests needing AI assistance
         - Handles legitimate questions, requests for information, explanations, or help
-        - Valid queries: "What's the weather?", "Explain quantum physics", "How do I cook pasta?"
+        - Valid queries: "What's the weather?", "Explain quantum physics", "How do I cook pasta?", "What do you remember about John?", "Tell me about user X"
         - Context-dependent questions: "What about this?", "How does that work?"
         - Invalid: Simple reactions like "lol", "nice", "haha that's funny"
-        
-        Parameter extraction:
+        """
+
+    def get_parameter_extraction_guidelines(self) -> str:
+        return """
+        GENERAL route parameter extraction:
         - ai_backend selection:
           * gemini_flash: General questions, explanations, factual information
           * grok: Creative tasks, uncensored content, real-time news/current events, wild requests
@@ -47,9 +55,9 @@ class GeneralQueryGenerator:
           * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
         
         - temperature selection:
-          * 0.0-0.2: Factual data, calculations, precise information, technical explanations
-          * 0.3-0.6: Balanced responses, general questions, moderate creativity
-          * 0.7-1.0: Creative writing, brainstorming, "go crazy" requests, artistic content
+          * Use a low temperature (<= 0.3) for factual data, calculations, precise information, technical explanations, or requests for "detailed" plans.
+          * Use a moderate temperature (0.4-0.6) for balanced responses and general questions.
+          * Use a high temperature (>= 0.7) for creative writing, brainstorming, "go crazy" requests, and artistic content.
         
         - cleaned_query extraction:
           * Goal: Produce a clean, direct query for the AI assistant. The user's message will contain the placeholder 'BOT' to refer to the assistant.
@@ -68,15 +76,45 @@ class GeneralQueryGenerator:
             - "BOT, ask grok to give me 5 startup ideas, go wild with creativity" → "give me 5 startup ideas"
         """
 
+    def _extract_unique_user_ids(self, conversation) -> Set[int]:
+        """Extract all unique user IDs from conversation (authors + mentions)."""
+        user_ids = set()
+        for msg in conversation:
+            user_ids.add(msg.author_id)
+            user_ids.update(msg.mentioned_user_ids)
+        # Remove system user ID (0) used for articles
+        user_ids.discard(0)
+        return user_ids
+
+    async def _build_memories(self, guild_id: int, user_ids: Set[int]) -> str:
+        """Build memories section for LLM prompt."""
+        if not user_ids:
+            return ""
+        
+        memory_blocks = []
+        for user_id in user_ids:
+            display_name = await self.user_resolver.get_display_name(guild_id, user_id)
+            facts = self.store.get_user_facts(guild_id, user_id)
+            if facts:
+                memory_block = f"""<memory>
+<name>{display_name}</name>
+<facts>{facts}</facts>
+</memory>"""
+                memory_blocks.append(memory_block)
+        
+        if memory_blocks:
+            return "\n".join(memory_blocks)
+        return ""
 
     
-    async def handle_request(self, params: GeneralParams, conversation_fetcher) -> str:
+    async def handle_request(self, params: GeneralParams, conversation_fetcher, guild_id: int) -> str:
         """
         Handle a general query request using the provided parameters.
         
         Args:
             params (GeneralParams): Parameters containing ai_backend, temperature, and cleaned_query
             conversation_fetcher: Parameterless async function that returns conversation history
+            guild_id (int): Discord guild ID for user context resolution
             
         Returns:
             str: The response string ready to be sent by the caller
@@ -93,21 +131,46 @@ class GeneralQueryGenerator:
             
             conversation = await conversation_fetcher()
             
-            # Build conversation context as a single message with timestamps
-            conversation_text = "\n".join([
-                f"{msg.timestamp} {msg.author_name}: {msg.content}" 
-                for msg in conversation
-            ])
+            user_ids = self._extract_unique_user_ids(conversation)
+            memories = await self._build_memories(guild_id, user_ids)
             
-            prompt = f"""You are a helpful AI assistant in a Discord chat. Please respond to the user's question or request.
-            Keep responses under 2000 characters due to Discord's message limit but no need to report on the length of the response.
+            message_blocks = []
+            for msg in conversation:
+                author_name = await self.user_resolver.get_display_name(guild_id, msg.author_id)
+                content_with_names = await self.user_resolver.replace_user_mentions_with_names(msg.content, guild_id)
+                
+                message_block = f"""<message>
+<timestamp>{msg.timestamp}</timestamp>
+<author>{author_name}</author>
+<content>{content_with_names}</content>
+</message>"""
+                message_blocks.append(message_block)
+            conversation_text = "\n".join(message_blocks)
+            
+            prompt = f"""<system_instructions>
+You are a helpful AI assistant in a Discord chat. Please respond to the user's question or request.
 
-            Use the conversation context to better understand what the user is asking about.
-            If the question relates to something mentioned in the conversation, reference it appropriately.
-            For complex topics, provide a brief summary with key points rather than detailed explanations.
-            
-            Conversation context:
-            {conversation_text}"""
+Guidelines:
+- Keep responses under 2000 characters due to Discord's message limit but no need to report on the length of the response
+- Use the conversation context to better understand what the user is asking about
+- If the question relates to something mentioned in the conversation, reference it appropriately
+- For complex topics, provide a brief summary with key points rather than detailed explanations
+
+Memory Usage:
+- Use the provided memories naturally in your responses, as if you simply remember these things about people
+- NEVER explicitly mention that you have "memory blocks", "stored information", or "records" about users
+- NEVER say phrases like "I know that...", "According to my memory...", "I have information that...", or "This information is associated with..."
+- Simply incorporate the facts naturally into conversation, like a friend who remembers things about you
+- Example: Instead of "I know you live in Tokyo" say "How are things in Tokyo?" or reference their location contextually
+</system_instructions>
+
+<memories>
+{memories.strip() if memories else "No memories about users in this conversation."}
+</memories>
+
+<conversation_history>
+{conversation_text}
+</conversation_history>"""
             
             logger.info(f"Generating response using {params.ai_backend}")
             logger.info(f"User message: {params.cleaned_query}")

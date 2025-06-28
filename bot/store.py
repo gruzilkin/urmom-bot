@@ -1,6 +1,8 @@
 import psycopg2
 from dataclasses import dataclass
 import logging
+from cachetools import LRUCache, cachedmethod
+from typing import Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,7 @@ class Store:
         self.conn = None
         self.weight_coef = weight_coef
         self._guild_configs = {}  # Add cache dictionary
+        self._user_facts_cache = LRUCache(maxsize=500)
 
     def _connect(self):
         return psycopg2.connect(**self.connection_params)
@@ -182,6 +185,51 @@ class Store:
             self.conn.commit()
             # Update cache
             self._guild_configs[config.guild_id] = config
+
+    @cachedmethod(cache=lambda self: self._user_facts_cache)
+    def get_user_facts(self, guild_id: int, user_id: int) -> str | None:
+        """Retrieve current memory blob for a user with LRU caching."""
+        try:
+            self._ensure_connection()
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    "SELECT memory_blob FROM user_facts WHERE guild_id = %s AND user_id = %s",
+                    (guild_id, user_id)
+                )
+                result = cur.fetchone()
+                return result[0] if result else None
+        except Exception as e:
+            logger.error(f"Error retrieving user facts: {e}")
+            return None
+
+    def save_user_facts(self, guild_id: int, user_id: int, memory_blob: str) -> None:
+        """Save or update memory blob for a user and invalidate cache."""
+        try:
+            self._ensure_connection()
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO user_facts (guild_id, user_id, memory_blob, updated_at)
+                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (guild_id, user_id)
+                    DO UPDATE SET memory_blob = EXCLUDED.memory_blob, updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (guild_id, user_id, memory_blob)
+                )
+                self.conn.commit()
+                
+                # Invalidate the cache for this specific user
+                cache_key = (guild_id, user_id)
+                if cache_key in self._user_facts_cache:
+                    del self._user_facts_cache[cache_key]
+                logger.debug(f"Saved and invalidated user facts cache for user {user_id} in guild {guild_id}")
+                    
+        except Exception as e:
+            logger.error(f"Error saving user facts: {e}")
+            if self.conn:
+                self.conn.rollback()
+            raise e
+
 
     def __del__(self):
         try:

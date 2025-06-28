@@ -51,13 +51,6 @@ CREATE TABLE messages (
 );
 ```
 
-### Summaries Storage
-```python
-# Daily and weekly summaries are cached using LRU decorators
-# No database tables needed - computed on-demand with caching
-# Cache keys based on absolute dates for immutability
-```
-
 ## AI Operations
 
 ### Factual Memory Operations
@@ -107,46 +100,42 @@ def prepare_messages_for_llm(messages: List[Message]) -> str:
     return "\n".join(readable_messages)
 
 @lru_cache(maxsize=1000)
-def daily_summarize(guild_id: int, date: str, messages_hash: str) -> Dict[int, str]:
+def daily_summarize(guild_id: int, date: str) -> DailySummaries:
     """
     Summarize a complete day's worth of messages for all users in a guild.
-    Uses absolute date as cache key for immutability.
-    Returns mapping of user_id -> summary.
+    Processes all messages together to capture cross-user context.
+    Returns structured summaries mapping user_id -> summary.
     """
     messages = get_messages_for_date(guild_id, date)
-    user_messages = group_messages_by_user(messages)
+    formatted_messages = prepare_messages_for_llm(messages, guild_id)
     
-    summaries = {}
-    for user_id, user_msgs in user_messages.items():
-        formatted_messages = prepare_messages_for_llm(user_msgs, guild_id)
-        prompt = f"""
-        Summarize these messages from a user's day into key insights:
-        Messages: {formatted_messages}
-        
-        Focus on:
-        - Notable events or experiences
-        - Mood and emotional state
-        - Important interactions or topics
-        - Behavioral patterns
-        
-        Keep summary concise (~300 characters).
-        """
-        summaries[user_id] = gemma_call(prompt)
+    prompt = f"""
+    Analyze this day's conversation and create individual summaries for each user.
+    All messages: {formatted_messages}
     
-    return summaries
+    For each user who spoke, create a summary focusing on:
+    - Notable events or experiences they mentioned or were involved in
+    - Mood and emotional state
+    - Important interactions or topics they engaged with
+    - Behavioral patterns
+    - Information about them revealed through other users' messages
+    
+    Keep each summary concise (~300 characters).
+    """
+    return gemma_structured_call(prompt, DailySummaries)
 
 @lru_cache(maxsize=500)
-def weekly_summarize(guild_id: int, user_id: int, week_start_date: str) -> str:
+def weekly_summarize(guild_id: int, user_id: int, end_date: str) -> str:
     """
     Create weekly summary from daily summaries for a specific user.
-    Uses week start date as cache key for immutability.
+    Week defined as prior 7 days from end_date (inclusive).
     """
     daily_summaries = []
     for i in range(7):
-        date = get_date_offset(week_start_date, i)
-        day_summaries = daily_summarize(guild_id, date, get_messages_hash(guild_id, date))
-        if user_id in day_summaries:
-            daily_summaries.append(day_summaries[user_id])
+        date = get_date_offset(end_date, -i)
+        day_summaries = daily_summarize(guild_id, date)
+        if user_id in day_summaries.summaries:
+            daily_summaries.append(day_summaries.summaries[user_id])
     
     if not daily_summaries:
         return ""
@@ -216,7 +205,7 @@ def merge_context(guild_id: int, user_id: int, facts: str, transient: str) -> st
 
 ### Cache Key Design
 - **Daily summaries**: Absolute date string (e.g., "2024-01-15")
-- **Weekly summaries**: Week start date (e.g., "2024-01-15" for Monday)
+- **Weekly summaries**: End date for prior 7 days (e.g., "2024-01-21" for 7-day period ending that date)
 - **Final context**: Hash of facts + transient context components
 
 ### Memory Footprint Analysis
@@ -233,12 +222,12 @@ def merge_context(guild_id: int, user_id: int, facts: str, transient: str) -> st
 
 ## Discord Integration
 
-### Commands
+### Freeform Commands
 ```
-@urmom-bot remember @user <fact>     - Add permanent fact to user's memory
-@urmom-bot forget @user <fact>       - Remove specific fact from user's memory
-@urmom-bot memory @user              - Display current memory about user
-@urmom-bot clear-memory @user        - Clear all memory about user
+Bot remember that gruzilkin is Sergey
+Bot, remember this about Florent [conversation history]
+Bot forget that gruzilkin likes pizza
+Bot what do you remember about @user
 ```
 
 ### Automated Processing
@@ -283,7 +272,7 @@ user_context = get_user_context(guild_id, user_nick)
 - **Lazy Loading**: Context generated only when needed for active conversations
 - **LRU Caching**: Automatic cache management with size limits
 - **Immutable Keys**: Absolute date keys ensure cached results never invalidate
-- **Message Pruning**: Archive old raw messages, keep only summaries
+- **Message Retention**: Use 7-day window for summarization
 
 ### Scalability
 - **Target Scale**: Optimized for small deployments (5-100 users)

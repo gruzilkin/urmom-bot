@@ -24,3 +24,21 @@ class GeneralParams(BaseModel):
     ai_backend: Literal["gemini_flash", "grok", "claude", "gemma"] = Field(description="AI backend to use")
     temperature: float = Field(description="Temperature 0.0-1.0", ge=0.0, le=1.0)
     cleaned_query: str = Field(description="The query with routing instructions removed")
+
+
+class FactParams(BaseModel):
+    """Parameters for memory fact operations."""
+    operation: Literal["remember", "forget"] = Field(description="Type of memory operation")
+    user_mention: str = Field(description="User being referenced (e.g., '@username' or 'gruzilkin')")
+    fact_content: str = Field(description="The fact to remember/forget")
+
+
+class MemoryUpdate(BaseModel):
+    """Schema for memory update operations."""
+    updated_memory: str = Field(description="The updated memory blob after incorporating new information")
+
+
+class MemoryForget(BaseModel):
+    """Schema for memory forget operations."""
+    updated_memory: str = Field(description="The updated memory blob after removing information")
+    fact_found: bool = Field(description="Whether the specified fact was found and removed")

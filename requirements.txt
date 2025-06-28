@@ -9,3 +9,4 @@ opentelemetry-sdk
 opentelemetry-exporter-otlp
 python-json-logger
 goose3[all]
+cachetools
