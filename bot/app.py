@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 from enum import Enum
 from types import SimpleNamespace
 import logging
@@ -13,7 +12,10 @@ from goose3 import Goose
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from container import container  # Import the instance instead of the class
-from conversation_graph import ConversationGraphBuilder, MessageNode, ConversationMessage
+from conversation_graph import ConversationGraphBuilder, ConversationMessage
+from message_node import MessageNode
+
+
 
 intents = nextcord.Intents.default()
 intents.message_content = True  # MUST have this to receive message content
@@ -213,17 +215,28 @@ def discord_to_message_node(message: nextcord.Message) -> MessageNode:
     if message.reference and message.reference.message_id:
         reference_id = message.reference.message_id
     
-    # Extract mentioned user IDs
     mentioned_user_ids = [user.id for user in message.mentions]
+    
+    content = message.content
+    if message.embeds:
+        article_contents = []
+        for embed in message.embeds:
+            if hasattr(embed, 'url') and embed.url:
+                article_text = extract_article(embed.url)
+                if article_text:
+                    article_contents.append(f'<embedding type="article" url="{embed.url}">{article_text}</embedding>')
+        
+        if article_contents:
+            embeddings_xml = f"<embeddings>{''.join(article_contents)}</embeddings>"
+            content = f"{content} {embeddings_xml}" if content.strip() else embeddings_xml
     
     return MessageNode(
         id=message.id,
-        content=message.content,
+        content=content,
         author_id=message.author.id,
         mentioned_user_ids=mentioned_user_ids,
         created_at=message.created_at,
-        reference_id=reference_id,
-        embeds=message.embeds
+        reference_id=reference_id
     )
 
 
@@ -270,14 +283,13 @@ async def get_recent_conversation(
         List of ConversationMessage objects with timestamps in chronological order
     """
     # Create Discord API adapter functions
-    async def fetch_message(message_id: int) -> MessageNode | None:
+    async def fetch_message(message_id: int) -> nextcord.Message | None:
         async with container.telemetry.async_create_span("fetch_message") as span:
             span.set_attribute("message_id", message_id)
             try:
                 message = await channel.fetch_message(message_id)
-                result = discord_to_message_node(message)
                 span.set_attribute("found", True)
-                return result
+                return message
             except Exception as e:
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR))
@@ -285,7 +297,7 @@ async def get_recent_conversation(
                 logger.error(f"Failed to fetch message {message_id}: {e}", exc_info=True)
                 return None
     
-    async def fetch_history(message_id: int | None) -> list[MessageNode]:
+    async def fetch_history(message_id: int | None) -> list[nextcord.Message]:
         async with container.telemetry.async_create_span("fetch_history") as span:
             span.set_attribute("message_id", message_id or "channel_start")
             
@@ -302,7 +314,7 @@ async def get_recent_conversation(
             messages = []
             try:
                 async for msg in channel.history(limit=100, before=message):
-                    messages.append(discord_to_message_node(msg))
+                    messages.append(msg)
             except Exception as e:
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR))
@@ -314,12 +326,12 @@ async def get_recent_conversation(
     # Determine trigger message
     trigger_message = None
     if reference_message:
-        trigger_message = discord_to_message_node(reference_message)
+        trigger_message = reference_message
     else:
         # Get most recent message as trigger
         try:
             async for msg in channel.history(limit=1):
-                trigger_message = discord_to_message_node(msg)
+                trigger_message = msg
                 break
         except Exception as e:
             logger.error(f"Failed to fetch most recent message from channel: {e}", exc_info=True)
@@ -341,7 +353,7 @@ async def get_recent_conversation(
             min_linear=min_messages,
             max_total=max_messages,
             time_threshold_minutes=max_age_minutes,
-            article_extractor=extract_article
+            discord_to_message_node_func=discord_to_message_node
         )
         
         span.set_attribute("total_messages", len(conversation))

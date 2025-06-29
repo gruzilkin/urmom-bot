@@ -1,27 +1,10 @@
 import datetime
 import logging
-from typing import List, Tuple, Callable, Awaitable, Any, Dict
+from typing import Callable, Awaitable, Any
 from dataclasses import dataclass
+import nextcord
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class MessageNode:
-    """Simplified message representation for graph operations."""
-    id: int
-    content: str
-    author_id: int
-    mentioned_user_ids: List[int]
-    created_at: datetime.datetime
-    reference_id: int | None = None
-    embeds: List[Any] = None
-    
-    def __post_init__(self) -> None:
-        if self.embeds is None:
-            self.embeds = []
-        if self.mentioned_user_ids is None:
-            self.mentioned_user_ids = []
 
 
 @dataclass
@@ -30,23 +13,21 @@ class ConversationMessage:
     author_id: int
     content: str
     timestamp: str  # Pre-formatted LLM-friendly timestamp
-    mentioned_user_ids: List[int]
+    mentioned_user_ids: list[int]
 
 
 class MessageGraph:
-    """
-    Graph data structure for conversation messages with deduplication.
-    """
+    """Graph data structure for conversation messages with deduplication."""
     def __init__(self) -> None:
-        self.nodes = {}  # message_id -> MessageNode
-        self.unexplored_references = set()  # message_ids with unprocessed references
-        self.temporal_frontier = set()  # message_ids at temporal exploration boundary
+        self.nodes: dict[int, nextcord.Message] = {}
+        self.unexplored_references: set[int] = set()
+        self.temporal_frontier: set[int] = set()
     
-    def add_node(self, message: MessageNode) -> bool:
-        """Add message node with deduplication."""
+    def add_node(self, message: nextcord.Message) -> bool:
+        """Add message with deduplication."""
         if message.id not in self.nodes:
             self.nodes[message.id] = message
-            if message.reference_id:
+            if message.reference and message.reference.message_id:
                 self.unexplored_references.add(message.id)
             self.temporal_frontier.add(message.id)
             return True
@@ -61,11 +42,11 @@ class MessageGraph:
         """Remove message from temporal exploration frontier."""
         self.temporal_frontier.discard(message_id)
     
-    def get_unexplored_references(self) -> List[MessageNode]:
+    def get_unexplored_references(self) -> list[nextcord.Message]:
         """Get messages with unexplored references."""
         return [self.nodes[msg_id] for msg_id in self.unexplored_references]
     
-    def get_temporal_frontier(self) -> List[MessageNode]:
+    def get_temporal_frontier(self) -> list[nextcord.Message]:
         """Get messages at temporal exploration frontier, sorted by recency."""
         frontier_messages = [self.nodes[msg_id] for msg_id in self.temporal_frontier]
         return sorted(frontier_messages, key=lambda m: m.created_at, reverse=True)
@@ -73,32 +54,21 @@ class MessageGraph:
     def __len__(self) -> int:
         return len(self.nodes)
     
-    def to_chronological_conversation(self, article_extractor: Callable[[str], str] | None = None) -> List[ConversationMessage]:
-        """Convert graph to chronological conversation format."""
+    def to_chronological_conversation(self, discord_to_message_node_func: Callable[[nextcord.Message], 'MessageNode']) -> list[ConversationMessage]:
+        """Convert to chronological conversation format."""
         messages = sorted(self.nodes.values(), key=lambda m: m.created_at)
         conversation_messages = []
         
         for message in messages:
-            if message.content.strip():
-                conversation_messages.append(ConversationMessage(
-                    author_id=message.author_id,
-                    content=message.content,
-                    timestamp=message.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                    mentioned_user_ids=message.mentioned_user_ids
-                ))
+            message_node = discord_to_message_node_func(message)
             
-            # Process embeds for article extraction if extractor provided
-            if article_extractor and message.embeds:
-                for embed in message.embeds:
-                    if hasattr(embed, 'url') and embed.url:
-                        article_content = article_extractor(embed.url)
-                        if article_content:
-                            conversation_messages.append(ConversationMessage(
-                                author_id=0,  # Use 0 for article/system messages
-                                content=article_content,
-                                timestamp=message.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                                mentioned_user_ids=[]
-                            ))
+            if message_node.content.strip():
+                conversation_messages.append(ConversationMessage(
+                    author_id=message_node.author_id,
+                    content=message_node.content,
+                    timestamp=message_node.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    mentioned_user_ids=message_node.mentioned_user_ids
+                ))
         
         return conversation_messages
 
@@ -110,15 +80,15 @@ class ConversationGraphBuilder:
     """
     
     def __init__(self, 
-                 fetch_message: Callable[[int], Awaitable[MessageNode | None]],
-                 fetch_history: Callable[[int | None], Awaitable[List[MessageNode]]],
-                 telemetry=None):
+                 fetch_message: Callable[[int], Awaitable[nextcord.Message | None]],
+                 fetch_history: Callable[[int | None], Awaitable[list[nextcord.Message]]],
+                 telemetry: Any = None) -> None:
         """
         Initialize with message fetching abstractions.
         
         Args:
-            fetch_message: async function(message_id: int) -> MessageNode | None
-            fetch_history: async function(message_id: int | None) -> List[MessageNode]
+            fetch_message: async function(message_id: int) -> nextcord.Message | None
+            fetch_history: async function(message_id: int | None) -> list[nextcord.Message]
             telemetry: Optional telemetry service for spans
         """
         self.fetch_message = fetch_message
@@ -140,14 +110,18 @@ class ConversationGraphBuilder:
         added_any = False
         for message in references_to_explore:
             try:
-                if message.reference_id:
+                reference_id = None
+                if message.reference and message.reference.message_id:
+                    reference_id = message.reference.message_id
+                    
+                if reference_id:
                     # Use cached fetcher for all message fetching
-                    referenced_msg = await self.cached_fetcher.get_message_by_id(message.reference_id)
+                    referenced_msg = await self.cached_fetcher.get_message_by_id(reference_id)
                     
                     if referenced_msg and graph.add_node(referenced_msg):
                         added_any = True
             except Exception as e:
-                logger.error(f"Could not fetch referenced message {message.reference_id}: {e}", exc_info=True)
+                logger.error(f"Could not fetch referenced message {reference_id}: {e}", exc_info=True)
             
             graph.mark_reference_explored(message.id)
         
@@ -183,22 +157,21 @@ class ConversationGraphBuilder:
         
         return added_any
     
-    async def get_linear_history(self, trigger_message: MessageNode, min_linear: int) -> List[MessageNode]:
+    async def get_linear_history(self, trigger_message: nextcord.Message, min_linear: int) -> list[nextcord.Message]:
         """Get guaranteed linear message history."""
         min_linear = max(min_linear, 1)
         
-        # Use cached fetcher for bulk linear history to populate cache for subsequent temporal exploration
         prev_messages = await self.cached_fetcher.get_bulk_history(trigger_message.id)
         messages = [trigger_message] + prev_messages[:min_linear - 1]
         
         return messages
     
     async def build_conversation_graph(self, 
-                                     trigger_message: MessageNode,
+                                     trigger_message: nextcord.Message,
                                      min_linear: int,
                                      max_total: int, 
                                      time_threshold_minutes: int,
-                                     article_extractor: Callable[[str], str] | None = None) -> List[ConversationMessage]:
+                                     discord_to_message_node_func: Callable[[nextcord.Message], 'MessageNode']) -> list[ConversationMessage]:
         """
         Build conversation graph using tik/tok alternating exploration.
         
@@ -233,8 +206,7 @@ class ConversationGraphBuilder:
             if not reference_step_added and not temporal_step_added:
                 break
         
-        # Convert to conversation format
-        return graph.to_chronological_conversation(article_extractor)
+        return graph.to_chronological_conversation(discord_to_message_node_func)
     
 
 
@@ -244,21 +216,14 @@ class CachedHistoryFetcher:
     Maintains a cache of message_id -> previous message to minimize Discord API calls.
     """
     
-    def __init__(self, fetch_history: Callable[[int | None], Awaitable[List[MessageNode]]], 
-                 fetch_message: Callable[[int], Awaitable[MessageNode | None]]):
-        """
-        Initialize cached history fetcher.
-        
-        Args:
-            fetch_history: Original fetch_history function
-            fetch_message: Original fetch_message function for individual messages
-        """
+    def __init__(self, fetch_history: Callable[[int | None], Awaitable[list[nextcord.Message]]], 
+                 fetch_message: Callable[[int], Awaitable[nextcord.Message | None]]) -> None:
         self.fetch_history = fetch_history
         self.fetch_message = fetch_message
-        self.cache: Dict[int, MessageNode] = {}  # message_id -> previous message
-        self.message_cache: Dict[int, MessageNode] = {}  # message_id -> message (for individual fetches)
+        self.cache: dict[int, nextcord.Message] = {}
+        self.message_cache: dict[int, nextcord.Message] = {}
         
-    async def get_previous_message(self, message_id: int) -> MessageNode | None:
+    async def get_previous_message(self, message_id: int) -> nextcord.Message | None:
         """
         Get the previous message, using cache when possible.
         
@@ -280,7 +245,7 @@ class CachedHistoryFetcher:
         else:
             return None
     
-    async def get_bulk_history(self, message_id: int | None) -> List[MessageNode]:
+    async def get_bulk_history(self, message_id: int | None) -> list[nextcord.Message]:
         """
         Get bulk history messages, populating cache along the way.
         
@@ -315,7 +280,7 @@ class CachedHistoryFetcher:
             logger.error(f"Error fetching bulk history for message {message_id}: {e}", exc_info=True)
             return []
     
-    async def get_message_by_id(self, message_id: int) -> MessageNode | None:
+    async def get_message_by_id(self, message_id: int) -> nextcord.Message | None:
         """
         Get a specific message by ID, using cache when possible.
         
@@ -323,7 +288,7 @@ class CachedHistoryFetcher:
             message_id: ID of message to fetch
             
         Returns:
-            MessageNode or None if not found
+            nextcord.Message or None if not found
         """
         # Check if message is in individual message cache
         if message_id in self.message_cache:

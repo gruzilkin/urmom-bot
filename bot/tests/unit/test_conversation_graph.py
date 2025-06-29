@@ -1,7 +1,9 @@
 import datetime
 import unittest
+from unittest.mock import Mock
 
-from conversation_graph import ConversationGraphBuilder, MessageGraph, MessageNode, CachedHistoryFetcher
+from conversation_graph import ConversationGraphBuilder, MessageGraph, CachedHistoryFetcher
+from message_node import MessageNode
 from tests.null_telemetry import NullTelemetry
 
 
@@ -11,6 +13,33 @@ class BaseMessageGraphTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.test_time = datetime.datetime.now()
         self.messages = {}
+    
+    def create_mock_discord_message(self, msg_id: int, content: str, author_id: int, 
+                                   created_at: datetime.datetime, reference_id: int = None,
+                                   mentioned_user_ids: list[int] = None) -> Mock:
+        """Create a mock Discord message object."""
+        message = Mock()
+        message.id = msg_id
+        message.content = content
+        message.author = Mock()
+        message.author.id = author_id
+        message.created_at = created_at
+        message.embeds = []
+        
+        # Mock mentions
+        if mentioned_user_ids:
+            message.mentions = [Mock(id=uid) for uid in mentioned_user_ids]
+        else:
+            message.mentions = []
+        
+        # Mock reference
+        if reference_id:
+            message.reference = Mock()
+            message.reference.message_id = reference_id
+        else:
+            message.reference = None
+            
+        return message
     
     async def mock_fetch_message(self, msg_id):
         return self.messages.get(msg_id)
@@ -33,29 +62,27 @@ class BaseMessageGraphTest(unittest.IsolatedAsyncioTestCase):
     
     def create_test_message(self, msg_id, content, minutes_ago=0, reference_id=None):
         """Helper to create test messages."""
-        return MessageNode(
-            id=msg_id,
+        return self.create_mock_discord_message(
+            msg_id=msg_id,
             content=content,
             author_id=msg_id * 1000,  # Use a predictable author_id based on msg_id
-            mentioned_user_ids=[],
             created_at=self.test_time - datetime.timedelta(minutes=minutes_ago),
             reference_id=reference_id
         )
 
 
-class TestMessageGraph(unittest.TestCase):
+class TestMessageGraph(BaseMessageGraphTest):
     
     def setUp(self):
+        super().setUp()
         self.graph = MessageGraph()
-        self.test_time = datetime.datetime.now()
     
     def test_add_node_deduplication(self):
         """Test that adding the same message twice only creates one node."""
-        msg = MessageNode(
-            id=1,
+        msg = self.create_mock_discord_message(
+            msg_id=1,
             content="test message",
             author_id=1000,
-            mentioned_user_ids=[],
             created_at=self.test_time
         )
         
@@ -69,20 +96,18 @@ class TestMessageGraph(unittest.TestCase):
     
     def test_reference_tracking(self):
         """Test that messages with references are tracked for exploration."""
-        msg_with_ref = MessageNode(
-            id=1,
+        msg_with_ref = self.create_mock_discord_message(
+            msg_id=1,
             content="reply message",
             author_id=1000,
-            mentioned_user_ids=[],
             created_at=self.test_time,
             reference_id=123
         )
         
-        msg_without_ref = MessageNode(
-            id=2,
+        msg_without_ref = self.create_mock_discord_message(
+            msg_id=2,
             content="regular message",
             author_id=2000,
-            mentioned_user_ids=[],
             created_at=self.test_time
         )
         
@@ -95,16 +120,15 @@ class TestMessageGraph(unittest.TestCase):
     
     def test_temporal_frontier_sorting(self):
         """Test that temporal frontier is sorted by recency."""
-        older_msg = MessageNode(
-            id=1,
+        older_msg = self.create_mock_discord_message(
+            msg_id=1,
             content="older",
             author_id=1000,
-            mentioned_user_ids=[],
             created_at=self.test_time - datetime.timedelta(minutes=10)
         )
         
-        newer_msg = MessageNode(
-            id=2,
+        newer_msg = self.create_mock_discord_message(
+            msg_id=2,
             content="newer",
             author_id=2000,
             mentioned_user_ids=[],
@@ -122,26 +146,34 @@ class TestMessageGraph(unittest.TestCase):
     
     def test_chronological_conversation(self):
         """Test conversion to chronological conversation format."""
-        msg1 = MessageNode(
-            id=1,
+        msg1 = self.create_mock_discord_message(
+            msg_id=1,
             content="first message",
             author_id=1000,
-            mentioned_user_ids=[],
             created_at=self.test_time - datetime.timedelta(minutes=5)
         )
         
-        msg2 = MessageNode(
-            id=2,
+        msg2 = self.create_mock_discord_message(
+            msg_id=2,
             content="second message",
             author_id=2000,
-            mentioned_user_ids=[],
             created_at=self.test_time
         )
         
         self.graph.add_node(msg2)  # Add in reverse order
         self.graph.add_node(msg1)
         
-        conversation = self.graph.to_chronological_conversation()
+        def mock_discord_to_message_node(discord_msg):
+            return MessageNode(
+                id=discord_msg.id,
+                content=discord_msg.content,
+                author_id=discord_msg.author.id,
+                mentioned_user_ids=[user.id for user in discord_msg.mentions],
+                created_at=discord_msg.created_at,
+                reference_id=discord_msg.reference.message_id if discord_msg.reference else None
+            )
+        
+        conversation = self.graph.to_chronological_conversation(mock_discord_to_message_node)
         
         self.assertEqual(len(conversation), 2)
         # Should be in chronological order
@@ -234,11 +266,22 @@ class TestConversationGraphBuilder(BaseMessageGraphTest):
         
         # Build conversation graph requesting all 200 messages starting from message 200
         trigger_message = self.messages[200]
+        def mock_discord_to_message_node(discord_msg):
+            return MessageNode(
+                id=discord_msg.id,
+                content=discord_msg.content,
+                author_id=discord_msg.author.id,
+                mentioned_user_ids=[user.id for user in discord_msg.mentions],
+                created_at=discord_msg.created_at,
+                reference_id=discord_msg.reference.message_id if discord_msg.reference else None
+            )
+        
         conversation = await counting_builder.build_conversation_graph(
             trigger_message=trigger_message,
             min_linear=10,
             max_total=200,  # Request all 200 messages
-            time_threshold_minutes=300  # Large threshold to include all messages
+            time_threshold_minutes=300,  # Large threshold to include all messages
+            discord_to_message_node_func=mock_discord_to_message_node
         )
         
         # Verify that conversation was built successfully with all 200 messages

@@ -7,7 +7,7 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 
 import os
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 
 from dotenv import load_dotenv
 
@@ -77,7 +77,8 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.mock_store = Mock()
         self.mock_store.get_user_facts = Mock(return_value=None)
         self.mock_user_resolver = Mock()
-        self.mock_user_resolver.get_display_name = Mock(return_value="TestUser")
+        self.mock_user_resolver.get_display_name = AsyncMock(return_value="TestUser")
+        self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda text, guild_id: text)
         
         self.generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_client,
@@ -112,7 +113,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         params = GeneralParams(
             ai_backend="gemini_flash",
             temperature=0.5,
-            cleaned_query="Tell me about Alice's pet"
+            cleaned_query="What do you know about pets from our conversation?"
         )
         
         result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
