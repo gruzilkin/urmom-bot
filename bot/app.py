@@ -49,6 +49,8 @@ class BotCommand(Enum):
 @bot.event
 async def on_ready() -> None:
     logger.info(f'Logged in as {bot.user}')
+    # Initialize bot-dependent services
+    container.user_resolver.set_bot_client(bot)
 
 @bot.event
 async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
@@ -92,21 +94,27 @@ async def on_message(message: nextcord.Message):
 
         # Replace bot mention with "BOT" and pass the whole message to the router
         processed_message = message.content.replace(f"<@{bot.user.id}>", "BOT").strip()
-        router_decision = await container.ai_router.route_request(processed_message)
+        route, params = await container.ai_router.route_request(processed_message)
         
-        if router_decision.route == "FAMOUS":
+        if route == "FAMOUS":
             conversation_fetcher = create_conversation_fetcher(message)
             
             response = await container.famous_person_generator.handle_request(
-                router_decision.famous_params, processed_message, conversation_fetcher
+                params, processed_message, conversation_fetcher, message.guild.id
             )
             await message.reply(response)
         
-        elif router_decision.route == "GENERAL":
+        elif route == "GENERAL":
             conversation_fetcher = create_conversation_fetcher(message)
             
             response = await container.general_query_generator.handle_request(
-                router_decision.general_params, conversation_fetcher
+                params, conversation_fetcher, message.guild.id
+            )
+            await message.reply(response)
+
+        elif route == "FACT" and params:
+            response = await container.fact_handler.handle_request(
+                params, message.guild.id
             )
             await message.reply(response)
 
@@ -209,10 +217,14 @@ def discord_to_message_node(message: nextcord.Message) -> MessageNode:
     if message.reference and message.reference.message_id:
         reference_id = message.reference.message_id
     
+    # Extract mentioned user IDs
+    mentioned_user_ids = [user.id for user in message.mentions]
+    
     return MessageNode(
         id=message.id,
         content=message.content,
-        author_name=message.author.name,
+        author_id=message.author.id,
+        mentioned_user_ids=mentioned_user_ids,
         created_at=message.created_at,
         reference_id=reference_id,
         embeds=message.embeds

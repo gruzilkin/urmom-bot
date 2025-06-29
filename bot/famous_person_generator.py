@@ -4,15 +4,17 @@ from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import FamousParams
 from response_summarizer import ResponseSummarizer
+from user_resolver import UserResolver
 
 logger = logging.getLogger(__name__)
 
 
 class FamousPersonGenerator:
-    def __init__(self, ai_client: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry):
+    def __init__(self, ai_client: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry, user_resolver: UserResolver):
         self.ai_client = ai_client
         self.response_summarizer = response_summarizer
         self.telemetry = telemetry
+        self.user_resolver = user_resolver
 
     def get_route_description(self) -> str:
         return """
@@ -20,8 +22,26 @@ class FamousPersonGenerator:
         - Detects when users ask what a famous person would say or how they would respond
         - Examples: "What would Trump say?", "How would Darth Vader respond?", "What if Einstein explained this?"
         - Handles variations like "What would X say about Y?" or "How would X feel about this?"
-        - Extract the person's name (can be real celebrities, fictional characters, historical figures)
-        - Parameter extraction: Set famous_person to the name of the person to impersonate
+        """
+
+    
+    def get_parameter_schema(self):
+        """Return the Pydantic schema for parameter extraction."""
+        from schemas import FamousParams
+        return FamousParams
+    
+    def get_parameter_extraction_prompt(self) -> str:
+        """Return focused prompt for extracting famous person parameters."""
+        return """
+        Extract the famous person's name from the user message.
+        
+        Examples:
+        - "What would Trump say?" → famous_person: "Trump"
+        - "How would Darth Vader respond?" → famous_person: "Darth Vader"  
+        - "What if Einstein explained this?" → famous_person: "Einstein"
+        - "What would Jesus say if he spoke like Trump?" → famous_person: "Jesus"
+        
+        Extract the person's name (can be real celebrities, fictional characters, historical figures).
         """
 
     async def is_famous_person_request(self, message: str) -> str | None:
@@ -83,7 +103,7 @@ class FamousPersonGenerator:
             logger.info(f"Detection result: '{person_name}'")
             return person_name
 
-    async def generate_famous_person_response(self, extracted_message: str, person: str, conversation_fetcher) -> str:
+    async def generate_famous_person_response(self, extracted_message: str, person: str, conversation_fetcher, guild_id: int) -> str:
         """
         Generate a famous person response. Returns the response string.
         
@@ -91,6 +111,7 @@ class FamousPersonGenerator:
             extracted_message (str): The user's message with bot mentions removed
             person (str): The name of the famous person to impersonate
             conversation_fetcher: Parameterless async function that returns conversation history
+            guild_id (int): The guild ID for user name resolution
             
         Returns:
             str: The response string ready to be sent by the caller
@@ -101,11 +122,12 @@ class FamousPersonGenerator:
             
             conversation = await conversation_fetcher()
             
-            # Build conversation context as a single message with timestamps
-            conversation_text = "\n".join([
-                f"{msg.timestamp} {msg.author_name}: {msg.content}" 
-                for msg in conversation
-            ])
+            conversation_lines = []
+            for msg in conversation:
+                author_name = await self.user_resolver.get_display_name(guild_id, msg.author_id)
+                content_with_names = await self.user_resolver.replace_user_mentions_with_names(msg.content, guild_id)
+                conversation_lines.append(f"{msg.timestamp} {author_name}: {content_with_names}")
+            conversation_text = "\n".join(conversation_lines)
             
             prompt = f"""You are {person}. Generate a response as if you were {person}, 
             using their communication style, beliefs, values, and knowledge.
@@ -139,7 +161,7 @@ class FamousPersonGenerator:
             
             return processed_response
     
-    async def handle_request(self, params: FamousParams, extracted_message: str, conversation_fetcher) -> str:
+    async def handle_request(self, params: FamousParams, extracted_message: str, conversation_fetcher, guild_id: int) -> str:
         """
         Handle a famous person request using the provided parameters.
         
@@ -147,10 +169,11 @@ class FamousPersonGenerator:
             params (FamousParams): Parameters containing the famous person's name
             extracted_message (str): The user's message with bot mentions removed
             conversation_fetcher: Parameterless async function that returns conversation history
+            guild_id (int): The guild ID for user name resolution
             
         Returns:
             str: The response string ready to be sent by the caller
         """
-        return await self.generate_famous_person_response(extracted_message, params.famous_person, conversation_fetcher)
+        return await self.generate_famous_person_response(extracted_message, params.famous_person, conversation_fetcher, guild_id)
 
 

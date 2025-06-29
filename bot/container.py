@@ -12,6 +12,8 @@ from country_resolver import CountryResolver
 from open_telemetry import Telemetry
 from ai_router import AiRouter
 from response_summarizer import ResponseSummarizer
+from fact_handler import FactHandler
+from user_resolver import UserResolver
 
 class Container:
     def __init__(self):
@@ -70,25 +72,42 @@ class Container:
             sample_count=int(self._get_env('SAMPLE_JOKES_COUNT'))
         )
 
-        self.famous_person_generator = FamousPersonGenerator(self.grok, self.response_summarizer, self.telemetry)
+        # UserResolver is initialized here but needs bot client to be set later
+        self.user_resolver = UserResolver()
 
+        self.famous_person_generator = FamousPersonGenerator(
+            self.grok, self.response_summarizer, self.telemetry, self.user_resolver
+        )
+        
         self.general_query_generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_flash, 
             grok=self.grok,
             claude=self.claude,
             gemma=self.gemma,
             response_summarizer=self.response_summarizer,
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            store=self.store,
+            user_resolver=self.user_resolver
         )
 
+        self.fact_handler = FactHandler(
+            ai_client=self.gemma,  # Use Gemma for memory operations
+            store=self.store,
+            telemetry=self.telemetry,
+            user_resolver=self.user_resolver
+        )
+        
         self.ai_router = AiRouter(
             self.ai_client, 
             self.telemetry, 
             self.famous_person_generator, 
-            self.general_query_generator
+            self.general_query_generator,
+            self.fact_handler
         )
 
         self.country_resolver = CountryResolver(self.ai_client, self.telemetry)
+    
+    
     
     def _get_env(self, key: str) -> str:
         value = os.getenv(key)

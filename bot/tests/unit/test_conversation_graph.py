@@ -36,7 +36,8 @@ class BaseMessageGraphTest(unittest.IsolatedAsyncioTestCase):
         return MessageNode(
             id=msg_id,
             content=content,
-            author_name=f"user{msg_id}",
+            author_id=msg_id * 1000,  # Use a predictable author_id based on msg_id
+            mentioned_user_ids=[],
             created_at=self.test_time - datetime.timedelta(minutes=minutes_ago),
             reference_id=reference_id
         )
@@ -53,7 +54,8 @@ class TestMessageGraph(unittest.TestCase):
         msg = MessageNode(
             id=1,
             content="test message",
-            author_name="user1",
+            author_id=1000,
+            mentioned_user_ids=[],
             created_at=self.test_time
         )
         
@@ -70,7 +72,8 @@ class TestMessageGraph(unittest.TestCase):
         msg_with_ref = MessageNode(
             id=1,
             content="reply message",
-            author_name="user1",
+            author_id=1000,
+            mentioned_user_ids=[],
             created_at=self.test_time,
             reference_id=123
         )
@@ -78,7 +81,8 @@ class TestMessageGraph(unittest.TestCase):
         msg_without_ref = MessageNode(
             id=2,
             content="regular message",
-            author_name="user2",
+            author_id=2000,
+            mentioned_user_ids=[],
             created_at=self.test_time
         )
         
@@ -94,14 +98,16 @@ class TestMessageGraph(unittest.TestCase):
         older_msg = MessageNode(
             id=1,
             content="older",
-            author_name="user1",
+            author_id=1000,
+            mentioned_user_ids=[],
             created_at=self.test_time - datetime.timedelta(minutes=10)
         )
         
         newer_msg = MessageNode(
             id=2,
             content="newer",
-            author_name="user2",
+            author_id=2000,
+            mentioned_user_ids=[],
             created_at=self.test_time
         )
         
@@ -119,14 +125,16 @@ class TestMessageGraph(unittest.TestCase):
         msg1 = MessageNode(
             id=1,
             content="first message",
-            author_name="user1",
+            author_id=1000,
+            mentioned_user_ids=[],
             created_at=self.test_time - datetime.timedelta(minutes=5)
         )
         
         msg2 = MessageNode(
             id=2,
             content="second message",
-            author_name="user2",
+            author_id=2000,
+            mentioned_user_ids=[],
             created_at=self.test_time
         )
         
@@ -137,9 +145,9 @@ class TestMessageGraph(unittest.TestCase):
         
         self.assertEqual(len(conversation), 2)
         # Should be in chronological order
-        self.assertEqual(conversation[0].author_name, "user1")
+        self.assertEqual(conversation[0].author_id, 1000)
         self.assertEqual(conversation[0].content, "first message")
-        self.assertEqual(conversation[1].author_name, "user2")
+        self.assertEqual(conversation[1].author_id, 2000)
         self.assertEqual(conversation[1].content, "second message")
         # Verify timestamps are formatted correctly
         self.assertIsInstance(conversation[0].timestamp, str)

@@ -25,6 +25,14 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_response_summarizer = Mock()
         self.mock_response_summarizer.process_response = AsyncMock(side_effect=lambda x: x)
         
+        # Mock store and user_resolver
+        self.mock_store = Mock()
+        self.mock_store.get_user_facts = Mock(return_value=None)
+        
+        self.mock_user_resolver = Mock()
+        self.mock_user_resolver.get_display_name = AsyncMock(return_value="TestUser")
+        self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda text, guild_id: text)
+        
         self.telemetry = NullTelemetry()
         self.generator = GeneralQueryGenerator(
             self.mock_gemini_flash, 
@@ -32,7 +40,9 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             self.mock_claude,
             self.mock_gemma,
             self.mock_response_summarizer,
-            self.telemetry
+            self.telemetry,
+            self.mock_store,
+            self.mock_user_resolver
         )
 
 
@@ -50,7 +60,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation_fetcher():
             return []
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
         
         self.assertEqual(result, "Quick answer!")
         self.mock_gemini_flash.generate_content.assert_called_once()
@@ -69,12 +79,13 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
             return [ConversationMessage(
-                author_name="user1",
+                author_id=1000,
                 content="Let's get creative",
-                timestamp="2024-01-01 12:00:00"
+                timestamp="2024-01-01 12:00:00",
+                mentioned_user_ids=[]
             )]
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
         
         self.assertEqual(result, "Creative response!")
         self.mock_grok.generate_content.assert_called_once()
@@ -96,7 +107,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Exception should propagate instead of being caught
         with self.assertRaises(Exception) as context:
-            await self.generator.handle_request(params, mock_conversation_fetcher)
+            await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
         
         self.assertEqual(str(context.exception), "API error")
         # Response summarizer should not be called due to exception

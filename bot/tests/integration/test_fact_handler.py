@@ -1,0 +1,120 @@
+import unittest
+from unittest.mock import Mock, AsyncMock
+from dotenv import load_dotenv
+
+from bot.fact_handler import FactHandler
+from bot.gemma_client import GemmaClient
+from bot.schemas import FactParams, MemoryUpdate, MemoryForget
+from bot.store import Store
+from bot.tests.null_telemetry import NullTelemetry
+from bot.user_resolver import UserResolver
+
+load_dotenv()
+
+class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
+    
+    def setUp(self):
+        self.telemetry = NullTelemetry()
+        
+        # Mock the AI client to return predictable responses
+        self.mock_ai_client = Mock(spec=GemmaClient)
+        
+        # Mock the store
+        self.mock_store = Mock(spec=Store)
+        self.mock_store.get_user_facts = Mock(return_value=None)
+        self.mock_store.save_user_facts = Mock()
+        
+        # Mock the user resolver
+        self.mock_user_resolver = Mock(spec=UserResolver)
+        
+        # The component under test
+        self.fact_handler = FactHandler(
+            ai_client=self.mock_ai_client,
+            store=self.mock_store,
+            telemetry=self.telemetry,
+            user_resolver=self.mock_user_resolver
+        )
+
+    async def test_remember_fact_for_new_user(self):
+        """Test remembering a fact for a user with no prior memory."""
+        # Arrange
+        params = FactParams(operation="remember", user_mention="testuser", fact_content="likes chocolate")
+        self.mock_user_resolver.resolve_user_id.return_value = 12345
+        
+        # Act
+        response = await self.fact_handler.handle_request(params, guild_id=67890)
+        
+        # Assert
+        self.assertEqual(response, "I'll remember that about the user.")
+        self.mock_store.get_user_facts.assert_called_once_with(67890, 12345)
+        self.mock_store.save_user_facts.assert_called_once_with(67890, 12345, "likes chocolate")
+        self.mock_ai_client.generate_content.assert_not_called() # No AI call needed for new memory
+
+    async def test_remember_fact_with_existing_memory(self):
+        """Test remembering a fact for a user who already has a memory blob."""
+        # Arrange
+        params = FactParams(operation="remember", user_mention="testuser", fact_content="is a developer")
+        self.mock_user_resolver.resolve_user_id.return_value = 12345
+        self.mock_store.get_user_facts.return_value = "likes chocolate"
+        self.mock_ai_client.generate_content = AsyncMock(
+            return_value=MemoryUpdate(updated_memory="likes chocolate and is a developer")
+        )
+        
+        # Act
+        response = await self.fact_handler.handle_request(params, guild_id=67890)
+        
+        # Assert
+        self.assertEqual(response, "I'll remember that about the user.")
+        self.mock_store.save_user_facts.assert_called_once_with(67890, 12345, "likes chocolate and is a developer")
+        self.mock_ai_client.generate_content.assert_called_once()
+
+    async def test_forget_fact_not_found(self):
+        """Test forgetting a fact that does not exist in the user's memory."""
+        # Arrange
+        params = FactParams(operation="forget", user_mention="testuser", fact_content="dislikes broccoli")
+        self.mock_user_resolver.resolve_user_id.return_value = 12345
+        self.mock_store.get_user_facts.return_value = "likes chocolate"
+        self.mock_ai_client.generate_content = AsyncMock(
+            return_value=MemoryForget(updated_memory="likes chocolate", fact_found=False)
+        )
+        
+        # Act
+        response = await self.fact_handler.handle_request(params, guild_id=67890)
+        
+        # Assert
+        self.assertEqual(response, "I couldn't find that specific information in my memory about the user.")
+        self.mock_store.save_user_facts.assert_not_called()
+
+    async def test_forget_fact_found(self):
+        """Test forgetting a fact that exists in the user's memory."""
+        # Arrange
+        params = FactParams(operation="forget", user_mention="testuser", fact_content="likes chocolate")
+        self.mock_user_resolver.resolve_user_id.return_value = 12345
+        self.mock_store.get_user_facts.return_value = "likes chocolate and is a developer"
+        self.mock_ai_client.generate_content = AsyncMock(
+            return_value=MemoryForget(updated_memory="is a developer", fact_found=True)
+        )
+        
+        # Act
+        response = await self.fact_handler.handle_request(params, guild_id=67890)
+        
+        # Assert
+        self.assertEqual(response, "I've forgotten that about the user.")
+        self.mock_store.save_user_facts.assert_called_once_with(67890, 12345, "is a developer")
+
+    async def test_handle_request_with_unresolvable_user(self):
+        """Test that the handler returns a helpful message for unresolvable users."""
+        # Arrange
+        params = FactParams(operation="remember", user_mention="nonexistentuser", fact_content="likes testing")
+        self.mock_user_resolver.resolve_user_id.return_value = None
+        
+        # Act
+        response = await self.fact_handler.handle_request(params, guild_id=67890)
+        
+        # Assert
+        self.assertIn("couldn't identify the user", response)
+        self.mock_store.get_user_facts.assert_not_called()
+        self.mock_store.save_user_facts.assert_not_called()
+
+if __name__ == '__main__':
+    unittest.main()

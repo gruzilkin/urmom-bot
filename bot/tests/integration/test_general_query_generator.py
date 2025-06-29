@@ -7,6 +7,7 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 
 import os
 import unittest
+from unittest.mock import Mock
 
 from dotenv import load_dotenv
 
@@ -72,13 +73,21 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         # Create response summarizer
         self.response_summarizer = ResponseSummarizer(self.gemma_client, self.telemetry)
         
+        # Create mock dependencies
+        self.mock_store = Mock()
+        self.mock_store.get_user_facts = Mock(return_value=None)
+        self.mock_user_resolver = Mock()
+        self.mock_user_resolver.get_display_name = Mock(return_value="TestUser")
+        
         self.generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_client,
             grok=self.grok_client,
             claude=None,
             gemma=self.gemma_client,
             response_summarizer=self.response_summarizer,
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            store=self.mock_store,
+            user_resolver=self.mock_user_resolver
         )
     
     async def test_handle_request_with_conversation_context(self):
@@ -87,14 +96,16 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation_fetcher():
             return [
                 ConversationMessage(
-                    author_name="alice",
+                    author_id=1000,
                     content="I love my pet dragon named Sparkles",
-                    timestamp="2024-01-01 11:55:00"
+                    timestamp="2024-01-01 11:55:00",
+                    mentioned_user_ids=[]
                 ),
                 ConversationMessage(
-                    author_name="bob",
+                    author_id=2000,
                     content="That's so cool!",
-                    timestamp="2024-01-01 11:58:00"
+                    timestamp="2024-01-01 11:58:00",
+                    mentioned_user_ids=[]
                 )
             ]
         
@@ -104,7 +115,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             cleaned_query="Tell me about Alice's pet"
         )
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
         
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
@@ -125,7 +136,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             cleaned_query="Write a detailed essay about climate change, its causes, effects, and solutions"
         )
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
         
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)

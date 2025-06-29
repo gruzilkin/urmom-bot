@@ -7,12 +7,14 @@ especially those requiring perspective-shifting and query cleaning.
 
 import os
 import unittest
+from unittest.mock import Mock
 from dotenv import load_dotenv
 
 from ai_router import AiRouter
 from gemma_client import GemmaClient
 from general_query_generator import GeneralQueryGenerator
 from famous_person_generator import FamousPersonGenerator
+from fact_handler import FactHandler
 from tests.null_telemetry import NullTelemetry
 
 load_dotenv()
@@ -35,24 +37,32 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         # The router only needs one real AI client to make its decision
         self.gemma_client = GemmaClient(api_key=gemini_api_key, model_name=gemma_model, telemetry=self.telemetry)
 
+        # Create mock dependencies for generators
+        mock_user_resolver = Mock()
+        mock_store = Mock()
+        
         # The generators are only used for their `get_route_description` method,
         # which doesn't use any internal dependencies. We can pass None for them.
-        self.famous_generator = FamousPersonGenerator(ai_client=None, response_summarizer=None, telemetry=self.telemetry)
+        self.famous_generator = FamousPersonGenerator(ai_client=None, response_summarizer=None, telemetry=self.telemetry, user_resolver=mock_user_resolver)
         self.general_generator = GeneralQueryGenerator(
             gemini_flash=None,
             grok=None,
             claude=None,
             gemma=None,
             response_summarizer=None,
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            store=mock_store,
+            user_resolver=mock_user_resolver
         )
+        self.fact_handler = FactHandler(ai_client=None, store=None, telemetry=self.telemetry, user_resolver=mock_user_resolver)
 
         # The component under test
         self.router = AiRouter(
             ai_client=self.gemma_client,
             telemetry=self.telemetry,
             famous_generator=self.famous_generator,
-            general_generator=self.general_generator
+            general_generator=self.general_generator,
+            fact_handler=self.fact_handler
         )
 
     async def test_route_request_with_perspective_shift(self):
@@ -64,16 +74,14 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         expected_cleaned_query = "tell me a joke"
 
         # Act
-        decision = await self.router.route_request(user_message)
+        route, params = await self.router.route_request(user_message)
 
         # Assert
-        self.assertEqual(decision.route, "GENERAL")
-        self.assertIsNotNone(decision.general_params)
-        self.assertIsNotNone(decision.reason)
-        self.assertTrue(len(decision.reason) > 0)
-        self.assertEqual(decision.general_params.ai_backend, "grok")
-        self.assertEqual(decision.general_params.cleaned_query.lower(), expected_cleaned_query.lower())
-        self.assertGreaterEqual(decision.general_params.temperature, 0.7, "Temperature should be high for a 'creative' request")
+        self.assertEqual(route, "GENERAL")
+        self.assertIsNotNone(params)
+        self.assertEqual(params.ai_backend, "grok")
+        self.assertEqual(params.cleaned_query.lower(), expected_cleaned_query.lower())
+        self.assertGreaterEqual(params.temperature, 0.7, "Temperature should be high for a 'creative' request")
 
     async def test_route_request_with_direct_command(self):
         """
@@ -84,16 +92,46 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         expected_cleaned_query = "write a technical blog post"
 
         # Act
-        decision = await self.router.route_request(user_message)
+        route, params = await self.router.route_request(user_message)
 
         # Assert
-        self.assertEqual(decision.route, "GENERAL")
-        self.assertIsNotNone(decision.general_params)
-        self.assertIsNotNone(decision.reason)
-        self.assertTrue(len(decision.reason) > 0)
-        self.assertEqual(decision.general_params.ai_backend, "claude")
-        self.assertEqual(decision.general_params.cleaned_query.lower(), expected_cleaned_query.lower())
-        self.assertLessEqual(decision.general_params.temperature, 0.3, "Temperature should be low for a 'detailed' request")
+        self.assertEqual(route, "GENERAL")
+        self.assertIsNotNone(params)
+        self.assertEqual(params.ai_backend, "claude")
+        self.assertEqual(params.cleaned_query.lower(), expected_cleaned_query.lower())
+        self.assertLessEqual(params.temperature, 0.3, "Temperature should be low for a 'detailed' request")
+
+    async def test_route_request_memory_remember(self):
+        """
+        Test that the router correctly identifies and routes memory remember commands.
+        """
+        user_message = "Bot remember that <@1333878858138652682> works at TechCorp"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert
+        self.assertEqual(route, "FACT")
+        self.assertIsNotNone(params)
+        self.assertEqual(params.operation, "remember")
+        self.assertEqual(params.user_mention, "1333878858138652682")
+        self.assertIn("TechCorp", params.fact_content)
+
+    async def test_route_request_memory_forget(self):
+        """
+        Test that the router correctly identifies and routes memory forget commands.
+        """
+        user_message = "Bot forget that gruzilkin likes pizza"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert
+        self.assertEqual(route, "FACT")
+        self.assertIsNotNone(params)
+        self.assertEqual(params.operation, "forget")
+        self.assertEqual(params.user_mention, "gruzilkin")
+        self.assertIn("likes pizza", params.fact_content)
 
 
 if __name__ == '__main__':
