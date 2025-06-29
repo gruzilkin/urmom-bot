@@ -73,7 +73,7 @@ class Container:
         )
 
         # UserResolver is initialized here but needs bot client to be set later
-        self.user_resolver = UserResolver()
+        self.user_resolver = UserResolver(self.telemetry)
 
         self.famous_person_generator = FamousPersonGenerator(
             self.grok, self.response_summarizer, self.telemetry, self.user_resolver
