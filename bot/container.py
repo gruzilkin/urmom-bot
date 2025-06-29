@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-import os
 from store import Store
 from joke_generator import JokeGenerator
 from famous_person_generator import FamousPersonGenerator
@@ -14,46 +12,49 @@ from ai_router import AiRouter
 from response_summarizer import ResponseSummarizer
 from fact_handler import FactHandler
 from user_resolver import UserResolver
+from config import AppConfig
 
 class Container:
-    def __init__(self):
-        load_dotenv()
+    def __init__(self, config: AppConfig | None = None):
+        # Load configuration from environment or use provided config
+        self.config = config or AppConfig()
         
         # Initialize Store
         self.store = Store(
-            host=self._get_env('POSTGRES_HOST'),
-            port=int(self._get_env('POSTGRES_PORT')),
-            user=self._get_env('POSTGRES_USER'),
-            password=self._get_env('POSTGRES_PASSWORD'),
-            database=self._get_env('POSTGRES_DB'),
-            weight_coef=float(self._get_env('SAMPLE_JOKES_COEF'))
+            host=self.config.postgres_host,
+            port=self.config.postgres_port,
+            user=self.config.postgres_user,
+            password=self.config.postgres_password,
+            database=self.config.postgres_db,
+            weight_coef=self.config.sample_jokes_coef
         )
 
-        # Initialize Telemetry with environment variables
-        service_name = os.getenv("OTEL_SERVICE_NAME", "urmom-bot")
-        endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "192.168.0.2:4317")
-        self.telemetry = Telemetry(service_name=service_name, endpoint=endpoint)
+        # Initialize Telemetry with configuration
+        self.telemetry = Telemetry(
+            service_name=self.config.otel_service_name, 
+            endpoint=self.config.otel_exporter_otlp_endpoint
+        )
 
         # Create specific AI clients for GeneralQueryGenerator (both required)
         self.gemini_flash = GeminiClient(
-            api_key=self._get_env("GEMINI_API_KEY"),
-            model_name=self._get_env("GEMINI_FLASH_MODEL"),
+            api_key=self.config.gemini_api_key,
+            model_name=self.config.gemini_flash_model,
             telemetry=self.telemetry,
-            temperature=float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
+            temperature=self.config.gemini_temperature
         )
         
         self.gemma = GemmaClient(
-            api_key=self._get_env("GEMINI_API_KEY"),
-            model_name=self._get_env("GEMINI_GEMMA_MODEL"),
+            api_key=self.config.gemini_api_key,
+            model_name=self.config.gemini_gemma_model,
             telemetry=self.telemetry,
-            temperature=float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
+            temperature=self.config.gemini_temperature
         )
         
         self.grok = GrokClient(
-            api_key=self._get_env("GROK_API_KEY"),
-            model_name=self._get_env("GROK_MODEL"),
+            api_key=self.config.grok_api_key,
+            model_name=self.config.grok_model,
             telemetry=self.telemetry,
-            temperature=float(os.getenv("GROK_TEMPERATURE", "0.7"))
+            temperature=self.config.grok_temperature
         )
         
         self.claude = ClaudeClient(
@@ -69,7 +70,7 @@ class Container:
             self.grok, 
             self.store, 
             self.telemetry, 
-            sample_count=int(self._get_env('SAMPLE_JOKES_COUNT'))
+            sample_count=self.config.sample_jokes_count
         )
 
         # UserResolver is initialized here but needs bot client to be set later
@@ -106,32 +107,19 @@ class Container:
         )
 
         self.country_resolver = CountryResolver(self.ai_client, self.telemetry)
-    
-    
-    
-    def _get_env(self, key: str) -> str:
-        value = os.getenv(key)
-        if value is None:
-            raise ValueError(f"Environment variable {key} is not set")
-        return value
 
     def _get_ai_client(self):
-        FLASH = "FLASH"
-        GEMMA = "GEMMA"
-        GROK = "GROK"
-        CLAUDE = "CLAUDE"
-        ai_provider = self._get_env("AI_PROVIDER").upper()
-        
-        if ai_provider == FLASH:
+        if self.config.ai_provider == "FLASH":
             return self.gemini_flash
-        elif ai_provider == GEMMA:
+        elif self.config.ai_provider == "GEMMA":
             return self.gemma
-        elif ai_provider == GROK:
+        elif self.config.ai_provider == "GROK":
             return self.grok
-        elif ai_provider == CLAUDE:
+        elif self.config.ai_provider == "CLAUDE":
             return self.claude
         else:
-            raise ValueError(f"Invalid AI_PROVIDER: {ai_provider}. Must be either {FLASH}, {GEMMA}, {GROK}, or {CLAUDE}")
+            # This should not happen due to Pydantic validation, but keeping for safety
+            raise ValueError(f"Invalid AI_PROVIDER: {self.config.ai_provider}")
 
 # Create a single instance to be imported by other modules
 container = Container()

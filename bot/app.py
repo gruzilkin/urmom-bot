@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import os
 from enum import Enum
 from types import SimpleNamespace
 import logging
@@ -8,7 +7,6 @@ from typing import Callable, Awaitable
 from functools import lru_cache
 
 import nextcord
-from dotenv import load_dotenv
 from langdetect import detect, LangDetectException
 from goose3 import Goose
 
@@ -16,8 +14,6 @@ from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from container import container  # Import the instance instead of the class
 from conversation_graph import ConversationGraphBuilder, MessageNode, ConversationMessage
-
-load_dotenv()
 
 intents = nextcord.Intents.default()
 intents.message_content = True  # MUST have this to receive message content
@@ -478,9 +474,5 @@ async def check_should_delete(message: nextcord.Message) -> bool:
     
     return (downvotes - upvotes) >= config.downvote_reaction_threshold
 
-# Get bot token from environment variable
-TOKEN = os.getenv('DISCORD_TOKEN')
-if not TOKEN:
-    raise ValueError("Discord token not found in environment variables!")
-
-bot.run(TOKEN)
+# Get bot token from centralized configuration
+bot.run(container.config.discord_token)
