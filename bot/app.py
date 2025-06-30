@@ -136,7 +136,7 @@ async def process_bot_commands(message: nextcord.Message) -> bool:
         await message.reply("Sorry, only administrators can use bot commands!")
         return True
             
-    config = container.store.get_guild_config(message.guild.id)
+    config = await container.store.get_guild_config(message.guild.id)
 
     if command == BotCommand.HELP:
         help_text = """
@@ -164,12 +164,12 @@ Current settings:
     if command == BotCommand.SET_ARCHIVE_CHANNEL:
         if not message.channel_mentions:
             config.archive_channel_id = 0  # Disable archiving
-            container.store.save_guild_config(config)
+            await container.store.save_guild_config(config)
             await message.reply("Joke archiving has been disabled.")
             return True
             
         config.archive_channel_id = message.channel_mentions[0].id
-        container.store.save_guild_config(config)
+        await container.store.save_guild_config(config)
         await message.reply(f"Jokes will now be archived in {message.channel_mentions[0].mention}")
         return True
 
@@ -179,7 +179,7 @@ Current settings:
             if minutes < 0:
                 raise ValueError
             config.delete_jokes_after_minutes = minutes
-            container.store.save_guild_config(config)
+            await container.store.save_guild_config(config)
             await message.reply(f"Jokes will be deleted after {minutes} minutes (0 = never)")
         except (IndexError, ValueError):
             await message.reply("Please provide a valid number of minutes!")
@@ -191,7 +191,7 @@ Current settings:
             if threshold < 0:
                 raise ValueError
             config.downvote_reaction_threshold = threshold
-            container.store.save_guild_config(config)
+            await container.store.save_guild_config(config)
             await message.reply(f"Jokes will be deleted when downvotes - upvotes >= {threshold}")
         except (IndexError, ValueError):
             await message.reply("Please provide a valid threshold number!")
@@ -201,7 +201,7 @@ Current settings:
         try:
             enable = args[1].lower() == "true"
             config.enable_country_jokes = enable
-            container.store.save_guild_config(config)
+            await container.store.save_guild_config(config)
             await message.reply(f"Country jokes {'enabled' if enable else 'disabled'}")
         except IndexError:
             await message.reply("Please specify true or false!")
@@ -431,7 +431,7 @@ async def retract_joke(payload: nextcord.RawReactionActionEvent) -> None:
         await message.delete()
 
 async def process_joke_request(payload: nextcord.RawReactionActionEvent, country: str | None = None) -> None:
-    config = container.store.get_guild_config(payload.guild_id)
+    config = await container.store.get_guild_config(payload.guild_id)
     
     # Skip country jokes if disabled
     if country and not config.enable_country_jokes:
@@ -478,7 +478,7 @@ async def delete_message_later(message: nextcord.Message, delay_seconds: int) ->
         pass
 
 async def check_should_delete(message: nextcord.Message) -> bool:
-    config = container.store.get_guild_config(message.guild.id)
+    config = await container.store.get_guild_config(message.guild.id)
     if config.downvote_reaction_threshold <= 0:
         return False
 
