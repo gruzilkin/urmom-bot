@@ -27,7 +27,7 @@ class Store:
             "port": port,
             "user": user,
             "password": password,
-            "database": database
+            "dbname": database
         }
         self.conn: AsyncConnection | None = None
         self.weight_coef = weight_coef
