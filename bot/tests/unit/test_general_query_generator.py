@@ -91,6 +91,28 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_grok.generate_content.assert_called_once()
         self.mock_response_summarizer.process_response.assert_called_once()
 
+    async def test_handle_request_none_response(self):
+        """Test handling when AI client returns None response"""
+        self.mock_gemini_flash.generate_content.return_value = None
+        
+        params = GeneralParams(
+            ai_backend="gemini_flash",
+            temperature=0.5,
+            cleaned_query="Test query"
+        )
+        
+        # Mock conversation fetcher
+        async def mock_conversation_fetcher():
+            return []
+        
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
+        
+        # Should return None when AI client returns None
+        self.assertIsNone(result)
+        self.mock_gemini_flash.generate_content.assert_called_once()
+        # Response summarizer should not be called when response is None
+        self.mock_response_summarizer.process_response.assert_not_called()
+
     async def test_handle_request_error_handling(self):
         """Test error handling in handle_request - exceptions should propagate"""
         self.mock_gemini_flash.generate_content.side_effect = Exception("API error")

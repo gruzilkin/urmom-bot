@@ -111,7 +111,7 @@ class GeneralQueryGenerator:
         return ""
 
     
-    async def handle_request(self, params: GeneralParams, conversation_fetcher, guild_id: int) -> str:
+    async def handle_request(self, params: GeneralParams, conversation_fetcher, guild_id: int) -> str | None:
         """
         Handle a general query request using the provided parameters.
         
@@ -121,7 +121,7 @@ class GeneralQueryGenerator:
             guild_id (int): Discord guild ID for user context resolution
             
         Returns:
-            str: The response string ready to be sent by the caller
+            str | None: The response string ready to be sent by the caller, or None if no response should be sent
         """
         logger.info(f"Processing general request with params: {params}")
         
@@ -188,6 +188,11 @@ Memory Usage:
             )
             
             logger.info(f"Generated response: {response}")
+            
+            # If AI client returns None, don't send a response
+            if response is None:
+                logger.warning("AI client returned None response, not replying")
+                return None
             
             # Process response (summarize if too long, or truncate as fallback)
             processed_response = await self.response_summarizer.process_response(response)

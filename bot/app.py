@@ -108,7 +108,8 @@ async def on_message(message: nextcord.Message):
             response = await container.general_query_generator.handle_request(
                 params, conversation_fetcher, message.guild.id
             )
-            await message.reply(response)
+            if response is not None:
+                await message.reply(response)
 
         elif route == "FACT" and params:
             response = await container.fact_handler.handle_request(
