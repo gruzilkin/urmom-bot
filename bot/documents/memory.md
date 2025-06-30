@@ -8,22 +8,24 @@
 - Discord integration with freeform commands
 - User resolution with proper Discord API integration
 - Memory injection into AI responses via XML-structured prompts
-- Natural memory queries through general query generator
+- Natural memory queries handled by general query generator using injected context
 
-**🚧 IN PROGRESS: Transient Memory System**
-- Message ingestion and storage (TODO)
-- Daily/weekly summarization pipeline (TODO)
-- Context assembly and merging (TODO)
+**🚧 MILESTONE 2 PLANNED: Transient Memory System**
+- Chat history ingestion and storage (TODO)
+- Daily/weekly summarization pipeline with sliding window (TODO)  
+- Context assembly and merging with MemoryManager (TODO)
+- Cost-optimized AI client strategy (Gemma for volume, Gemini for quality) (TODO)
 
 ## Overview
 
 The urmom-bot memory system is a sophisticated hierarchical AI-powered memory architecture that maintains both permanent factual knowledge and transient episodic memories about users. The system is designed to provide rich contextual awareness while maintaining efficiency through intelligent summarization and caching.
 
 **Key Design Decisions:**
-- Uses Gemma for cost-effective summarization (free tier with generous limits)
+- Uses Gemma AI client for all memory operations (free tier with generous limits)
 - Optimized for small-scale deployment (5-100 users)
-- LRU cache decorators for efficient on-demand caching
+- `cachetools.LRUCache` instances for efficient async caching (not built-in `@lru_cache`)
 - Discord user ID storage with nickname translation only for LLM calls
+- Clean MemoryManager interface hiding internal complexity
 
 ## Architecture Principles
 
@@ -32,14 +34,16 @@ The urmom-bot memory system is a sophisticated hierarchical AI-powered memory ar
 2. **Transient Memory**: Automatic extraction and summarization of chat interactions
 
 ### Hierarchical AI Summarization
-- Raw messages → Daily summaries → Weekly summaries → Final context
+- Raw chat history → Daily summaries (Gemma) → Weekly summary (Gemma, sliding 7-day window) → Final context (Gemma, merging weekly summary + facts)
 - AI-powered merging at every level to resolve conflicts and maintain coherence
 - Bounded information growth through intelligent compression
+- Weekly summary calculated daily with sliding window using Gemma for consistency
 
 ### Cache Efficiency
-- Uses LRU cache decorators with absolute date keys for immutability
-- Sliding cache keys for efficient temporal queries
+- Uses `cachetools.LRUCache` instances with absolute date keys for immutability
+- Manual async cache management for async methods
 - On-demand calculation with extensive caching to avoid redundant work
+- Key-based eviction capability when needed
 
 ## Database Schema
 
@@ -54,142 +58,120 @@ CREATE TABLE user_facts (
 );
 ```
 
-### Messages Table ✅ SCHEMA READY (ingestion TODO)
+### Chat History Table 🚧 TODO (for transient memory)
 ```sql
-CREATE TABLE messages (
+CREATE TABLE chat_history (
     guild_id BIGINT NOT NULL,
     message_id BIGINT NOT NULL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     message_text TEXT NOT NULL,
     timestamp TIMESTAMP NOT NULL,
-    INDEX idx_guild_user_time (guild_id, user_id, message_id)
+    INDEX idx_guild_user_timestamp (guild_id, user_id, timestamp)
 );
 ```
+
+## MemoryManager Architecture 🚧 TODO
+
+### Clean Interface Design
+The transient memory system will be encapsulated in a `MemoryManager` class that provides a simple interface while hiding internal complexity:
+
+```python
+class MemoryManager:
+    async def ingest_message(self, guild_id: int, message_id: int, user_id: int, message_text: str, timestamp: datetime) -> None:
+        """Store message in chat_history table"""
+    
+    async def get_memories(self, guild_id: int, user_id: int) -> tuple[str | None, str | None]:
+        """Returns (facts, observations) for a user
+        
+        facts: from existing factual memory system (user_facts table)
+        observations: from transient memory pipeline (daily→weekly summaries)
+        
+        All complex summarization pipeline happens internally with caching.
+        """
+```
+
+### Internal Implementation
+- **Message Storage**: Automatic ingestion to `chat_history` table
+- **Daily Summarization**: Gemma client for cost-effective high-volume processing
+- **Weekly Summary**: Gemma client for reasoning over sliding 7-day window (calculated daily)
+- **Context Merging**: Gemma client for intelligent factual + behavioral context combination
+- **Caching Strategy**: `cachetools.LRUCache` instances for aggressive caching
+- **Data Retention**: Automatic cleanup of old chat history outside retention window
+
+### AI Client Strategy (Cost-Optimized)
+- **All Memory Operations (Gemma - Free)**: Daily summaries, weekly summary, and context merging for all users
 
 ## AI Operations
 
 ### Factual Memory Operations ✅ IMPLEMENTED
-```python
-def remember(current_memory_blob: str, new_fact: str) -> str:
-    """
-    Merge new factual information into existing memory blob.
-    Resolves conflicts and maintains coherent narrative.
-    """
-    prompt = f"""
-    Update this memory about a user:
-    Current memory: {current_memory_blob}
-    New fact: {new_fact}
-    
-    Return a coherent updated memory that incorporates the new information,
-    resolving any conflicts intelligently.
-    """
-    return llm_call(prompt)
+```
+Remember Operation:
+- Input: Current memory blob (or empty if new user) + new fact to remember
+- Process: AI-powered intelligent merging of new information with existing memory
+- Conflict resolution: Prioritize newer information while maintaining narrative coherence
+- Temperature: 0 (deterministic for consistency)
+- Output: Updated memory blob incorporating the new fact
+- Storage: Save merged result to user_facts table
 
-def forget(current_memory_blob: str, fact_to_forget: str) -> str:
-    """
-    Remove specific information from memory blob.
-    Maintains narrative coherence after removal.
-    """
-    prompt = f"""
-    Remove specific information from this memory:
-    Current memory: {current_memory_blob}
-    Information to forget: {fact_to_forget}
-    
-    Return updated memory with the specified information removed,
-    maintaining narrative flow.
-    """
-    return llm_call(prompt)
+Forget Operation:
+- Input: Current memory blob + specific fact to remove
+- Process: AI-powered selective removal while preserving narrative flow
+- Fact detection: Determine if the specified information exists in memory
+- Temperature: 0 (deterministic for consistency)  
+- Output: Updated memory blob with specified information removed (or unchanged if not found)
+- Storage: Save updated result to user_facts table
+- Feedback: Indicate whether the fact was found and removed
+
+Memory Merging Strategy:
+- Resolve conflicts by prioritizing factual accuracy
+- Maintain natural narrative flow and coherence
+- Handle contradictions intelligently (newer info generally supersedes older)
+- Preserve important context while incorporating updates
+- Keep memory concise and relevant
 ```
 
 ### Transient Memory Operations 🚧 TODO
-```python
-def prepare_messages_for_llm(messages: List[Message]) -> str:
-    """
-    Convert stored messages with user IDs to readable format with nicks.
-    """
-    readable_messages = []
-    for msg in messages:
-        # Replace user IDs in message text with current display names
-        readable_text = replace_user_ids_with_nicks(msg.message_text, msg.guild_id)
-        readable_messages.append(f"{get_user_nick(msg.user_id)}: {readable_text}")
-    return "\n".join(readable_messages)
+```
+Message Formatting:
+- Convert stored messages with user IDs to readable format
+- Replace user mentions with current display names for LLM processing
+- Format as "username: message content" for each message
 
-@lru_cache(maxsize=1000)
-def daily_summarize(guild_id: int, date: str) -> DailySummaries:
-    """
-    Summarize a complete day's worth of messages for all users in a guild.
-    Processes all messages together to capture cross-user context.
-    Returns structured summaries mapping user_id -> summary.
-    """
-    messages = get_messages_for_date(guild_id, date)
-    formatted_messages = prepare_messages_for_llm(messages, guild_id)
-    
-    prompt = f"""
-    Analyze this day's conversation and create individual summaries for each user.
-    All messages: {formatted_messages}
-    
-    For each user who spoke, create a summary focusing on:
-    - Notable events or experiences they mentioned or were involved in
-    - Mood and emotional state
-    - Important interactions or topics they engaged with
-    - Behavioral patterns
-    - Information about them revealed through other users' messages
-    
-    Keep each summary concise (~300 characters).
-    """
-    return gemma_structured_call(prompt, DailySummaries)
+Daily Summarization (per-user approach):
+- Input: All messages from a specific date, target user ID
+- Process: Analyze full day's conversation focusing on specific user
+- Cache: Use (guild_id, user_id, date) as cache key
+- Benefits: Simpler prompts, better error isolation, independent caching
+- Prompt focus areas:
+  * Notable events or experiences mentioned
+  * User's mood and emotional state
+  * Important interactions and topics
+  * Behavioral patterns observed
+  * Information revealed through other users' messages
+- Output: Concise daily summary (~300 chars) for the target user
 
-@lru_cache(maxsize=500)
-def weekly_summarize(guild_id: int, user_id: int, end_date: str) -> str:
-    """
-    Create weekly summary from daily summaries for a specific user.
-    Week defined as prior 7 days from end_date (inclusive).
-    """
-    daily_summaries = []
-    for i in range(7):
-        date = get_date_offset(end_date, -i)
-        day_summaries = daily_summarize(guild_id, date)
-        if user_id in day_summaries.summaries:
-            daily_summaries.append(day_summaries.summaries[user_id])
-    
-    if not daily_summaries:
-        return ""
-    
-    prompt = f"""
-    Create a weekly summary from these daily summaries:
-    {format_daily_summaries(daily_summaries)}
-    
-    Identify:
-    - Recurring patterns and themes
-    - Overall mood trends
-    - Significant events or changes
-    - Behavioral insights
-    
-    Produce a coherent weekly narrative.
-    """
-    return llm_call(prompt)
+Weekly Summary (sliding window):
+- Input: 7 days of daily summaries ending on specific date
+- Process: Create behavioral summary from daily summaries
+- Cache: Use (guild_id, user_id, end_date) as cache key
+- Sliding window: Calculate daily for last 7 days from end_date
+- Prompt focus areas:
+  * Recurring patterns and themes
+  * Overall mood trends
+  * Significant events or changes
+  * Behavioral insights and personality traits
+- Output: Coherent weekly narrative focusing on behavioral observations
 
-@lru_cache(maxsize=500)
-def merge_context(guild_id: int, user_id: int, facts: str, transient: str) -> str:
-    """
-    Create final context blob by intelligently merging factual and transient memory.
-    """
-    if not facts and not transient:
-        return ""
-    
-    prompt = f"""
-    Create a comprehensive but concise user context by merging:
-    
-    Permanent facts: {facts}
-    Recent behavioral context: {transient}
-    
-    Produce a unified context that:
-    - Resolves any conflicts between sources
-    - Prioritizes factual information for accuracy
-    - Integrates recent behavioral insights
-    - Provides relevant context for conversation
-    """
-    return llm_call(prompt)
+Context Merging:
+- Input: Factual memory blob + weekly behavioral summary
+- Process: Intelligently merge permanent facts with transient observations
+- Cache: Use hash of both input components as cache key
+- Merge strategy:
+  * Resolve conflicts between sources intelligently
+  * Prioritize factual information for accuracy
+  * Integrate recent behavioral insights
+  * Provide relevant context for personalized conversation
+- Output: Unified context for AI conversation processing
 ```
 
 ## On-Demand Processing
@@ -197,7 +179,7 @@ def merge_context(guild_id: int, user_id: int, facts: str, transient: str) -> st
 ### Context Assembly Pipeline
 1. **Retrieve Components**:
    - User facts from `user_facts` table by user_id
-   - Raw messages from `messages` table for recent period
+   - Raw messages from `chat_history` table for recent period
    - Convert user IDs to nicknames only for LLM processing
 2. **Generate Transient Context**:
    - Calculate weekly summary using cached daily summaries
@@ -207,7 +189,7 @@ def merge_context(guild_id: int, user_id: int, facts: str, transient: str) -> st
 5. **Inject Context**: Provide to conversation processors
 
 ### Memory Operations Integration
-- **AI Router Integration**: Memory operations (remember/forget/query) integrated into AI routing
+- **AI Router Integration**: Memory operations (remember/forget) integrated into AI routing
 - **Freeform Support**: Natural language memory commands
 - **Temperature 0**: Precise instruction following without creative interpretation
 
@@ -219,9 +201,11 @@ def merge_context(guild_id: int, user_id: int, facts: str, transient: str) -> st
 - **Sliding Windows**: Efficient temporal queries using date arithmetic
 
 ### Cache Key Design
-- **Daily summaries**: Absolute date string (e.g., "2024-01-15")
-- **Weekly summaries**: End date for prior 7 days (e.g., "2024-01-21" for 7-day period ending that date)
-- **Final context**: Hash of facts + transient context components
+All cache keys include `(guild_id, user_id, ...)` since all memory operations are per-user:
+
+- **Daily summaries**: `(guild_id, user_id, date)` - e.g., "2024-01-15"
+- **Weekly summary**: `(guild_id, user_id, end_date)` - e.g., "2024-01-21" for 7-day period ending that date  
+- **Final context**: `(guild_id, user_id, hash(facts), weekly_end_date)` - combines fact hash with weekly summary date
 
 ### Memory Footprint Analysis
 - **Per user**: ~6KB (facts: 400 chars, daily: 300 chars, weekly: 500 chars, context: 800 chars)
@@ -242,14 +226,14 @@ def merge_context(guild_id: int, user_id: int, facts: str, transient: str) -> st
 Bot remember that gruzilkin is Sergey
 Bot, remember this about Florent [conversation history]
 Bot forget that gruzilkin likes pizza
-Bot what do you remember about @user
+Bot what do you know about @user
 ```
 
 ### Automated Processing
-- **Message Ingestion**: All messages automatically stored with user IDs in `messages` table 🚧 TODO
+- **Chat History Ingestion**: All messages automatically stored with user IDs in `chat_history` table 🚧 TODO
 - **User ID Translation**: IDs converted to readable nicks only for LLM processing ✅ IMPLEMENTED
-- **On-Demand Calculation**: Summaries and context generated when requested 🚧 TODO  
-- **LRU Caching**: Extensive caching prevents redundant AI calls 🚧 TODO
+- **On-Demand Calculation**: Summaries and context generated when requested via MemoryManager 🚧 TODO  
+- **Caching with cachetools**: Extensive caching prevents redundant AI calls using `LRUCache` instances 🚧 TODO
 - **Context Injection**: Memory context automatically included in AI responses ✅ IMPLEMENTED
 
 ## Implementation Examples
@@ -292,7 +276,7 @@ user_context = get_user_context(guild_id, user_nick)
 ### Scalability
 - **Target Scale**: Optimized for small deployments (5-100 users)
 - **On-Demand Processing**: No background jobs, everything calculated when needed
-- **Gemma Integration**: Free tier provides generous limits for hobby-scale usage
+- **Single AI Client**: Gemma provides free tier with generous limits for all memory operations
 - **Simple Architecture**: Minimal infrastructure requirements
 - **Data Retention**: Limited message history (1 week to 1 month) keeps storage bounded
 
