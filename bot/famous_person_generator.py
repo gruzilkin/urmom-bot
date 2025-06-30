@@ -18,10 +18,11 @@ class FamousPersonGenerator:
 
     def get_route_description(self) -> str:
         return """
-        FAMOUS: For celebrity/character impersonation requests
-        - Detects when users ask what a famous person would say or how they would respond
-        - Examples: "What would Trump say?", "How would Darth Vader respond?", "What if Einstein explained this?"
-        - Handles variations like "What would X say about Y?" or "How would X feel about this?"
+        FAMOUS: For celebrity/character impersonation and roleplay requests
+        - ONLY for hypothetical scenarios asking what someone WOULD say/do
+        - Examples: "What would Trump say about this?", "How would Darth Vader respond?", "What if Einstein explained this?"
+        - Key indicators: "would", "if", hypothetical phrasing
+        - NOT for factual questions about what someone actually said/did
         """
 
     

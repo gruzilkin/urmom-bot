@@ -41,6 +41,8 @@ class GeneralQueryGenerator:
         - Handles legitimate questions, requests for information, explanations, or help
         - Valid queries: "What's the weather?", "Explain quantum physics", "How do I cook pasta?", "What do you remember about John?", "Tell me about user X"
         - Context-dependent questions: "What about this?", "How does that work?"
+        - Factual questions about real people: "What did Trump say?", "Did X say anything interesting?", "What did Marie Curie discover?"
+        - May contain AI backend specifications such as "ask grok to...", "use claude to...", "have gemini explain..."
         - Invalid: Simple reactions like "lol", "nice", "haha that's funny"
         """
 
