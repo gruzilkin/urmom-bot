@@ -110,14 +110,16 @@ Remember Operation:
 - Process: AI-powered intelligent merging of new information with existing memory
 - Conflict resolution: Prioritize newer information while maintaining narrative coherence
 - Temperature: 0 (deterministic for consistency)
-- Output: Updated memory blob incorporating the new fact
+- Perspective normalization: Convert all facts to third-person declarative statements from external observer perspective
+- Output: Updated memory blob incorporating the new fact in consistent third-person format
 - Storage: Save merged result to user_facts table
 
 Forget Operation:
 - Input: Current memory blob + specific fact to remove
 - Process: AI-powered selective removal while preserving narrative flow
 - Fact detection: Determine if the specified information exists in memory
-- Temperature: 0 (deterministic for consistency)  
+- Temperature: 0 (deterministic for consistency)
+- Perspective consistency: Maintain third-person declarative statements from external observer perspective
 - Output: Updated memory blob with specified information removed (or unchanged if not found)
 - Storage: Save updated result to user_facts table
 - Feedback: Indicate whether the fact was found and removed
@@ -128,6 +130,7 @@ Memory Merging Strategy:
 - Handle contradictions intelligently (newer info generally supersedes older)
 - Preserve important context while incorporating updates
 - Keep memory concise and relevant
+- Enforce consistent third-person perspective throughout all stored facts
 ```
 
 ### Transient Memory Operations 🚧 TODO
