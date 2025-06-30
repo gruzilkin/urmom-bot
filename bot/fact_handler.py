@@ -72,8 +72,22 @@ class FactHandler:
             current_memory = self.store.get_user_facts(guild_id, user_id)
             
             if not current_memory:
-                # No existing memory, store the new fact directly
-                updated_memory = new_fact
+                # No existing memory, normalize to third-person perspective
+                normalize_prompt = f"""
+                Convert this fact to third-person declarative statement from an external observer perspective.
+                
+                Fact: {new_fact}
+                
+                Example: "I live in Tokyo" becomes "User lives in Tokyo"
+                """
+                
+                memory_response = await self.ai_client.generate_content(
+                    message=new_fact,
+                    prompt=normalize_prompt,
+                    temperature=0.0,
+                    response_schema=MemoryUpdate
+                )
+                updated_memory = memory_response.updated_memory
             else:
                 # Merge with existing memory using AI
                 prompt = f"""
@@ -83,7 +97,8 @@ class FactHandler:
                 New information: {new_fact}
                 
                 Merge the new information with the existing memory, resolving any conflicts intelligently 
-                and maintaining a natural narrative flow.
+                and maintaining a natural narrative flow. Use consistent third-person declarative statements 
+                from an external observer perspective (e.g., "John lives in Tokyo" not "I live in Tokyo").
                 """
                 
                 memory_response = await self.ai_client.generate_content(
@@ -120,7 +135,8 @@ class FactHandler:
             Information to remove: {fact_to_forget}
             
             Remove the specified information if it exists in the memory. If the information is not found,
-            return the original memory unchanged and set fact_found to false.
+            return the original memory unchanged and set fact_found to false. Maintain consistent 
+            third-person declarative statements from an external observer perspective.
             """
             
             forget_response = await self.ai_client.generate_content(
