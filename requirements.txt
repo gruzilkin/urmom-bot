@@ -1,7 +1,7 @@
 google-genai
 nextcord
 python-dotenv
-psycopg2-binary
+psycopg[binary]
 openai
 langdetect
 opentelemetry-api

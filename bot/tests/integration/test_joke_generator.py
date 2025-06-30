@@ -1,6 +1,6 @@
 import unittest
 import os
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 from dotenv import load_dotenv
 from joke_generator import JokeGenerator
 from gemini_client import GeminiClient
@@ -27,13 +27,13 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
             telemetry=NullTelemetry()
         )
         self.store = Mock(spec=Store)
-        self.store.get_random_jokes.return_value = [
+        self.store.get_random_jokes = AsyncMock(return_value=[
             ("The switch is hard to use", "ur mom is hard to use"),
             ("I need more space in my room", "I need more space in ur mom"),
             ("This game is too expensive", "ur mom is too expensive"),
             ("The graphics are amazing", "ur mom's graphics are amazing"),
             ("I can't handle this level", "I can't handle ur mom")
-        ]
+        ])
         
         self.joke_generator = JokeGenerator(
             ai_client=ai_client,

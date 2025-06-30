@@ -75,7 +75,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Create mock dependencies
         self.mock_store = Mock()
-        self.mock_store.get_user_facts = Mock(return_value=None)
+        self.mock_store.get_user_facts = AsyncMock(return_value=None)
         self.mock_user_resolver = Mock()
         self.mock_user_resolver.get_display_name = AsyncMock(return_value="TestUser")
         self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda text, guild_id: text)

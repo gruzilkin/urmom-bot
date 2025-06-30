@@ -100,7 +100,7 @@ class GeneralQueryGenerator:
         memory_blocks = []
         for user_id in user_ids:
             display_name = await self.user_resolver.get_display_name(guild_id, user_id)
-            facts = self.store.get_user_facts(guild_id, user_id)
+            facts = await self.store.get_user_facts(guild_id, user_id)
             if facts:
                 memory_block = f"""<memory>
 <name>{display_name}</name>

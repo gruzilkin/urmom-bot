@@ -69,7 +69,7 @@ class FactHandler:
             span.set_attribute("new_fact", new_fact)
             
             # Get existing memory blob
-            current_memory = self.store.get_user_facts(guild_id, user_id)
+            current_memory = await self.store.get_user_facts(guild_id, user_id)
             
             if not current_memory:
                 # No existing memory, normalize to third-person perspective
@@ -110,7 +110,7 @@ class FactHandler:
                 updated_memory = memory_response.updated_memory
             
             # Save updated memory to database
-            self.store.save_user_facts(guild_id, user_id, updated_memory)
+            await self.store.save_user_facts(guild_id, user_id, updated_memory)
             
             logger.info(f"Updated memory for user {user_id} in guild {guild_id}")
             return f"I'll remember that about the user."
@@ -122,7 +122,7 @@ class FactHandler:
             span.set_attribute("user_id", user_id)
             span.set_attribute("fact_to_forget", fact_to_forget)
             
-            current_memory = self.store.get_user_facts(guild_id, user_id)
+            current_memory = await self.store.get_user_facts(guild_id, user_id)
             
             if not current_memory:
                 return "I don't have any memory about that user to forget."
@@ -153,7 +153,7 @@ class FactHandler:
             updated_memory = forget_response.updated_memory
             
             # Save updated memory
-            self.store.save_user_facts(guild_id, user_id, updated_memory)
+            await self.store.save_user_facts(guild_id, user_id, updated_memory)
             
             logger.info(f"Removed fact from memory for user {user_id} in guild {guild_id}")
             return f"I've forgotten that about the user."

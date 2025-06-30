@@ -21,8 +21,8 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Mock the store
         self.mock_store = Mock(spec=Store)
-        self.mock_store.get_user_facts = Mock(return_value=None)
-        self.mock_store.save_user_facts = Mock()
+        self.mock_store.get_user_facts = AsyncMock(return_value=None)
+        self.mock_store.save_user_facts = AsyncMock()
         
         # Mock the user resolver
         self.mock_user_resolver = Mock(spec=UserResolver)
@@ -40,15 +40,18 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Arrange
         params = FactParams(operation="remember", user_mention="testuser", fact_content="likes chocolate")
         self.mock_user_resolver.resolve_user_id.return_value = 12345
+        self.mock_ai_client.generate_content = AsyncMock(
+            return_value=MemoryUpdate(updated_memory="User likes chocolate")
+        )
         
         # Act
         response = await self.fact_handler.handle_request(params, guild_id=67890)
         
         # Assert
         self.assertEqual(response, "I'll remember that about the user.")
-        self.mock_store.get_user_facts.assert_called_once_with(67890, 12345)
-        self.mock_store.save_user_facts.assert_called_once_with(67890, 12345, "likes chocolate")
-        self.mock_ai_client.generate_content.assert_not_called() # No AI call needed for new memory
+        self.mock_store.get_user_facts.assert_awaited_once_with(67890, 12345)
+        self.mock_store.save_user_facts.assert_awaited_once_with(67890, 12345, "User likes chocolate")
+        self.mock_ai_client.generate_content.assert_called_once() # AI call needed to normalize new memory
 
     async def test_remember_fact_with_existing_memory(self):
         """Test remembering a fact for a user who already has a memory blob."""
@@ -65,7 +68,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Assert
         self.assertEqual(response, "I'll remember that about the user.")
-        self.mock_store.save_user_facts.assert_called_once_with(67890, 12345, "likes chocolate and is a developer")
+        self.mock_store.save_user_facts.assert_awaited_once_with(67890, 12345, "likes chocolate and is a developer")
         self.mock_ai_client.generate_content.assert_called_once()
 
     async def test_forget_fact_not_found(self):
@@ -83,7 +86,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Assert
         self.assertEqual(response, "I couldn't find that specific information in my memory about the user.")
-        self.mock_store.save_user_facts.assert_not_called()
+        self.mock_store.save_user_facts.assert_not_awaited()
 
     async def test_forget_fact_found(self):
         """Test forgetting a fact that exists in the user's memory."""
@@ -100,7 +103,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Assert
         self.assertEqual(response, "I've forgotten that about the user.")
-        self.mock_store.save_user_facts.assert_called_once_with(67890, 12345, "is a developer")
+        self.mock_store.save_user_facts.assert_awaited_once_with(67890, 12345, "is a developer")
 
     async def test_handle_request_with_unresolvable_user(self):
         """Test that the handler returns a helpful message for unresolvable users."""
@@ -113,8 +116,8 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Assert
         self.assertIn("couldn't identify the user", response)
-        self.mock_store.get_user_facts.assert_not_called()
-        self.mock_store.save_user_facts.assert_not_called()
+        self.mock_store.get_user_facts.assert_not_awaited()
+        self.mock_store.save_user_facts.assert_not_awaited()
 
 if __name__ == '__main__':
     unittest.main()

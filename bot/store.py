@@ -1,4 +1,5 @@
-import psycopg2
+import psycopg
+from psycopg import AsyncConnection
 from dataclasses import dataclass
 import logging
 from cachetools import LRUCache, cachedmethod
@@ -28,34 +29,25 @@ class Store:
             "password": password,
             "database": database
         }
-        self.conn = None
+        self.conn: AsyncConnection | None = None
         self.weight_coef = weight_coef
         self._guild_configs = {}  # Add cache dictionary
         self._user_facts_cache = LRUCache(maxsize=500)
 
-    def _connect(self):
-        return psycopg2.connect(**self.connection_params)
+    async def _connect(self) -> AsyncConnection:
+        conn = await psycopg.AsyncConnection.connect(**self.connection_params)
+        return conn
 
-    def _ensure_connection(self):
-        try:
-            if self.conn is None:
-                self.conn = self._connect()
-                return
-                
-            # Test if connection is still alive
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT 1")
-        except (psycopg2.OperationalError, psycopg2.InterfaceError):
-            try:
-                # Close the dead connection if it exists
-                if self.conn is not None:
-                    self.conn.close()
-            except:
-                pass
-            # Create new connection
-            self.conn = self._connect()
+    async def _ensure_connection(self) -> None:
+        if self.conn is None or self.conn.closed:
+            if self.conn is not None:
+                try:
+                    await self.conn.close()
+                except:
+                    pass
+            self.conn = await self._connect()
     
-    def save(self, source_message_id: int, 
+    async def save(self, source_message_id: int, 
             joke_message_id: int,
             source_message_content: str,
             joke_message_content: str,
@@ -76,10 +68,10 @@ class Store:
         logger.info(f"Store saving joke: {joke_data}")
         
         try:
-            self._ensure_connection()
-            with self.conn.cursor() as cur:
+            await self._ensure_connection()
+            async with self.conn.cursor() as cur:
                 # Insert both messages in a single statement
-                cur.execute(
+                await cur.execute(
                     """
                     INSERT INTO messages (message_id, content, language_code) 
                     VALUES (%s, %s, %s), (%s, %s, %s)
@@ -92,7 +84,7 @@ class Store:
                 )
                 
                 # Create or update relationship in jokes table
-                cur.execute(
+                await cur.execute(
                     """
                     INSERT INTO jokes (source_message_id, joke_message_id, reaction_count) 
                     VALUES (%s, %s, %s)
@@ -102,23 +94,23 @@ class Store:
                     (source_message_id, joke_message_id, reaction_count)
                 )
                 
-                self.conn.commit()
+                await self.conn.commit()
         except Exception as e:
-            self.conn.rollback()
+            await self.conn.rollback()
             raise e
 
-    def get_random_jokes(self, n: int, language: str, guild_ids: list[int] | None = None) -> list[tuple[str, str]]:
+    async def get_random_jokes(self, n: int, language: str, guild_ids: list[int] | None = None) -> list[tuple[str, str]]:
         """Get multiple random jokes in a single query"""
         try:
-            self._ensure_connection()
-            with self.conn.cursor() as cur:
+            await self._ensure_connection()
+            async with self.conn.cursor() as cur:
                 guild_filter = "AND j.guild_id = ANY(%s)" if guild_ids else ""
                 params = [language]  # Language should be first parameter
                 if guild_ids:
                     params.append(guild_ids)
                 params.extend([self.weight_coef, n])  # Add remaining parameters
                 
-                cur.execute(
+                await cur.execute(
                     f"""
                     SELECT m1.content, m2.content
                     FROM jokes j
@@ -130,21 +122,21 @@ class Store:
                     """,
                     params
                 )
-                return cur.fetchall()
+                return await cur.fetchall()
         except Exception as e:
             print(f"Error fetching random jokes: {e}")
             return []
 
-    def get_guild_config(self, guild_id: int) -> GuildConfig:
+    async def get_guild_config(self, guild_id: int) -> GuildConfig:
         if guild_id not in self._guild_configs:
-            self._ensure_connection()
-            with self.conn.cursor() as cur:
-                cur.execute(
+            await self._ensure_connection()
+            async with self.conn.cursor() as cur:
+                await cur.execute(
                     "INSERT INTO guild_configs (guild_id) VALUES (%s) ON CONFLICT DO NOTHING",
                     (guild_id,)
                 )
                 
-                cur.execute(
+                await cur.execute(
                     """
                     SELECT archive_channel_id, delete_jokes_after_minutes, 
                            downvote_reaction_threshold, enable_country_jokes 
@@ -153,8 +145,8 @@ class Store:
                     """,
                     (guild_id,)
                 )
-                result = cur.fetchone()
-                self.conn.commit()
+                result = await cur.fetchone()
+                await self.conn.commit()
                 
                 self._guild_configs[guild_id] = GuildConfig(
                     guild_id=guild_id,
@@ -166,10 +158,10 @@ class Store:
         
         return self._guild_configs[guild_id]
 
-    def save_guild_config(self, config: GuildConfig) -> None:
-        self._ensure_connection()
-        with self.conn.cursor() as cur:
-            cur.execute(
+    async def save_guild_config(self, config: GuildConfig) -> None:
+        await self._ensure_connection()
+        async with self.conn.cursor() as cur:
+            await cur.execute(
                 """
                 UPDATE guild_configs 
                 SET archive_channel_id = %s,
@@ -182,32 +174,41 @@ class Store:
                  config.downvote_reaction_threshold, config.enable_country_jokes,
                  config.guild_id)
             )
-            self.conn.commit()
+            await self.conn.commit()
             # Update cache
             self._guild_configs[config.guild_id] = config
 
-    @cachedmethod(cache=lambda self: self._user_facts_cache)
-    def get_user_facts(self, guild_id: int, user_id: int) -> str | None:
+    async def get_user_facts(self, guild_id: int, user_id: int) -> str | None:
         """Retrieve current memory blob for a user with LRU caching."""
+        cache_key = (guild_id, user_id)
+        
+        # Check cache first
+        if cache_key in self._user_facts_cache:
+            return self._user_facts_cache[cache_key]
+        
         try:
-            self._ensure_connection()
-            with self.conn.cursor() as cur:
-                cur.execute(
+            await self._ensure_connection()
+            async with self.conn.cursor() as cur:
+                await cur.execute(
                     "SELECT memory_blob FROM user_facts WHERE guild_id = %s AND user_id = %s",
                     (guild_id, user_id)
                 )
-                result = cur.fetchone()
-                return result[0] if result else None
+                result = await cur.fetchone()
+                memory_blob = result[0] if result else None
+                
+                # Cache the result
+                self._user_facts_cache[cache_key] = memory_blob
+                return memory_blob
         except Exception as e:
             logger.error(f"Error retrieving user facts: {e}")
             return None
 
-    def save_user_facts(self, guild_id: int, user_id: int, memory_blob: str) -> None:
+    async def save_user_facts(self, guild_id: int, user_id: int, memory_blob: str) -> None:
         """Save or update memory blob for a user and invalidate cache."""
         try:
-            self._ensure_connection()
-            with self.conn.cursor() as cur:
-                cur.execute(
+            await self._ensure_connection()
+            async with self.conn.cursor() as cur:
+                await cur.execute(
                     """
                     INSERT INTO user_facts (guild_id, user_id, memory_blob, updated_at)
                     VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
@@ -216,7 +217,7 @@ class Store:
                     """,
                     (guild_id, user_id, memory_blob)
                 )
-                self.conn.commit()
+                await self.conn.commit()
                 
                 # Invalidate the cache for this specific user
                 cache_key = (guild_id, user_id)
@@ -227,14 +228,15 @@ class Store:
         except Exception as e:
             logger.error(f"Error saving user facts: {e}")
             if self.conn:
-                self.conn.rollback()
+                await self.conn.rollback()
             raise e
 
 
-    def __del__(self):
+    async def close(self) -> None:
+        """Close the database connection."""
         try:
             if self.conn is not None:
-                self.conn.close()
+                await self.conn.close()
         except Exception:
             # Ignore exceptions during cleanup
             pass

@@ -26,7 +26,7 @@ class JokeGenerator:
         """
 
     async def generate_joke(self, content: str, language: str) -> str:
-        sample_jokes = self.store.get_random_jokes(self.sample_count, language)
+        sample_jokes = await self.store.get_random_jokes(self.sample_count, language)
         async with self.telemetry.async_create_span("generate_joke") as span:
             response = await self.ai_client.generate_content(
                 message=content,
@@ -97,7 +97,7 @@ Is it actually a joke? Reply only yes or no."""
             except LangDetectException:
                 joke_lang = 'unknown'
             
-            self.store.save(
+            await self.store.save(
                 source_message_id=source_message_id,
                 joke_message_id=joke_message_id,
                 source_message_content=source_message_content,

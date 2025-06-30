@@ -9,10 +9,10 @@ class MockStore:
     def __init__(self):
         self.saved_jokes = []
         
-    def save(self, **kwargs):
+    async def save(self, **kwargs):
         self.saved_jokes.append(kwargs)
         
-    def get_random_jokes(self, count, language):
+    async def get_random_jokes(self, count, language):
         return [("test message", "test joke")]
 
 

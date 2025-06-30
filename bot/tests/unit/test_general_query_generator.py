@@ -27,7 +27,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Mock store and user_resolver
         self.mock_store = Mock()
-        self.mock_store.get_user_facts = Mock(return_value=None)
+        self.mock_store.get_user_facts = AsyncMock(return_value=None)
         
         self.mock_user_resolver = Mock()
         self.mock_user_resolver.get_display_name = AsyncMock(return_value="TestUser")
