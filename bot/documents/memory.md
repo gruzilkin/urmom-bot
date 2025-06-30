@@ -33,16 +33,19 @@ The urmom-bot memory system is a sophisticated hierarchical AI-powered memory ar
 2. **Transient Memory**: Automatic extraction and summarization of chat interactions
 
 ### Hierarchical AI Summarization
-- Raw chat history → Daily summaries (Gemma) → Weekly summary (Gemma, sliding 7-day window) → Final context (Gemma, merging weekly summary + facts)
+- Raw chat history → Daily summaries (Gemma) → Historical summary (Gemma, days 2-7) → Final context (Gemma, 3-way merge)
+- **Strategy**: `merge(facts, current_day_summary, historical_summary)` for optimal caching
+- Current day (day 1) updated hourly, historical days (2-7) cached permanently
 - AI-powered merging at every level to resolve conflicts and maintain coherence
 - Bounded information growth through intelligent compression
-- Weekly summary calculated daily with sliding window using Gemma for consistency
 
 ### Cache Efficiency
-- Uses `cachetools.LRUCache` instances with absolute date keys for immutability
+- **Dual Strategy**: TTL caching for current day, LRU caching for historical data
+- Current day summaries: 1-hour TTL with hour-bucket keys for intraday updates
+- Historical summaries: Permanent LRU cache with immutable date keys
+- Content-based hashing for final context merge to ensure cache correctness
 - Manual async cache management for async methods
 - On-demand calculation with extensive caching to avoid redundant work
-- Key-based eviction capability when needed
 
 ## Database Schema
 
@@ -149,26 +152,26 @@ Daily Summarization (per-user approach):
   * Information revealed through other users' messages
 - Output: Concise daily summary (~300 chars) for the target user
 
-Weekly Summary (sliding window):
-- Input: 7 days of daily summaries ending on specific date
-- Process: Create behavioral summary from daily summaries
-- Cache: Use (guild_id, user_id, end_date) as cache key
-- Sliding window: Calculate daily for last 7 days from end_date
+Historical Summary (days 2-7):
+- Input: 6 days of daily summaries (days 2-7 from current date)
+- Process: Create behavioral summary from historical daily summaries
+- Cache: Use (guild_id, user_id, historical_end_date) as cache key with permanent LRU
+- Updates: Only when day transitions (current day becomes historical)
 - Prompt focus areas:
-  * Recurring patterns and themes
-  * Overall mood trends
-  * Significant events or changes
-  * Behavioral insights and personality traits
-- Output: Coherent weekly narrative focusing on behavioral observations
+  * Recurring patterns and themes from recent history
+  * Overall mood trends over the week
+  * Significant events or behavioral changes
+  * Personality insights from consistent behaviors
+- Output: Coherent historical narrative focusing on behavioral observations
 
-Context Merging:
-- Input: Factual memory blob + weekly behavioral summary
-- Process: Intelligently merge permanent facts with transient observations
-- Cache: Use hash of both input components as cache key
+Context Merging (3-way merge):
+- Input: Factual memory blob + current day summary + historical summary
+- Process: Intelligently merge permanent facts with current and historical observations
+- Cache: Use hash-based key: (guild_id, user_id, hash(facts), hash(current_day), hash(historical))
 - Merge strategy:
   * Resolve conflicts between sources intelligently
   * Prioritize factual information for accuracy
-  * Integrate recent behavioral insights
+  * Balance current observations with historical patterns
   * Provide relevant context for personalized conversation
 - Output: Unified context for AI conversation processing
 ```
@@ -181,9 +184,10 @@ Context Merging:
    - Raw messages from `chat_history` table for recent period
    - Convert user IDs to nicknames only for LLM processing
 2. **Generate Transient Context**:
-   - Calculate weekly summary using cached daily summaries
-   - Use absolute date keys for immutable caching
-3. **AI Merge**: Create final context using `merge_context(facts, transient)`
+   - Get current day summary (1-hour cache with hour buckets)
+   - Get historical summary (permanent LRU cache for days 2-7)
+   - Use content-based caching for optimal efficiency
+3. **AI Merge**: Create final context using `merge_context(facts, current_day, historical)`
 4. **Cache Result**: LRU cache stores final context
 5. **Inject Context**: Provide to conversation processors
 
@@ -202,15 +206,17 @@ Context Merging:
 ### Cache Key Design
 All cache keys include `(guild_id, user_id, ...)` since all memory operations are per-user:
 
-- **Daily summaries**: `(guild_id, user_id, date)` - e.g., "2024-01-15"
-- **Weekly summary**: `(guild_id, user_id, end_date)` - e.g., "2024-01-21" for 7-day period ending that date  
-- **Final context**: `(guild_id, user_id, hash(facts), weekly_end_date)` - combines fact hash with weekly summary date
+- **Current day summaries**: `(guild_id, user_id, today, hour_bucket)` - 1-hour TTL, e.g., "2024-01-15-14"
+- **Historical daily summaries**: `(guild_id, user_id, date)` - permanent LRU, e.g., "2024-01-14"  
+- **Historical summary**: `(guild_id, user_id, historical_end_date)` - permanent LRU, e.g., "2024-01-14" for days 2-7
+- **Final context**: `(guild_id, user_id, hash(facts), hash(current_day), hash(historical))` - content-based hashing for encapsulation
 
 ### Memory Footprint Analysis
-- **Per user**: ~6KB (facts: 400 chars, daily: 300 chars, weekly: 500 chars, context: 800 chars)
-- **5 users**: 30KB total
-- **100 users**: 600KB total
+- **Per user**: ~6.5KB (facts: 400 chars, current day: 300 chars, historical: 500 chars, daily cache: 300×6, context: 800 chars)
+- **5 users**: 32KB total
+- **100 users**: 650KB total
 - **Negligible memory usage** - can store entirely in-process
+- **Current day overhead**: Minimal due to 1-hour TTL and single active bucket
 
 ### Cache Benefits
 - **Stable keys**: Message ID boundaries don't change as time progresses
@@ -247,11 +253,13 @@ Daily Summary: "User experiencing work stress, using exercise as coping mechanis
 
 Day 2-7 Messages: [Similar pattern of stress + gym usage]
 
-Weekly Summary: "User has consistent pattern of managing work stress through regular exercise, shows resilience and healthy coping strategies"
+Historical Summary (Days 2-7): "User has consistent pattern of managing work stress through regular exercise, shows resilience and healthy coping strategies"
+
+Current Day Summary: "User mentioned new project starting, seems excited but slightly anxious about timeline"
 
 Factual Memory: "Software engineer at TechCorp, lives in Berlin, enjoys hiking"
 
-Final Context: "Berlin-based software engineer at TechCorp who manages work stress through exercise and enjoys outdoor activities like hiking. Currently dealing with project pressures but has healthy coping mechanisms."
+Final Context: "Berlin-based software engineer at TechCorp who manages work stress through exercise and enjoys outdoor activities like hiking. Has consistent healthy coping strategies and is currently excited but slightly anxious about a new project timeline."
 ```
 
 ### Context Usage Example
