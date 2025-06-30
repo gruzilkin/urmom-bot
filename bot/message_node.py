@@ -8,6 +8,7 @@ class MessageNode:
     id: int
     content: str
     author_id: int
+    channel_id: int
     mentioned_user_ids: list[int]
     created_at: datetime.datetime
     reference_id: int | None = None

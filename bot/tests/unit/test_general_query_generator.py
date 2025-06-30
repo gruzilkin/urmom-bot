@@ -33,6 +33,9 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_user_resolver.get_display_name = AsyncMock(return_value="TestUser")
         self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda text, guild_id: text)
         
+        self.mock_memory_manager = Mock()
+        self.mock_memory_manager.get_memories = AsyncMock(return_value=None) # Default to no memories
+
         self.telemetry = NullTelemetry()
         self.generator = GeneralQueryGenerator(
             self.mock_gemini_flash, 
@@ -42,7 +45,8 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             self.mock_response_summarizer,
             self.telemetry,
             self.mock_store,
-            self.mock_user_resolver
+            self.mock_user_resolver,
+            self.mock_memory_manager
         )
 
 
@@ -58,7 +62,13 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
-            return []
+            msg = ConversationMessage(
+                author_id=123,
+                content="Test message", 
+                timestamp="2024-01-01 12:00:00",
+                mentioned_user_ids=[]
+            )
+            return [msg]
         
         result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
         
@@ -103,7 +113,13 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
-            return []
+            msg = ConversationMessage(
+                author_id=123,
+                content="Test message", 
+                timestamp="2024-01-01 12:00:00",
+                mentioned_user_ids=[]
+            )
+            return [msg]
         
         result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
         
@@ -125,7 +141,13 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
-            return []
+            msg = ConversationMessage(
+                author_id=123,
+                content="Test message", 
+                timestamp="2024-01-01 12:00:00",
+                mentioned_user_ids=[]
+            )
+            return [msg]
         
         # Exception should propagate instead of being caught
         with self.assertRaises(Exception) as context:

@@ -53,3 +53,8 @@ class RouteSelection(BaseModel):
     """Schema for AI router route selection (first tier)."""
     route: Literal["FAMOUS", "GENERAL", "FACT", "NONE"] = Field(description="Route decision")
     reason: str = Field(description="Brief reason for choosing this route")
+
+
+class MemoryContext(BaseModel):
+    """Schema for memory manager context generation."""
+    context: str = Field(description="Merged context combining facts, current day observations, and historical patterns")

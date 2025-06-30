@@ -131,7 +131,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(params)
         self.assertEqual(params.operation, "forget")
         self.assertEqual(params.user_mention, "gruzilkin")
-        self.assertIn("likes pizza", params.fact_content)
+        self.assertIn("they like pizza", params.fact_content)
 
 
 if __name__ == '__main__':

@@ -27,6 +27,17 @@ CREATE TABLE user_facts (
     PRIMARY KEY (guild_id, user_id)
 );
 
+CREATE TABLE chat_history (
+    guild_id BIGINT NOT NULL,
+    channel_id BIGINT NOT NULL,
+    message_id BIGINT NOT NULL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    message_text TEXT NOT NULL,
+    timestamp TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_guild_timestamp ON chat_history (guild_id, timestamp);
+
 -- Insert messages
 INSERT INTO messages VALUES
 (1, 'en', 'My son is bioterrorising me. He walked in my office, sat down for a few minutes, farted, and then immediately left'),

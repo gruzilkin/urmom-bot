@@ -1,7 +1,8 @@
 import logging
-from typing import Dict, Set
+from typing import Dict, Set, Callable, Awaitable
 
 from ai_client import AIClient
+from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from schemas import GeneralParams
 from response_summarizer import ResponseSummarizer
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry, store: Store, user_resolver: UserResolver):
+    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry, store: Store, user_resolver: UserResolver, memory_manager: 'MemoryManager'):
         self.gemini_flash = gemini_flash
         self.grok = grok
         self.claude = claude
@@ -21,6 +22,7 @@ class GeneralQueryGenerator:
         self.telemetry = telemetry
         self.store = store
         self.user_resolver = user_resolver
+        self.memory_manager = memory_manager
     
     def _get_ai_client(self, ai_backend: str) -> AIClient:
         """Select the appropriate AI client based on backend name."""
@@ -93,18 +95,18 @@ class GeneralQueryGenerator:
         return user_ids
 
     async def _build_memories(self, guild_id: int, user_ids: Set[int]) -> str:
-        """Build memories section for LLM prompt."""
+        """Build memories section for LLM prompt using memory manager."""
         if not user_ids:
             return ""
         
         memory_blocks = []
         for user_id in user_ids:
             display_name = await self.user_resolver.get_display_name(guild_id, user_id)
-            facts = await self.store.get_user_facts(guild_id, user_id)
-            if facts:
+            memories = await self.memory_manager.get_memories(guild_id, user_id)
+            if memories:
                 memory_block = f"""<memory>
 <name>{display_name}</name>
-<facts>{facts}</facts>
+<facts>{memories}</facts>
 </memory>"""
                 memory_blocks.append(memory_block)
         
@@ -113,13 +115,13 @@ class GeneralQueryGenerator:
         return ""
 
     
-    async def handle_request(self, params: GeneralParams, conversation_fetcher, guild_id: int) -> str | None:
+    async def handle_request(self, params: GeneralParams, conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]], guild_id: int) -> str | None:
         """
         Handle a general query request using the provided parameters.
         
         Args:
             params (GeneralParams): Parameters containing ai_backend, temperature, and cleaned_query
-            conversation_fetcher: Parameterless async function that returns conversation history
+            conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]]: Parameterless async function that returns conversation history
             guild_id (int): Discord guild ID for user context resolution
             
         Returns:

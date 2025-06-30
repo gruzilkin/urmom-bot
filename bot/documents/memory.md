@@ -10,10 +10,11 @@
 - Memory injection into AI responses via XML-structured prompts
 - Natural memory queries handled by general query generator using injected context
 
-**🚧 MILESTONE 2 PLANNED: Transient Memory System**
-- Chat history ingestion and storage (TODO)
-- Daily/weekly summarization pipeline with sliding window (TODO)  
-- Context assembly and merging with MemoryManager (TODO)
+**✅ MILESTONE 2 COMPLETE: Transient Memory System**
+- Chat history ingestion and storage
+- Daily summarization pipeline with 3-way merge architecture
+- Context assembly and merging with MemoryManager
+- Dual caching strategy (TTL + LRU) with content-based hashing
 
 ## Overview
 
@@ -60,10 +61,11 @@ CREATE TABLE user_facts (
 );
 ```
 
-### Chat History Table 🚧 TODO (for transient memory)
+### Chat History Table ✅ IMPLEMENTED
 ```sql
 CREATE TABLE chat_history (
     guild_id BIGINT NOT NULL,
+    channel_id BIGINT NOT NULL,
     message_id BIGINT NOT NULL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     message_text TEXT NOT NULL,
@@ -72,33 +74,34 @@ CREATE TABLE chat_history (
 );
 ```
 
-## MemoryManager Architecture 🚧 TODO
+## MemoryManager Architecture ✅ IMPLEMENTED
 
 ### Clean Interface Design
-The transient memory system will be encapsulated in a `MemoryManager` class that provides a simple interface while hiding internal complexity:
+The transient memory system is encapsulated in a `MemoryManager` class that provides a simple interface while hiding internal complexity:
 
 ```python
 class MemoryManager:
-    async def ingest_message(self, guild_id: int, message_id: int, user_id: int, message_text: str, timestamp: datetime) -> None:
+    async def ingest_message(self, guild_id: int, message: MessageNode) -> None:
         """Store message in chat_history table"""
     
-    async def get_memories(self, guild_id: int, user_id: int) -> tuple[str | None, str | None]:
-        """Returns (facts, observations) for a user
+    async def get_memories(self, guild_id: int, user_id: int) -> str | None:
+        """Returns unified context for a user via 3-way merge
         
-        facts: from existing factual memory system (user_facts table)
-        observations: from transient memory pipeline (daily→weekly summaries)
+        Combines: factual memory + current day summary + historical summary (days 2-7)
+        Returns: Single unified context string or None if no memories exist
         
-        All complex summarization pipeline happens internally with caching.
+        All complex summarization pipeline happens internally with dual caching strategy.
         """
 ```
 
-### Internal Implementation
+### Internal Implementation ✅ IMPLEMENTED
 - **Message Storage**: Automatic ingestion to `chat_history` table
-- **Daily Summarization**: Gemma client for cost-effective high-volume processing
-- **Weekly Summary**: Gemma client for reasoning over sliding 7-day window (calculated daily)
-- **Context Merging**: Gemma client for intelligent factual + behavioral context combination
-- **Caching Strategy**: `cachetools.LRUCache` instances for aggressive caching
-- **Data Retention**: Automatic cleanup of old chat history outside retention window
+- **Daily Summarization**: Gemma client for current day and historical day processing
+- **Historical Summary**: Gemma client for reasoning over days 2-7 with behavioral focus
+- **3-Way Context Merging**: Gemma client intelligently combines facts + current day + historical
+- **Dual Caching Strategy**: TTLCache (1-hour) for current day, LRUCache for historical data
+- **Content-Based Hashing**: Cache keys use content hashes for final context merge
+- **Code Deduplication**: Shared daily summary generation with separate caching layers
 
 ### AI Client Strategy (Cost-Optimized)
 - **All Memory Operations (Gemma - Free)**: Daily summaries, weekly summary, and context merging for all users
@@ -132,48 +135,49 @@ Memory Merging Strategy:
 - Keep memory concise and relevant
 ```
 
-### Transient Memory Operations 🚧 TODO
+### Transient Memory Operations ✅ IMPLEMENTED
 ```
 Message Formatting:
-- Convert stored messages with user IDs to readable format
+- Convert stored messages with user IDs to readable format using XML structure
 - Replace user mentions with current display names for LLM processing
-- Format as "username: message content" for each message
+- Format with structured XML: <message><timestamp/><author/><content/></message>
+- Target user identification: Include both nickname and user_id in prompts
 
 Daily Summarization (per-user approach):
-- Input: All messages from a specific date, target user ID
-- Process: Analyze full day's conversation focusing on specific user
-- Cache: Use (guild_id, user_id, date) as cache key
-- Benefits: Simpler prompts, better error isolation, independent caching
+- Input: All messages from a specific date, target user ID and nickname
+- Process: Analyze full day's conversation focusing on specific user via structured prompts
+- Cache: Current day uses 1-hour TTL with hour buckets (guild_id, user_id, "date-HH")
+- Cache: Historical days use permanent LRU with date keys (guild_id, user_id, date)
 - Prompt focus areas:
-  * Notable events or experiences mentioned
-  * User's mood and emotional state
-  * Important interactions and topics
-  * Behavioral patterns observed
-  * Information revealed through other users' messages
-- Output: Concise daily summary (~300 chars) for the target user
+  * Notable events or experiences mentioned by target user
+  * Target user's mood and emotional state
+  * Important interactions and topics they discussed
+  * Behavioral patterns they exhibited
+  * Information revealed about them through messages from others
+- Output: Concise daily summary (~300 chars) for the target user in third person
 
 Historical Summary (days 2-7):
 - Input: 6 days of daily summaries (days 2-7 from current date)
-- Process: Create behavioral summary from historical daily summaries
+- Process: Create behavioral summary from historical daily summaries with actual date ranges
 - Cache: Use (guild_id, user_id, historical_end_date) as cache key with permanent LRU
 - Updates: Only when day transitions (current day becomes historical)
 - Prompt focus areas:
   * Recurring patterns and themes from recent history
-  * Overall mood trends over the week
+  * Overall mood trends over the period
   * Significant events or behavioral changes
   * Personality insights from consistent behaviors
-- Output: Coherent historical narrative focusing on behavioral observations
+- Output: Coherent historical narrative (~500 chars) focusing on behavioral observations
 
 Context Merging (3-way merge):
 - Input: Factual memory blob + current day summary + historical summary
-- Process: Intelligently merge permanent facts with current and historical observations
-- Cache: Use hash-based key: (guild_id, user_id, hash(facts), hash(current_day), hash(historical))
+- Process: Intelligently merge three sources using structured XML prompts
+- Cache: Content-based hashing: (guild_id, user_id, hash(facts), hash(current), hash(historical))
 - Merge strategy:
-  * Resolve conflicts between sources intelligently
   * Prioritize factual information for accuracy
   * Balance current observations with historical patterns
-  * Provide relevant context for personalized conversation
-- Output: Unified context for AI conversation processing
+  * Resolve conflicts intelligently, favoring factual data
+  * Provide unified context for personalized conversation
+- Output: Single unified context string for AI conversation processing
 ```
 
 ## On-Demand Processing
@@ -234,12 +238,12 @@ Bot forget that gruzilkin likes pizza
 Bot what do you know about @user
 ```
 
-### Automated Processing
-- **Chat History Ingestion**: All messages automatically stored with user IDs in `chat_history` table 🚧 TODO
-- **User ID Translation**: IDs converted to readable nicks only for LLM processing ✅ IMPLEMENTED
-- **On-Demand Calculation**: Summaries and context generated when requested via MemoryManager 🚧 TODO  
-- **Caching with cachetools**: Extensive caching prevents redundant AI calls using `LRUCache` instances 🚧 TODO
-- **Context Injection**: Memory context automatically included in AI responses ✅ IMPLEMENTED
+### Automated Processing ✅ IMPLEMENTED
+- **Chat History Ingestion**: All messages automatically stored in `chat_history` table
+- **User ID Translation**: IDs converted to readable nicks only for LLM processing
+- **On-Demand Calculation**: Summaries and context generated when requested via MemoryManager
+- **Dual Caching Strategy**: TTL caching for current day, LRU caching for historical data using `cachetools`
+- **Context Injection**: Memory context automatically included in AI responses via GeneralQueryGenerator
 
 ## Implementation Examples
 

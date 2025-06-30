@@ -4,8 +4,18 @@ from dataclasses import dataclass
 import logging
 from cachetools import LRUCache, cachedmethod
 from typing import Dict, Tuple
+from datetime import datetime, date, timedelta
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class ChatMessage:
+    guild_id: int
+    channel_id: int
+    message_id: int
+    user_id: int
+    message_text: str
+    timestamp: datetime
 
 @dataclass
 class GuildConfig:
@@ -99,16 +109,12 @@ class Store:
             await self.conn.rollback()
             raise e
 
-    async def get_random_jokes(self, n: int, language: str, guild_ids: list[int] | None = None) -> list[tuple[str, str]]:
+    async def get_random_jokes(self, n: int, language: str) -> list[tuple[str, str]]:
         """Get multiple random jokes in a single query"""
         try:
             await self._ensure_connection()
             async with self.conn.cursor() as cur:
-                guild_filter = "AND j.guild_id = ANY(%s)" if guild_ids else ""
-                params = [language]  # Language should be first parameter
-                if guild_ids:
-                    params.append(guild_ids)
-                params.extend([self.weight_coef, n])  # Add remaining parameters
+                params = [language, self.weight_coef, n]
                 
                 await cur.execute(
                     f"""
@@ -116,7 +122,7 @@ class Store:
                     FROM jokes j
                     JOIN messages m1 ON j.source_message_id = m1.message_id
                     JOIN messages m2 ON j.joke_message_id = m2.message_id
-                    WHERE m1.language_code = %s {guild_filter}
+                    WHERE m1.language_code = %s
                     ORDER BY random() * power(%s, j.reaction_count) DESC
                     LIMIT %s
                     """,
@@ -227,6 +233,51 @@ class Store:
                     
         except Exception as e:
             logger.error(f"Error saving user facts: {e}")
+            if self.conn:
+                await self.conn.rollback()
+            raise e
+
+
+    async def get_chat_messages_for_date(self, guild_id: int, for_date: date) -> list[ChatMessage]:
+        """Retrieves all chat messages for a guild on a specific date."""
+        try:
+            await self._ensure_connection()
+            async with self.conn.cursor() as cur:
+                # Calculate start and end timestamps for the date
+                start_time = datetime.combine(for_date, datetime.min.time())
+                end_time = start_time + timedelta(days=1)
+                
+                await cur.execute(
+                    """
+                    SELECT guild_id, channel_id, message_id, user_id, message_text, timestamp
+                    FROM chat_history
+                    WHERE guild_id = %s AND timestamp >= %s AND timestamp < %s
+                    ORDER BY timestamp ASC
+                    """,
+                    (guild_id, start_time, end_time)
+                )
+                results = await cur.fetchall()
+                return [ChatMessage(*row) for row in results]
+        except Exception as e:
+            logger.error(f"Error retrieving chat messages for date: {e}")
+            return []
+
+    async def add_chat_message(self, guild_id: int, channel_id: int, message_id: int, user_id: int, message_text: str, timestamp: datetime) -> None:
+        """Adds a chat message to the chat_history table."""
+        try:
+            await self._ensure_connection()
+            async with self.conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO chat_history (guild_id, channel_id, message_id, user_id, message_text, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (message_id) DO NOTHING
+                    """,
+                    (guild_id, channel_id, message_id, user_id, message_text, timestamp)
+                )
+                await self.conn.commit()
+        except Exception as e:
+            logger.error(f"Error adding chat message: {e}")
             if self.conn:
                 await self.conn.rollback()
             raise e

@@ -131,6 +131,7 @@ NONE: For everything else
                 elif route_selection.route == "FACT":
                     span.set_attribute("fact_operation", params.operation)
                     span.set_attribute("fact_user_mention", params.user_mention)
+                    span.set_attribute("fact_content", params.fact_content)
             
             return (route_selection.route, params)
     

@@ -82,6 +82,10 @@ async def on_message(message: nextcord.Message):
         if message.author.bot:
             return
         
+        # Ingest message into transient memory using materialized content
+        materialized_message = discord_to_message_node(message)
+        await container.memory_manager.ingest_message(message.guild.id, materialized_message)
+        
         if f"<@{bot.user.id}>" not in message.content:
             return
 
@@ -235,6 +239,7 @@ def discord_to_message_node(message: nextcord.Message) -> MessageNode:
         id=message.id,
         content=content,
         author_id=message.author.id,
+        channel_id=message.channel.id,
         mentioned_user_ids=mentioned_user_ids,
         created_at=message.created_at,
         reference_id=reference_id
