@@ -14,7 +14,6 @@
 - Chat history ingestion and storage (TODO)
 - Daily/weekly summarization pipeline with sliding window (TODO)  
 - Context assembly and merging with MemoryManager (TODO)
-- Cost-optimized AI client strategy (Gemma for volume, Gemini for quality) (TODO)
 
 ## Overview
 
