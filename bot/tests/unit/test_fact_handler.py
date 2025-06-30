@@ -38,10 +38,10 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_remember_fact_for_new_user(self):
         """Test remembering a fact for a user with no prior memory."""
         # Arrange
-        params = FactParams(operation="remember", user_mention="testuser", fact_content="likes chocolate")
+        params = FactParams(operation="remember", user_mention="testuser", fact_content="they like chocolate")
         self.mock_user_resolver.resolve_user_id.return_value = 12345
         self.mock_ai_client.generate_content = AsyncMock(
-            return_value=MemoryUpdate(updated_memory="User likes chocolate")
+            return_value=MemoryUpdate(updated_memory="they like chocolate")
         )
         
         # Act
@@ -50,17 +50,18 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertEqual(response, "I'll remember that about the user.")
         self.mock_store.get_user_facts.assert_awaited_once_with(67890, 12345)
-        self.mock_store.save_user_facts.assert_awaited_once_with(67890, 12345, "User likes chocolate")
-        self.mock_ai_client.generate_content.assert_called_once() # AI call needed to normalize new memory
+        self.mock_store.save_user_facts.assert_awaited_once_with(67890, 12345, "they like chocolate")
+        self.mock_ai_client.generate_content.assert_not_called() # No AI call needed for new user with no existing memory
 
     async def test_remember_fact_with_existing_memory(self):
         """Test remembering a fact for a user who already has a memory blob."""
         # Arrange
-        params = FactParams(operation="remember", user_mention="testuser", fact_content="is a developer")
+        params = FactParams(operation="remember", user_mention="testuser", fact_content="they are a developer")
         self.mock_user_resolver.resolve_user_id.return_value = 12345
-        self.mock_store.get_user_facts.return_value = "likes chocolate"
+        self.mock_store.get_user_facts.return_value = "they like chocolate"
+        # Set up mock to return merging response
         self.mock_ai_client.generate_content = AsyncMock(
-            return_value=MemoryUpdate(updated_memory="likes chocolate and is a developer")
+            return_value=MemoryUpdate(updated_memory="they like chocolate and they are a developer")
         )
         
         # Act
@@ -68,17 +69,19 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Assert
         self.assertEqual(response, "I'll remember that about the user.")
-        self.mock_store.save_user_facts.assert_awaited_once_with(67890, 12345, "likes chocolate and is a developer")
+        self.mock_store.save_user_facts.assert_awaited_once_with(67890, 12345, "they like chocolate and they are a developer")
+        # Expect one AI call for merging
         self.mock_ai_client.generate_content.assert_called_once()
 
     async def test_forget_fact_not_found(self):
         """Test forgetting a fact that does not exist in the user's memory."""
         # Arrange
-        params = FactParams(operation="forget", user_mention="testuser", fact_content="dislikes broccoli")
+        params = FactParams(operation="forget", user_mention="testuser", fact_content="they dislike broccoli")
         self.mock_user_resolver.resolve_user_id.return_value = 12345
-        self.mock_store.get_user_facts.return_value = "likes chocolate"
+        self.mock_store.get_user_facts.return_value = "they like chocolate"
+        # Set up mock to return forget operation response  
         self.mock_ai_client.generate_content = AsyncMock(
-            return_value=MemoryForget(updated_memory="likes chocolate", fact_found=False)
+            return_value=MemoryForget(updated_memory="they like chocolate", fact_found=False)
         )
         
         # Act
@@ -87,15 +90,18 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertEqual(response, "I couldn't find that specific information in my memory about the user.")
         self.mock_store.save_user_facts.assert_not_awaited()
+        # Expect one AI call for forget operation
+        self.mock_ai_client.generate_content.assert_called_once()
 
     async def test_forget_fact_found(self):
         """Test forgetting a fact that exists in the user's memory."""
         # Arrange
-        params = FactParams(operation="forget", user_mention="testuser", fact_content="likes chocolate")
+        params = FactParams(operation="forget", user_mention="testuser", fact_content="they like chocolate")
         self.mock_user_resolver.resolve_user_id.return_value = 12345
-        self.mock_store.get_user_facts.return_value = "likes chocolate and is a developer"
+        self.mock_store.get_user_facts.return_value = "they like chocolate and they are a developer"
+        # Set up mock to return forget operation response
         self.mock_ai_client.generate_content = AsyncMock(
-            return_value=MemoryForget(updated_memory="is a developer", fact_found=True)
+            return_value=MemoryForget(updated_memory="they are a developer", fact_found=True)
         )
         
         # Act
@@ -103,12 +109,14 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Assert
         self.assertEqual(response, "I've forgotten that about the user.")
-        self.mock_store.save_user_facts.assert_awaited_once_with(67890, 12345, "is a developer")
+        self.mock_store.save_user_facts.assert_awaited_once_with(67890, 12345, "they are a developer")
+        # Expect one AI call for forget operation
+        self.mock_ai_client.generate_content.assert_called_once()
 
     async def test_handle_request_with_unresolvable_user(self):
         """Test that the handler returns a helpful message for unresolvable users."""
         # Arrange
-        params = FactParams(operation="remember", user_mention="nonexistentuser", fact_content="likes testing")
+        params = FactParams(operation="remember", user_mention="nonexistentuser", fact_content="they like testing")
         self.mock_user_resolver.resolve_user_id.return_value = None
         
         # Act

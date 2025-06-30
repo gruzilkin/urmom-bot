@@ -50,59 +50,48 @@ class FactHandler:
         
         operation: "remember" or "forget" based on an EXPLICIT and IMPERATIVE command.
         user_mention: Extract user reference (Discord ID for <@1333878858138652682> or nickname)
-        fact_content: The specific fact to remember or forget. This can be extracted both from the user message and infered from the conversation history.
+        fact_content: The specific fact to remember or forget, converted to third-person perspective using appropriate pronouns. This can be extracted both from the user message and inferred from the conversation history.
+        
+        For fact_content conversion to third-person perspective:
+        - Use "they/them" as default pronouns when gender is unknown
         
         Examples:
-        - "Bot remember that gruzilkin is Sergey" → operation: "remember", user_mention: "gruzilkin", fact_content: "gruzilkin is Sergey"
+        - "Bot remember that gruzilkin is Sergey" → operation: "remember", user_mention: "gruzilkin", fact_content: "He is Sergey"
         - "Bot, remember this about Florent: he likes pizza" → operation: "remember", user_mention: "Florent", fact_content: "he likes pizza"
-        - "Bot forget that <@1333878858138652682> likes pizza" → operation: "forget", user_mention: "1333878858138652682", fact_content: "likes pizza"
-        - "remember Florent works at Google" → operation: "remember", user_mention: "Florent", fact_content: "works at Google"
+        - "Bot forget that <@1333878858138652682> likes pizza" → operation: "forget", user_mention: "1333878858138652682", fact_content: "they like pizza"
+        - "remember Florent works at Google" → operation: "remember", user_mention: "Florent", fact_content: "they work at Google"
+        - "Bot remember I live in Tokyo" (about speaker) → operation: "remember", user_mention: "[infer from context]", fact_content: "they live in Tokyo"
         """
     
     
     
-    async def _remember_fact(self, guild_id: int, user_id: int, new_fact: str) -> str:
-        """Add or update a fact about a user."""
+    async def _remember_fact(self, guild_id: int, user_id: int, fact_content: str) -> str:
+        """Add or update a fact about a user. Fact content is already in third-person perspective from parameter extraction."""
         async with self.telemetry.async_create_span("remember_fact") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("user_id", user_id)
-            span.set_attribute("new_fact", new_fact)
+            span.set_attribute("fact_content", fact_content)
             
             # Get existing memory blob
             current_memory = await self.store.get_user_facts(guild_id, user_id)
             
             if not current_memory:
-                # No existing memory, normalize to third-person perspective
-                normalize_prompt = f"""
-                Convert this fact to third-person declarative statement from an external observer perspective.
-                
-                Fact: {new_fact}
-                
-                Example: "I live in Tokyo" becomes "User lives in Tokyo"
-                """
-                
-                memory_response = await self.ai_client.generate_content(
-                    message=new_fact,
-                    prompt=normalize_prompt,
-                    temperature=0.0,
-                    response_schema=MemoryUpdate
-                )
-                updated_memory = memory_response.updated_memory
+                # No existing memory, use the fact content directly
+                updated_memory = fact_content
             else:
                 # Merge with existing memory using AI
                 prompt = f"""
                 You need to update a user's memory by incorporating new information.
                 
                 Current memory: {current_memory}
-                New information: {new_fact}
+                New information: {fact_content}
                 
                 Merge the new information with the existing memory, resolving any conflicts intelligently 
-                and maintaining a natural narrative flow. Use consistent third-person declarative statements 
-                from an external observer perspective (e.g., "John lives in Tokyo" not "I live in Tokyo").
+                and maintaining a natural narrative flow. Maintain third-person perspective.
                 """
                 
                 memory_response = await self.ai_client.generate_content(
-                    message=new_fact,
+                    message=fact_content,
                     prompt=prompt,
                     temperature=0.0,  # Deterministic for memory operations
                     response_schema=MemoryUpdate
@@ -115,12 +104,12 @@ class FactHandler:
             logger.info(f"Updated memory for user {user_id} in guild {guild_id}")
             return f"I'll remember that about the user."
     
-    async def _forget_fact(self, guild_id: int, user_id: int, fact_to_forget: str) -> str:
-        """Remove a specific fact about a user."""
+    async def _forget_fact(self, guild_id: int, user_id: int, fact_content: str) -> str:
+        """Remove a specific fact about a user. Fact content is already in third-person perspective from parameter extraction."""
         async with self.telemetry.async_create_span("forget_fact") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("user_id", user_id)
-            span.set_attribute("fact_to_forget", fact_to_forget)
+            span.set_attribute("fact_content", fact_content)
             
             current_memory = await self.store.get_user_facts(guild_id, user_id)
             
@@ -129,18 +118,18 @@ class FactHandler:
             
             # Use AI to remove specific information while maintaining coherence
             prompt = f"""
-            You need to remove specific information from a user's memory while keeping the rest intact.
+            You need to determine if specific information exists in a user's memory and remove it if found.
             
             Current memory: {current_memory}
-            Information to remove: {fact_to_forget}
+            Information to remove: {fact_content}
             
-            Remove the specified information if it exists in the memory. If the information is not found,
-            return the original memory unchanged and set fact_found to false. Maintain consistent 
-            third-person declarative statements from an external observer perspective.
+            If the information exists in the memory, remove it and return the updated memory with fact_found=true.
+            If the information is not found, set fact_found=false (the updated_memory field will be ignored).
+            Maintain third-person perspective.
             """
             
             forget_response = await self.ai_client.generate_content(
-                message=fact_to_forget,
+                message=fact_content,
                 prompt=prompt,
                 temperature=0.0,  # Deterministic for memory operations
                 response_schema=MemoryForget
@@ -158,7 +147,7 @@ class FactHandler:
             logger.info(f"Removed fact from memory for user {user_id} in guild {guild_id}")
             return f"I've forgotten that about the user."
     
-    
+
     async def handle_request(self, params: FactParams, guild_id: int) -> str:
         """
         Handle a fact operation request using the provided parameters.
