@@ -99,20 +99,25 @@ class GeneralQueryGenerator:
         if not user_ids:
             return ""
         
-        memory_blocks = []
-        for user_id in user_ids:
-            display_name = await self.user_resolver.get_display_name(guild_id, user_id)
-            memories = await self.memory_manager.get_memories(guild_id, user_id)
-            if memories:
-                memory_block = f"""<memory>
+        async with self.telemetry.async_create_span("build_memories") as span:
+            span.set_attribute("guild_id", guild_id)
+            span.set_attribute("user_count", len(user_ids))
+            span.set_attribute("user_ids", str(sorted(user_ids)))
+            
+            memory_blocks = []
+            for user_id in user_ids:
+                display_name = await self.user_resolver.get_display_name(guild_id, user_id)
+                memories = await self.memory_manager.get_memories(guild_id, user_id)
+                if memories:
+                    memory_block = f"""<memory>
 <name>{display_name}</name>
 <facts>{memories}</facts>
 </memory>"""
-                memory_blocks.append(memory_block)
-        
-        if memory_blocks:
-            return "\n".join(memory_blocks)
-        return ""
+                    memory_blocks.append(memory_block)
+            
+            if memory_blocks:
+                return "\n".join(memory_blocks)
+            return ""
 
     
     async def handle_request(self, params: GeneralParams, conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]], guild_id: int) -> str | None:
