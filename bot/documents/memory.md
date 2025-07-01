@@ -26,6 +26,7 @@ The urmom-bot memory system is a sophisticated hierarchical AI-powered memory ar
 - `cachetools.LRUCache` instances for efficient async caching (not built-in `@lru_cache`)
 - Discord user ID storage with nickname translation only for LLM calls
 - Clean MemoryManager interface hiding internal complexity
+- **Resilience-first approach**: System prioritizes reliability over completeness with graceful degradation
 
 ## Architecture Principles
 
@@ -47,6 +48,13 @@ The urmom-bot memory system is a sophisticated hierarchical AI-powered memory ar
 - Content-based hashing for final context merge to ensure cache correctness
 - Manual async cache management for async methods
 - On-demand calculation with extensive caching to avoid redundant work
+
+### Resilience & Best-Effort Design
+- **Graceful Degradation**: System continues functioning even when AI services are unavailable
+- **Database-First Reliability**: Factual memories from database always accessible regardless of AI quota
+- **Fallback Hierarchy**: If AI operations fail, system returns available data in priority order (facts → current day → historical)
+- **Best-Effort Philosophy**: Users always receive some memory context rather than complete failure
+- **Comprehensive Observability**: Telemetry tracking provides visibility into system health and performance
 
 ## Database Schema
 
@@ -85,10 +93,15 @@ class MemoryManager:
         """Store message in chat_history table"""
     
     async def get_memories(self, guild_id: int, user_id: int) -> str | None:
-        """Returns unified context for a user via 3-way merge
+        """Returns unified context for a user via 3-way merge with resilient fallback
         
         Combines: factual memory + current day summary + historical summary (days 2-7)
         Returns: Single unified context string or None if no memories exist
+        
+        Resilience guarantees:
+        - Database facts always returned even if AI operations fail
+        - Graceful fallback to partial context when AI quota exhausted
+        - Best-effort approach ensures users get available memory data
         
         All complex summarization pipeline happens internally with dual caching strategy.
         """
