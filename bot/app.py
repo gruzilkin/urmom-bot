@@ -79,12 +79,12 @@ async def on_message(message: nextcord.Message):
     async with container.telemetry.async_create_span("on_message", kind=SpanKind.CONSUMER) as span:
         container.telemetry.increment_message_counter(message)
         
-        if message.author.bot:
-            return
-        
         # Ingest message into transient memory using materialized content
         materialized_message = discord_to_message_node(message)
         await container.memory_manager.ingest_message(message.guild.id, materialized_message)
+
+        if message.author.bot:
+            return
         
         if f"<@{bot.user.id}>" not in message.content:
             return
