@@ -16,12 +16,20 @@ class NullTelemetry:
     @contextmanager
     def create_span(self, name, kind=None, attributes=None):
         """No-op span for synchronous code"""
-        yield SimpleNamespace(set_attribute=lambda *args: None, set_status=lambda *args: None)
+        yield SimpleNamespace(
+            set_attribute=lambda *args: None, 
+            set_status=lambda *args: None,
+            record_exception=lambda *args: None
+        )
     
     @asynccontextmanager
     async def async_create_span(self, name, kind=None, attributes=None):
         """No-op span for async code"""
-        yield SimpleNamespace(set_attribute=lambda *args: None, set_status=lambda *args: None)
+        yield SimpleNamespace(
+            set_attribute=lambda *args: None, 
+            set_status=lambda *args: None,
+            record_exception=lambda *args: None
+        )
     
     def increment_message_counter(self, *args, **kwargs):
         pass
