@@ -117,7 +117,9 @@ class MemoryManager:
 - **Code Deduplication**: Shared daily summary generation with separate caching layers
 
 ### AI Client Strategy (Cost-Optimized)
-- **All Memory Operations (Gemma - Free)**: Daily summaries, weekly summary, and context merging for all users
+- **Batch Daily Summaries (Gemini Flash)**: Multi-user daily summary generation using superior analysis capabilities
+- **Historical Summaries & Context Merging (Gemma - Free)**: Individual operations using cost-efficient free tier
+- **Optimization**: Reduces API calls from N per day to 1 per day per guild for daily summaries
 
 ## AI Operations
 
@@ -156,18 +158,19 @@ Message Formatting:
 - Format with structured XML: <message><timestamp/><author/><content/></message>
 - Target user identification: Include both nickname and user_id in prompts
 
-Daily Summarization (per-user approach):
-- Input: All messages from a specific date, target user ID and nickname
-- Process: Analyze full day's conversation focusing on specific user via structured prompts
-- Cache: Current day uses 1-hour TTL with hour buckets (guild_id, user_id, "date-HH")
-- Cache: Historical days use permanent LRU with date keys (guild_id, user_id, date)
+Daily Summarization (batch approach):
+- Input: All messages from a specific date and list of all active users
+- Process: Single Gemini API call analyzes entire day and generates summaries for all users
+- Batch Cache: One cache entry per (guild_id, date) contains map of all user summaries
+- Current day cache: Current day uses 1-hour TTL with hour buckets (guild_id, "date-HH")
+- Historical day cache: Historical days use permanent LRU with date keys (guild_id, date)
 - Prompt focus areas:
-  * Notable events or experiences mentioned by target user
-  * Target user's mood and emotional state
+  * Notable events or experiences mentioned by each user
+  * Each user's mood and emotional state
   * Important interactions and topics they discussed
   * Behavioral patterns they exhibited
   * Information revealed about them through messages from others
-- Output: Concise daily summary (~300 chars) for the target user in third person
+- Output: Map of user_id to concise daily summary (~300 chars) in third person
 
 Historical Summary (days 2-7):
 - Input: 6 days of daily summaries (days 2-7 from current date)

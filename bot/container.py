@@ -92,6 +92,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
+            gemini_client=self.gemini_flash,
             gemma_client=self.gemma,
             user_resolver=self.user_resolver
         )

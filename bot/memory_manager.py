@@ -1,12 +1,13 @@
-from datetime import datetime, timedelta, date, timezone
-from typing import Awaitable, Callable
-import logging
 import hashlib
+import logging
+from datetime import datetime, timedelta, date, timezone
+
 from cachetools import LRUCache, TTLCache
+
 from ai_client import AIClient
 from message_node import MessageNode
 from open_telemetry import Telemetry
-from schemas import MemoryContext
+from schemas import MemoryContext, DailySummaries
 from store import Store
 from user_resolver import UserResolver
 
@@ -47,24 +48,40 @@ Guidelines:
 - Provide a unified context for personalized conversation
 """
 
+BATCH_SUMMARIZE_DAILY_PROMPT = """
+Analyze the provided chat messages and create concise daily summaries for each active user.
+
+For each user, focus on:
+- Notable events or experiences they mentioned
+- Their mood and emotional state
+- Important interactions and topics they discussed
+- Behavioral patterns they exhibited
+- Information revealed about them through their messages or messages from others
+
+Keep each summary in the third person and under 300 characters.
+Return a list of summaries, one for each active user.
+"""
+
 class MemoryManager:
     def __init__(
         self,
         telemetry: Telemetry,
         store: Store,
+        gemini_client: AIClient,
         gemma_client: AIClient,
         user_resolver: UserResolver,
     ):
         self._telemetry = telemetry
         self._store = store
-        self._gemma_client = gemma_client
+        self._gemini_client = gemini_client  # For batch daily summaries
+        self._gemma_client = gemma_client   # For historical summaries and context merging
         self._user_resolver = user_resolver
 
         # Caches
-        self._current_day_cache = TTLCache(maxsize=100, ttl=3600)  # 1-hour TTL for current day
-        self._historical_daily_cache = LRUCache(maxsize=1000)  # Permanent cache for historical days
+        self._current_day_batch_cache = TTLCache(maxsize=100, ttl=3600)  # 1-hour TTL for current day batch summaries
         self._historical_summary_cache = LRUCache(maxsize=500)  # Permanent cache for historical summaries
         self._context_cache = LRUCache(maxsize=500)  # Final context cache
+        self._daily_summaries_batch_cache = LRUCache(maxsize=200)  # Batch summaries cache (guild_id, date) -> dict[user_id, summary]
 
     async def get_memories(self, guild_id: int, user_id: int) -> str | None:
         async with self._telemetry.async_create_span("get_memories") as span:
@@ -120,19 +137,23 @@ class MemoryManager:
                     return historical_summary
                 return None
 
-    async def _generate_daily_summary(self, guild_id: int, user_id: int, for_date: date) -> str | None:
-        """Generate daily summary for given date without caching."""
-        async with self._telemetry.async_create_span("generate_daily_summary") as span:
+    async def _generate_daily_summaries_batch(self, guild_id: int, for_date: date) -> dict[int, str]:
+        """Generate daily summaries for all active users in a single API call. Pure generation method - no caching."""
+        async with self._telemetry.async_create_span("generate_daily_summaries_batch") as span:
             span.set_attribute("guild_id", guild_id)
-            span.set_attribute("user_id", user_id)
             span.set_attribute("for_date", str(for_date))
             
             messages = await self._store.get_chat_messages_for_date(guild_id, for_date)
             if not messages:
-                return None
+                empty_dict: dict[int, str] = {}
+                return empty_dict
             
             span.set_attribute("message_count", len(messages))
-
+            
+            # Get all unique user IDs from messages
+            active_user_ids = list(set(msg.user_id for msg in messages))
+            span.set_attribute("active_user_count", len(active_user_ids))
+            
             # Format messages like general_query_generator does
             message_blocks = []
             for msg in messages:
@@ -140,26 +161,37 @@ class MemoryManager:
                 content_with_names = await self._user_resolver.replace_user_mentions_with_names(msg.message_text, guild_id)
                 message_block = f"""<message>
 <timestamp>{msg.timestamp}</timestamp>
+<author_id>{msg.user_id}</author_id>
 <author>{author_name}</author>
 <content>{content_with_names}</content>
 </message>"""
                 message_blocks.append(message_block)
             
-            user_nick = await self._user_resolver.get_display_name(guild_id, user_id)
-            structured_prompt = f"""{SUMMARIZE_DAILY_PROMPT}
+            # Create user list with names for context
+            user_list = []
+            for user_id in active_user_ids:
+                user_name = await self._user_resolver.get_display_name(guild_id, user_id)
+                user_list.append(f"<user><user_id>{user_id}</user_id><name>{user_name}</name></user>")
+            
+            structured_prompt = f"""{BATCH_SUMMARIZE_DAILY_PROMPT}
 
-<target_user_name>{user_nick}</target_user_name>
-<target_user_id>{user_id}</target_user_id>
+<target_users>
+{chr(10).join(user_list)}
+</target_users>
 <messages>
-{"\n".join(message_blocks)}
+{chr(10).join(message_blocks)}
 </messages>"""
             
-            response = await self._gemma_client.generate_content(
+            response = await self._gemini_client.generate_content(
                 message=structured_prompt,
-                response_schema=MemoryContext,
+                response_schema=DailySummaries,
                 temperature=0
             )
-            return response.context
+            
+            # Convert list of UserSummary objects to dict[int, str]
+            summaries_dict = {user_summary.user_id: user_summary.summary for user_summary in response.summaries}
+            return summaries_dict
+
 
     async def _get_current_day_summary(self, guild_id: int, user_id: int, for_date: date) -> str | None:
         """Get current day summary with 1-hour TTL caching using hour buckets."""
@@ -170,16 +202,20 @@ class MemoryManager:
             
             current_hour = datetime.now(timezone.utc).hour
             hour_bucket = f"{for_date}-{current_hour:02d}"
-            cache_key = (guild_id, user_id, hour_bucket)
+            batch_cache_key = (guild_id, hour_bucket)
             
-            if cache_key in self._current_day_cache:
+            # Check batch cache
+            if batch_cache_key in self._current_day_batch_cache:
                 span.set_attribute("cache_hit", True)
-                return self._current_day_cache[cache_key]
+                batch_summaries = self._current_day_batch_cache[batch_cache_key]
+            else:
+                span.set_attribute("cache_hit", False)
+                # Generate batch summaries and cache the entire result
+                batch_summaries = await self._generate_daily_summaries_batch(guild_id, for_date)
+                self._current_day_batch_cache[batch_cache_key] = batch_summaries
             
-            span.set_attribute("cache_hit", False)
-            summary = await self._generate_daily_summary(guild_id, user_id, for_date)
-            if summary:
-                self._current_day_cache[cache_key] = summary
+            # Extract this user's summary from batch
+            summary = batch_summaries.get(user_id)
             return summary
 
     async def _get_historical_daily_summary(self, guild_id: int, user_id: int, for_date: date) -> str | None:
@@ -189,15 +225,20 @@ class MemoryManager:
             span.set_attribute("user_id", user_id)
             span.set_attribute("for_date", str(for_date))
             
-            cache_key = (guild_id, user_id, for_date)
-            if cache_key in self._historical_daily_cache:
-                span.set_attribute("cache_hit", True)
-                return self._historical_daily_cache[cache_key]
+            batch_cache_key = (guild_id, for_date)
             
-            span.set_attribute("cache_hit", False)
-            summary = await self._generate_daily_summary(guild_id, user_id, for_date)
-            if summary:
-                self._historical_daily_cache[cache_key] = summary
+            # Check batch cache
+            if batch_cache_key in self._daily_summaries_batch_cache:
+                span.set_attribute("cache_hit", True)
+                batch_summaries = self._daily_summaries_batch_cache[batch_cache_key]
+            else:
+                span.set_attribute("cache_hit", False)
+                # Generate batch summaries and cache the entire result
+                batch_summaries = await self._generate_daily_summaries_batch(guild_id, for_date)
+                self._daily_summaries_batch_cache[batch_cache_key] = batch_summaries
+            
+            # Extract this user's summary from batch
+            summary = batch_summaries.get(user_id)
             return summary
 
     async def _get_historical_summary(self, guild_id: int, user_id: int, current_date: date) -> str | None:
