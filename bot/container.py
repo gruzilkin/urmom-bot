@@ -20,20 +20,21 @@ class Container:
         # Load configuration from environment or use provided config
         self.config = config or AppConfig()
         
+        # Initialize Telemetry with configuration
+        self.telemetry = Telemetry(
+            service_name=self.config.otel_service_name, 
+            endpoint=self.config.otel_exporter_otlp_endpoint
+        )
+
         # Initialize Store
         self.store = Store(
+            telemetry=self.telemetry,
             host=self.config.postgres_host,
             port=self.config.postgres_port,
             user=self.config.postgres_user,
             password=self.config.postgres_password,
             database=self.config.postgres_db,
             weight_coef=self.config.sample_jokes_coef
-        )
-
-        # Initialize Telemetry with configuration
-        self.telemetry = Telemetry(
-            service_name=self.config.otel_service_name, 
-            endpoint=self.config.otel_exporter_otlp_endpoint
         )
 
         # Create specific AI clients for GeneralQueryGenerator (both required)

@@ -7,7 +7,7 @@ especially those requiring perspective-shifting and query cleaning.
 
 import os
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 from dotenv import load_dotenv
 
 from ai_router import AiRouter
@@ -52,7 +52,8 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             response_summarizer=None,
             telemetry=self.telemetry,
             store=mock_store,
-            user_resolver=mock_user_resolver
+            user_resolver=mock_user_resolver,
+            memory_manager=AsyncMock()
         )
         self.fact_handler = FactHandler(ai_client=None, store=None, telemetry=self.telemetry, user_resolver=mock_user_resolver)
 
