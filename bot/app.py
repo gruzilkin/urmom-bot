@@ -121,6 +121,20 @@ async def on_message(message: nextcord.Message):
             )
             await message.reply(response)
 
+
+@bot.event
+async def on_message_edit(before: nextcord.Message, after: nextcord.Message):
+    async with container.telemetry.async_create_span("on_message_edit", kind=SpanKind.CONSUMER) as span:
+        # Ignore edits from bots
+        if after.author.bot:
+            return
+
+        # Ingest the updated message content, including embeds.
+        # Caching in the materialization process handles efficiency.
+        materialized_message = discord_to_message_node(after)
+        await container.memory_manager.ingest_message(after.guild.id, materialized_message)
+
+
 async def process_bot_commands(message: nextcord.Message) -> bool:
     """
     Process bot commands from the message if any.

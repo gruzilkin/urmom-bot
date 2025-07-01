@@ -340,7 +340,9 @@ class Store:
                         """
                         INSERT INTO chat_history (guild_id, channel_id, message_id, user_id, message_text, timestamp)
                         VALUES (%s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (message_id) DO NOTHING
+                        ON CONFLICT (message_id) DO UPDATE SET
+                            message_text = EXCLUDED.message_text,
+                            timestamp = EXCLUDED.timestamp
                         """,
                         (guild_id, channel_id, message_id, user_id, message_text, timestamp)
                     )
