@@ -36,7 +36,7 @@ CREATE TABLE chat_history (
     timestamp TIMESTAMP NOT NULL
 );
 
-CREATE INDEX idx_guild_timestamp ON chat_history (guild_id, timestamp);
+CREATE INDEX idx_chat_history_guild_timestamp ON chat_history (guild_id, timestamp);
 
 -- Insert messages
 INSERT INTO messages VALUES
