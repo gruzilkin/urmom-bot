@@ -202,6 +202,10 @@ class TestStore(Store):
         if guild_id == self.physics_guild_id:
             self._user_facts[user_id] = facts
     
+    async def save_user_facts(self, guild_id: int, user_id: int, facts: str) -> None:
+        """Save facts for a user (overrides parent to avoid telemetry dependency)."""
+        self.set_user_facts(guild_id, user_id, facts)
+    
     def get_message_count_for_date(self, for_date: date) -> int:
         """Get count of messages for a specific date (test helper)."""
         count = 0

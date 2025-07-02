@@ -139,6 +139,8 @@ class FamousPersonGenerator:
             The user specifically asked: '{extracted_message}'
             Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions.
             
+            **Always respond in the same language as the user message and conversation. If the user writes in Russian, German, Japanese, etc., or if the conversation is in that language, respond entirely in that language.**
+            
             Keep responses under 2000 characters due to Discord's message limit but no need to report on the length of the response.
             
             Here is the conversation context:

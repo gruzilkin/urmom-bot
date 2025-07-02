@@ -31,11 +31,18 @@ class AiRouter:
 <system_instructions>
 Analyze the user message and decide how to route it. Choose exactly one route.
 
+**IMPORTANT: The user message can be in ANY language (English, Russian, French, Japanese, etc.). 
+Route based on the SEMANTIC MEANING and INTENT of the message, not specific keywords or language.**
+
 Instructions:
-1. Read the user message carefully.
-2. Determine which route best matches the intent.
-3. ALWAYS provide a brief (1-2 sentence) reason for your decision.
-4. Focus ONLY on route selection - parameter extraction happens later.
+1. Read the user message carefully, understanding its meaning regardless of language.
+2. Determine which route best matches the intent semantically.
+3. Consider that all route types can be expressed in any language:
+   - Famous person requests: "What would X say?" / "Что бы сказал X?" / "¿Qué diría X?"
+   - Memory operations: "Remember that..." / "Запомни что..." / "Recuerda que..."
+   - General queries: "Explain..." / "Объясни..." / "Explica..."
+4. ALWAYS provide a brief (1-2 sentence) reason for your decision.
+5. Focus ONLY on route selection - parameter extraction happens later.
 </system_instructions>
 
 <route_definitions>

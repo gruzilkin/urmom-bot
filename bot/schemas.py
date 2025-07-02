@@ -41,12 +41,14 @@ class FactParams(BaseModel):
 class MemoryUpdate(BaseModel):
     """Schema for memory update operations."""
     updated_memory: str = Field(description="The updated memory blob after incorporating new information")
+    confirmation_message: str = Field(description="Brief confirmation message for the user in their language")
 
 
 class MemoryForget(BaseModel):
     """Schema for memory forget operations."""
     updated_memory: str = Field(description="The updated memory blob after removing information")
     fact_found: bool = Field(description="Whether the specified fact was found and removed")
+    confirmation_message: str = Field(description="Brief confirmation message for the user in their language")
 
 
 class RouteSelection(BaseModel):

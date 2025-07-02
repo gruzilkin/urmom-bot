@@ -75,11 +75,24 @@ class FactHandler:
             # Get existing memory blob
             current_memory = await self.store.get_user_facts(guild_id, user_id)
             
+            # Always use AI to process memory and generate confirmation message
             if not current_memory:
-                # No existing memory, use the fact content directly
-                updated_memory = fact_content
+                prompt = f"""
+                You need to create initial memory for a user with new information.
+                
+                New information: {fact_content}
+                
+                Create the memory entry maintaining third-person perspective and the same language as the fact_content.
+                
+                For the confirmation_message field, provide a brief, friendly confirmation that includes the specific fact you're remembering, using the same language as the fact_content. For example:
+                - "I'll remember that their birthday is March 15th"
+                - "I'll remember that Sarah worked at Google"  
+                - "I'll remember that they visited Japan last year"
+                - "Я запомню, что они любят пиццу" (if fact_content is in Russian)
+                
+                Include the actual fact content in your confirmation message and match its language.
+                """
             else:
-                # Merge with existing memory using AI
                 prompt = f"""
                 You need to update a user's memory by incorporating new information.
                 
@@ -88,21 +101,33 @@ class FactHandler:
                 
                 Merge the new information with the existing memory, resolving any conflicts intelligently 
                 and maintaining a natural narrative flow. Maintain third-person perspective.
-                """
                 
-                memory_response = await self.ai_client.generate_content(
-                    message=fact_content,
-                    prompt=prompt,
-                    temperature=0.0,  # Deterministic for memory operations
-                    response_schema=MemoryUpdate
-                )
-                updated_memory = memory_response.updated_memory
+                **IMPORTANT: Generate the updated memory in the same language as the current memory to maintain consistency.**
+                
+                For the confirmation_message field, provide a brief, friendly confirmation that includes the specific fact you're adding, using the same language as the existing memory. For example:
+                - "I'll remember that their birthday is March 15th" 
+                - "I'll remember that John worked at Google"
+                - "I'll remember that they graduated from MIT"
+                - "Я запомню, что они любят пиццу" (if existing memory is in Russian)
+                
+                Include the actual new fact content in your confirmation message and match the memory language.
+                """
+            
+            memory_response = await self.ai_client.generate_content(
+                message=fact_content,
+                prompt=prompt,
+                temperature=0.0,  # Deterministic for memory operations
+                response_schema=MemoryUpdate
+            )
+            updated_memory = memory_response.updated_memory
             
             # Save updated memory to database
             await self.store.save_user_facts(guild_id, user_id, updated_memory)
             
             logger.info(f"Updated memory for user {user_id} in guild {guild_id}")
-            return f"I'll remember that about the user."
+            
+            # Return the language-appropriate confirmation message from the schema
+            return memory_response.confirmation_message
     
     async def _forget_fact(self, guild_id: int, user_id: int, fact_content: str) -> str:
         """Remove a specific fact about a user. Fact content is already in third-person perspective from parameter extraction."""
@@ -114,7 +139,26 @@ class FactHandler:
             current_memory = await self.store.get_user_facts(guild_id, user_id)
             
             if not current_memory:
-                return "I don't have any memory about that user to forget."
+                # Use AI to generate language-appropriate "no memory" response
+                no_memory_prompt = f"""
+                The user asked you to forget information about someone, but you have no memory about that user.
+                
+                Information they wanted to forget: {fact_content}
+                
+                For the confirmation_message field, provide a brief message explaining that you don't have any memory about that user to forget, using the same language as the fact_content. For example:
+                - "I don't have any memory about that user to forget."
+                - "Я не помню ничего об этом пользователе, что можно забыть." (if fact_content is in Russian)
+                
+                Set fact_found to false and leave updated_memory empty since there's no memory to update.
+                """
+                
+                no_memory_response = await self.ai_client.generate_content(
+                    message=fact_content,
+                    prompt=no_memory_prompt,
+                    temperature=0.0,
+                    response_schema=MemoryForget
+                )
+                return no_memory_response.confirmation_message
             
             # Use AI to remove specific information while maintaining coherence
             prompt = f"""
@@ -126,6 +170,15 @@ class FactHandler:
             If the information exists in the memory, remove it and return the updated memory with fact_found=true.
             If the information is not found, set fact_found=false (the updated_memory field will be ignored).
             Maintain third-person perspective.
+            
+            **IMPORTANT: Generate the updated memory in the same language as the current memory to maintain consistency.**
+            
+            For the confirmation_message field, include the specific fact content and use the same language as the existing memory:
+            - If fact_found=true: "I've forgotten that [specific fact]" (e.g., "I've forgotten that their birthday is March 15th", "I've forgotten that they visited Paris")
+            - If fact_found=false: "I couldn't find that information in my memory" (e.g., "I couldn't find that information about their favorite food")
+            - Use same language as existing memory: "Я забыл, что они работали в Apple" (if memory is in Russian)
+            
+            Include the actual fact content in your confirmation message and match the memory language.
             """
             
             forget_response = await self.ai_client.generate_content(
@@ -135,17 +188,13 @@ class FactHandler:
                 response_schema=MemoryForget
             )
             
-            # Check if the fact was found and removed
-            if not forget_response.fact_found:
-                return "I couldn't find that specific information in my memory about the user."
+            # Save updated memory if fact was found and removed
+            if forget_response.fact_found:
+                await self.store.save_user_facts(guild_id, user_id, forget_response.updated_memory)
+                logger.info(f"Removed fact from memory for user {user_id} in guild {guild_id}")
             
-            updated_memory = forget_response.updated_memory
-            
-            # Save updated memory
-            await self.store.save_user_facts(guild_id, user_id, updated_memory)
-            
-            logger.info(f"Removed fact from memory for user {user_id} in guild {guild_id}")
-            return f"I've forgotten that about the user."
+            # Return the language-appropriate confirmation message from the schema
+            return forget_response.confirmation_message
     
 
     async def handle_request(self, params: FactParams, guild_id: int) -> str:
