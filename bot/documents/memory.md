@@ -115,6 +115,7 @@ class MemoryManager:
 - **Dual Caching Strategy**: TTLCache (1-hour) for current day, LRUCache for historical data
 - **Content-Based Hashing**: Cache keys use content hashes for final context merge
 - **Code Deduplication**: Shared daily summary generation with separate caching layers
+- **Daily Summaries Batch Cache**: LRU cache for historical daily summaries per guild/date
 
 ### AI Client Strategy (Cost-Optimized)
 - **Batch Daily Summaries (Gemini Flash)**: Multi-user daily summary generation using superior analysis capabilities
@@ -155,8 +156,8 @@ Memory Merging Strategy:
 Message Formatting:
 - Convert stored messages with user IDs to readable format using XML structure
 - Replace user mentions with current display names for LLM processing
-- Format with structured XML: <message><timestamp/><author/><content/></message>
-- Target user identification: Include both nickname and user_id in prompts
+- Format with structured XML: <message><timestamp/><author_id/><author/><content/></message>
+- Target user identification: Include both nickname and user_id in prompts for precise identification
 
 Daily Summarization (batch approach):
 - Input: All messages from a specific date and list of all active users
@@ -173,7 +174,7 @@ Daily Summarization (batch approach):
 - Output: Map of user_id to concise daily summary (~300 chars) in third person
 
 Historical Summary (days 2-7):
-- Input: 6 days of daily summaries (days 2-7 from current date)
+- Input: 6 days of daily summaries (yesterday and 5 days before that, relative to current date)
 - Process: Create behavioral summary from historical daily summaries with actual date ranges
 - Cache: Use (guild_id, user_id, historical_end_date) as cache key with permanent LRU
 - Updates: Only when day transitions (current day becomes historical)
@@ -224,10 +225,13 @@ Context Merging (3-way merge):
 - **Sliding Windows**: Efficient temporal queries using date arithmetic
 
 ### Cache Key Design
-All cache keys include `(guild_id, user_id, ...)` since all memory operations are per-user:
+Cache keys use different strategies based on operation type:
 
-- **Current day summaries**: `(guild_id, user_id, today, hour_bucket)` - 1-hour TTL, e.g., "2024-01-15-14"
-- **Historical daily summaries**: `(guild_id, user_id, date)` - permanent LRU, e.g., "2024-01-14"  
+**Batch Operations (all users per guild):**
+- **Current day summaries**: `(guild_id, hour_bucket)` - 1-hour TTL, stores `dict[user_id, summary]`
+- **Historical daily summaries**: `(guild_id, date)` - permanent LRU, stores `dict[user_id, summary]`
+
+**Per-User Operations:**
 - **Historical summary**: `(guild_id, user_id, historical_end_date)` - permanent LRU, e.g., "2024-01-14" for days 2-7
 - **Final context**: `(guild_id, user_id, hash(facts), hash(current_day), hash(historical))` - content-based hashing for encapsulation
 
