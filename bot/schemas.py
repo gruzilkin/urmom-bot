@@ -53,3 +53,18 @@ class RouteSelection(BaseModel):
     """Schema for AI router route selection (first tier)."""
     route: Literal["FAMOUS", "GENERAL", "FACT", "NONE"] = Field(description="Route decision")
     reason: str = Field(description="Brief reason for choosing this route")
+
+
+class MemoryContext(BaseModel):
+    """Schema for memory manager context generation."""
+    context: str = Field(description="Merged context combining facts, current day observations, and historical patterns")
+
+
+class UserSummary(BaseModel):
+    """Schema for individual user summary."""
+    user_id: int = Field(description="Discord user ID")
+    summary: str = Field(description="Daily summary for the user")
+
+class DailySummaries(BaseModel):
+    """Schema for batch daily summary generation."""
+    summaries: list[UserSummary] = Field(description="List of daily summaries for all active users")

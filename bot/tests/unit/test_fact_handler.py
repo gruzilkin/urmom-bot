@@ -2,12 +2,12 @@ import unittest
 from unittest.mock import Mock, AsyncMock
 from dotenv import load_dotenv
 
-from bot.fact_handler import FactHandler
-from bot.gemma_client import GemmaClient
-from bot.schemas import FactParams, MemoryUpdate, MemoryForget
-from bot.store import Store
-from bot.tests.null_telemetry import NullTelemetry
-from bot.user_resolver import UserResolver
+from fact_handler import FactHandler
+from gemma_client import GemmaClient
+from schemas import FactParams, MemoryUpdate, MemoryForget
+from store import Store
+from tests.null_telemetry import NullTelemetry
+from user_resolver import UserResolver
 
 load_dotenv()
 

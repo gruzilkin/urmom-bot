@@ -168,6 +168,7 @@ class TestMessageGraph(BaseMessageGraphTest):
                 id=discord_msg.id,
                 content=discord_msg.content,
                 author_id=discord_msg.author.id,
+                channel_id=1000,  # Mock channel ID
                 mentioned_user_ids=[user.id for user in discord_msg.mentions],
                 created_at=discord_msg.created_at,
                 reference_id=discord_msg.reference.message_id if discord_msg.reference else None
@@ -271,6 +272,7 @@ class TestConversationGraphBuilder(BaseMessageGraphTest):
                 id=discord_msg.id,
                 content=discord_msg.content,
                 author_id=discord_msg.author.id,
+                channel_id=1000,  # Mock channel ID
                 mentioned_user_ids=[user.id for user in discord_msg.mentions],
                 created_at=discord_msg.created_at,
                 reference_id=discord_msg.reference.message_id if discord_msg.reference else None

@@ -12,6 +12,7 @@ from ai_router import AiRouter
 from response_summarizer import ResponseSummarizer
 from fact_handler import FactHandler
 from user_resolver import UserResolver
+from memory_manager import MemoryManager
 from config import AppConfig
 
 class Container:
@@ -19,20 +20,21 @@ class Container:
         # Load configuration from environment or use provided config
         self.config = config or AppConfig()
         
+        # Initialize Telemetry with configuration
+        self.telemetry = Telemetry(
+            service_name=self.config.otel_service_name, 
+            endpoint=self.config.otel_exporter_otlp_endpoint
+        )
+
         # Initialize Store
         self.store = Store(
+            telemetry=self.telemetry,
             host=self.config.postgres_host,
             port=self.config.postgres_port,
             user=self.config.postgres_user,
             password=self.config.postgres_password,
             database=self.config.postgres_db,
             weight_coef=self.config.sample_jokes_coef
-        )
-
-        # Initialize Telemetry with configuration
-        self.telemetry = Telemetry(
-            service_name=self.config.otel_service_name, 
-            endpoint=self.config.otel_exporter_otlp_endpoint
         )
 
         # Create specific AI clients for GeneralQueryGenerator (both required)
@@ -80,6 +82,21 @@ class Container:
             self.grok, self.response_summarizer, self.telemetry, self.user_resolver
         )
         
+        self.fact_handler = FactHandler(
+            ai_client=self.gemma,  # Use Gemma for memory operations
+            store=self.store,
+            telemetry=self.telemetry,
+            user_resolver=self.user_resolver
+        )
+        
+        self.memory_manager = MemoryManager(
+            telemetry=self.telemetry,
+            store=self.store,
+            gemini_client=self.gemini_flash,
+            gemma_client=self.gemma,
+            user_resolver=self.user_resolver
+        )
+        
         self.general_query_generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_flash, 
             grok=self.grok,
@@ -88,20 +105,14 @@ class Container:
             response_summarizer=self.response_summarizer,
             telemetry=self.telemetry,
             store=self.store,
-            user_resolver=self.user_resolver
-        )
-
-        self.fact_handler = FactHandler(
-            ai_client=self.gemma,  # Use Gemma for memory operations
-            store=self.store,
-            telemetry=self.telemetry,
-            user_resolver=self.user_resolver
+            user_resolver=self.user_resolver,
+            memory_manager=self.memory_manager
         )
         
         self.ai_router = AiRouter(
-            self.ai_client, 
-            self.telemetry, 
-            self.famous_person_generator, 
+            self.ai_client,
+            self.telemetry,
+            self.famous_person_generator,
             self.general_query_generator,
             self.fact_handler
         )

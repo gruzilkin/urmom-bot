@@ -79,6 +79,10 @@ async def on_message(message: nextcord.Message):
     async with container.telemetry.async_create_span("on_message", kind=SpanKind.CONSUMER) as span:
         container.telemetry.increment_message_counter(message)
         
+        # Ingest message into transient memory using materialized content
+        materialized_message = discord_to_message_node(message)
+        await container.memory_manager.ingest_message(message.guild.id, materialized_message)
+
         if message.author.bot:
             return
         
@@ -116,6 +120,20 @@ async def on_message(message: nextcord.Message):
                 params, message.guild.id
             )
             await message.reply(response)
+
+
+@bot.event
+async def on_message_edit(before: nextcord.Message, after: nextcord.Message):
+    async with container.telemetry.async_create_span("on_message_edit", kind=SpanKind.CONSUMER) as span:
+        # Ignore edits from bots
+        if after.author.bot:
+            return
+
+        # Ingest the updated message content, including embeds.
+        # Caching in the materialization process handles efficiency.
+        materialized_message = discord_to_message_node(after)
+        await container.memory_manager.ingest_message(after.guild.id, materialized_message)
+
 
 async def process_bot_commands(message: nextcord.Message) -> bool:
     """
@@ -235,6 +253,7 @@ def discord_to_message_node(message: nextcord.Message) -> MessageNode:
         id=message.id,
         content=content,
         author_id=message.author.id,
+        channel_id=message.channel.id,
         mentioned_user_ids=mentioned_user_ids,
         created_at=message.created_at,
         reference_id=reference_id
