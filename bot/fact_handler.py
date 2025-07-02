@@ -53,7 +53,8 @@ class FactHandler:
         fact_content: The specific fact to remember or forget, converted to third-person perspective using appropriate pronouns. This can be extracted both from the user message and inferred from the conversation history.
         
         For fact_content conversion to third-person perspective:
-        - Use "they/them" as default pronouns when gender is unknown
+        - Use appropriate third person forms for the language when gender is unknown
+        - **IMPORTANT: Preserve the original language of the fact content. Only change the perspective (first/second person → third person), do NOT translate the language.**
         
         Examples:
         - "Bot remember that gruzilkin is Sergey" → operation: "remember", user_mention: "gruzilkin", fact_content: "He is Sergey"
@@ -61,6 +62,9 @@ class FactHandler:
         - "Bot forget that <@1333878858138652682> likes pizza" → operation: "forget", user_mention: "1333878858138652682", fact_content: "they like pizza"
         - "remember Florent works at Google" → operation: "remember", user_mention: "Florent", fact_content: "they work at Google"
         - "Bot remember I live in Tokyo" (about speaker) → operation: "remember", user_mention: "[infer from context]", fact_content: "they live in Tokyo"
+        - "БОТ запомни что gruzilkin так же известен как Медвед" → operation: "remember", user_mention: "gruzilkin", fact_content: "он также известен как Медвед"
+        - "запомни что <@123456> живёт в Москве" → operation: "remember", user_mention: "123456", fact_content: "они живут в Москве"
+        - "Bot oublie que Pierre aime le fromage" → operation: "forget", user_mention: "Pierre", fact_content: "il aime le fromage"
         """
     
     

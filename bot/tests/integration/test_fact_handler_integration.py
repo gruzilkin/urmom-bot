@@ -11,6 +11,7 @@ from unittest.mock import Mock
 from dotenv import load_dotenv
 
 from fact_handler import FactHandler
+from ai_router import AiRouter
 from gemma_client import GemmaClient
 from tests.null_telemetry import NullTelemetry
 from tests.test_store import TestStore
@@ -51,6 +52,47 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             store=self.test_store,
             telemetry=self.telemetry,
             user_resolver=self.test_user_resolver
+        )
+        
+        # Create real instances for route descriptions but mock parameter extraction to prevent execution
+        from famous_person_generator import FamousPersonGenerator
+        from general_query_generator import GeneralQueryGenerator
+        from unittest.mock import Mock
+        
+        # Real famous generator instance (with mocked dependencies since we only need route description)
+        self.famous_generator = FamousPersonGenerator(
+            ai_client=Mock(),
+            response_summarizer=Mock(), 
+            telemetry=self.telemetry,
+            user_resolver=Mock()
+        )
+        # Mock parameter extraction to fail fast if wrong route taken
+        self.famous_generator.get_parameter_schema = Mock(side_effect=Exception("Should not extract FAMOUS params in FACT tests"))
+        self.famous_generator.get_parameter_extraction_prompt = Mock(side_effect=Exception("Should not extract FAMOUS params in FACT tests"))
+        
+        # Real general generator instance (with mocked dependencies since we only need route description)
+        self.general_generator = GeneralQueryGenerator(
+            gemini_flash=Mock(),
+            grok=Mock(),
+            claude=Mock(),
+            gemma=Mock(),
+            response_summarizer=Mock(),
+            telemetry=self.telemetry,
+            store=Mock(),
+            user_resolver=Mock(),
+            memory_manager=Mock()
+        )
+        # Mock parameter extraction to fail fast if wrong route taken
+        self.general_generator.get_parameter_schema = Mock(side_effect=Exception("Should not extract GENERAL params in FACT tests"))
+        self.general_generator.get_parameter_extraction_prompt = Mock(side_effect=Exception("Should not extract GENERAL params in FACT tests"))
+        
+        # AiRouter for end-to-end testing
+        self.ai_router = AiRouter(
+            ai_client=self.gemma_client,
+            telemetry=self.telemetry,
+            famous_generator=self.famous_generator,
+            general_generator=self.general_generator,
+            fact_handler=self.fact_handler
         )
         
         # Test data - use physics guild and Einstein for consistency
@@ -225,6 +267,81 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         action_words = ["remember", "recall", "note"]
         has_action = any(word in response_lower for word in action_words)
         self.assertTrue(has_action, f"Confirmation should indicate the action taken. Got: {response}")
+
+    async def test_end_to_end_russian_language_preservation(self):
+        """Test end-to-end flow: AiRouter parameter extraction → FactHandler with Russian language preservation."""
+        # Arrange - Russian fact message (similar to the case that failed in production)
+        russian_message = "БОТ запомни что Rutherford так же известен как Крокодил"
+        
+        # Act - Use AiRouter to route and extract parameters (this is where the bug occurred)
+        route, params = await self.ai_router.route_request(russian_message)
+        
+        # Assert - Route should be FACT
+        self.assertEqual(route, "FACT", "Should route Russian memory command to FACT")
+        self.assertIsNotNone(params, "Should extract parameters for FACT route")
+        self.assertEqual(params.operation, "remember", "Should extract 'remember' operation")
+        self.assertEqual(params.user_mention, "Rutherford", "Should extract user mention")
+        
+        # Critical: fact_content should preserve Russian language  
+        fact_content_lower = params.fact_content.lower()
+        
+        # Should contain Russian words (не должно быть переведено на английский)
+        russian_terms = ["известен", "крокодил"]  # Key Russian words that should be preserved
+        russian_found = sum(1 for term in russian_terms if term in fact_content_lower)
+        self.assertGreaterEqual(russian_found, 1, f"Fact content should preserve Russian words. Got: {params.fact_content}")
+        
+        # Should NOT contain English translations
+        english_translations = ["known as", "also known"]  # English translations that indicate the bug
+        english_found = any(term in fact_content_lower for term in english_translations)
+        self.assertFalse(english_found, f"Fact content should NOT be translated to English. Got: {params.fact_content}")
+        
+        # Should be in third person perspective (он/они instead of original form)
+        third_person_indicators = ["он", "они"]  # Russian third person pronouns
+        has_third_person = any(pronoun in fact_content_lower for pronoun in third_person_indicators)
+        self.assertTrue(has_third_person, f"Should convert to third person in Russian. Got: {params.fact_content}")
+        
+        # Act - Continue with fact handling using extracted parameters
+        response = await self.fact_handler.handle_request(params, self.guild_id)
+        
+        # Assert - Memory should be saved with Russian content
+        rutherford_id = self.test_user_resolver.physicist_ids["Rutherford"]
+        saved_memory = await self.test_store.get_user_facts(self.guild_id, rutherford_id)
+        self.assertIsNotNone(saved_memory, "Memory should be saved")
+        
+        saved_memory_lower = saved_memory.lower()
+        self.assertIn("крокодил", saved_memory_lower, "Saved memory should contain Russian nickname 'Крокодил'")
+        
+        # Confirmation should also be in Russian (matching the fact content language)
+        response_lower = response.lower()
+        # Should contain Russian confirmation terms or at least the Russian nickname
+        russian_confirmation_terms = ["крокодил", "запомн"]  # Russian nickname and remember-related words
+        confirmation_russian_found = any(term in response_lower for term in russian_confirmation_terms)
+        self.assertTrue(confirmation_russian_found, f"Confirmation should contain Russian elements. Got: {response}")
+
+    async def test_end_to_end_english_still_works(self):
+        """Test that English facts still work correctly through the end-to-end flow."""
+        # Arrange - English fact message
+        english_message = "BOT remember that Einstein likes chocolate"
+        
+        # Act - Use AiRouter for complete flow
+        route, params = await self.ai_router.route_request(english_message)
+        
+        # Assert - Should work as before
+        self.assertEqual(route, "FACT")
+        self.assertEqual(params.operation, "remember")
+        self.assertEqual(params.user_mention, "Einstein")
+        
+        # English fact content should be preserved
+        self.assertIn("chocolate", params.fact_content.lower())
+        self.assertIn("like", params.fact_content.lower())
+        
+        # Continue with fact handling
+        response = await self.fact_handler.handle_request(params, self.guild_id)
+        
+        # Memory should be saved
+        saved_memory = await self.test_store.get_user_facts(self.guild_id, self.user_id)
+        self.assertIsNotNone(saved_memory)
+        self.assertIn("chocolate", saved_memory.lower())
 
 
 if __name__ == '__main__':
