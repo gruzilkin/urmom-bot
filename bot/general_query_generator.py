@@ -171,7 +171,7 @@ Guidelines:
 - Use the conversation context to better understand what the user is asking about
 - If the question relates to something mentioned in the conversation, reference it appropriately
 - For complex topics, provide a brief summary with key points rather than detailed explanations
-- **Always respond in the same language as the user's input message. If the user writes in Russian, German, Japanese, etc., respond entirely in that language.**
+- **Always respond in {params.language_name} unless the user specifically requests a different language or translation.**
 
 Memory Usage:
 - Use the provided memories naturally in your responses, as if you simply remember these things about people

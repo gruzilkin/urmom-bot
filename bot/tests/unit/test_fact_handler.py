@@ -38,7 +38,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_remember_fact_for_new_user(self):
         """Test remembering a fact for a user with no prior memory."""
         # Arrange
-        params = FactParams(operation="remember", user_mention="testuser", fact_content="they like chocolate")
+        params = FactParams(operation="remember", user_mention="testuser", fact_content="they like chocolate", language_code="en", language_name="English")
         self.mock_user_resolver.resolve_user_id.return_value = 12345
         self.mock_ai_client.generate_content = AsyncMock(
             return_value=MemoryUpdate(updated_memory="they like chocolate", confirmation_message="I'll remember that they like chocolate.")
@@ -56,7 +56,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_remember_fact_with_existing_memory(self):
         """Test remembering a fact for a user who already has a memory blob."""
         # Arrange
-        params = FactParams(operation="remember", user_mention="testuser", fact_content="they are a developer")
+        params = FactParams(operation="remember", user_mention="testuser", fact_content="they are a developer", language_code="en", language_name="English")
         self.mock_user_resolver.resolve_user_id.return_value = 12345
         self.mock_store.get_user_facts.return_value = "they like chocolate"
         # Set up mock to return merging response
@@ -76,7 +76,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_forget_fact_not_found(self):
         """Test forgetting a fact that does not exist in the user's memory."""
         # Arrange
-        params = FactParams(operation="forget", user_mention="testuser", fact_content="they dislike broccoli")
+        params = FactParams(operation="forget", user_mention="testuser", fact_content="they dislike broccoli", language_code="en", language_name="English")
         self.mock_user_resolver.resolve_user_id.return_value = 12345
         self.mock_store.get_user_facts.return_value = "they like chocolate"
         # Set up mock to return forget operation response  
@@ -96,7 +96,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_forget_fact_found(self):
         """Test forgetting a fact that exists in the user's memory."""
         # Arrange
-        params = FactParams(operation="forget", user_mention="testuser", fact_content="they like chocolate")
+        params = FactParams(operation="forget", user_mention="testuser", fact_content="they like chocolate", language_code="en", language_name="English")
         self.mock_user_resolver.resolve_user_id.return_value = 12345
         self.mock_store.get_user_facts.return_value = "they like chocolate and they are a developer"
         # Set up mock to return forget operation response
@@ -116,7 +116,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_handle_request_with_unresolvable_user(self):
         """Test that the handler returns a helpful message for unresolvable users."""
         # Arrange
-        params = FactParams(operation="remember", user_mention="nonexistentuser", fact_content="they like testing")
+        params = FactParams(operation="remember", user_mention="nonexistentuser", fact_content="they like testing", language_code="en", language_name="English")
         self.mock_user_resolver.resolve_user_id.return_value = None
         
         # Act

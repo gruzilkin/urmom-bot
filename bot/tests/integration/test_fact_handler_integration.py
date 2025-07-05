@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from fact_handler import FactHandler
 from ai_router import AiRouter
 from gemma_client import GemmaClient
+from language_detector import LanguageDetector
 from tests.null_telemetry import NullTelemetry
 from tests.test_store import TestStore
 from tests.test_user_resolver import TestUserResolver
@@ -87,9 +88,11 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         self.general_generator.get_parameter_extraction_prompt = Mock(side_effect=Exception("Should not extract GENERAL params in FACT tests"))
         
         # AiRouter for end-to-end testing
+        self.language_detector = LanguageDetector(ai_client=self.gemma_client, telemetry=self.telemetry)
         self.ai_router = AiRouter(
             ai_client=self.gemma_client,
             telemetry=self.telemetry,
+            language_detector=self.language_detector,
             famous_generator=self.famous_generator,
             general_generator=self.general_generator,
             fact_handler=self.fact_handler
@@ -107,7 +110,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Einstein already exists in TestUserResolver, no need to add
         
         # Act - Use real Gemma to generate MemoryUpdate
-        response = await self.fact_handler._remember_fact(self.guild_id, self.user_id, fact_content)
+        response = await self.fact_handler._remember_fact(self.guild_id, self.user_id, fact_content, "English")
         
         # Assert - Check memory was saved with expected content
         saved_memory = await self.test_store.get_user_facts(self.guild_id, self.user_id)
@@ -136,7 +139,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         new_fact = "they work at Google"
         
         # Act - Add new fact with real Gemma merge
-        response = await self.fact_handler._remember_fact(self.guild_id, self.user_id, new_fact)
+        response = await self.fact_handler._remember_fact(self.guild_id, self.user_id, new_fact, "English")
         
         # Assert - Memory should contain both facts
         updated_memory = await self.test_store.get_user_facts(self.guild_id, self.user_id)
@@ -163,7 +166,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         fact_to_forget = "they work at Google"
         
         # Act - Use real Gemma to detect and remove fact
-        response = await self.fact_handler._forget_fact(self.guild_id, self.user_id, fact_to_forget)
+        response = await self.fact_handler._forget_fact(self.guild_id, self.user_id, fact_to_forget, "English")
         
         # Assert - Memory should no longer contain forgotten fact
         updated_memory = await self.test_store.get_user_facts(self.guild_id, self.user_id)
@@ -192,7 +195,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         nonexistent_fact = "they dislike pizza"
         
         # Act - Try to forget non-existent fact
-        response = await self.fact_handler._forget_fact(self.guild_id, self.user_id, nonexistent_fact)
+        response = await self.fact_handler._forget_fact(self.guild_id, self.user_id, nonexistent_fact, "English")
         
         # Assert - Memory should be unchanged
         unchanged_memory = await self.test_store.get_user_facts(self.guild_id, self.user_id)
@@ -211,7 +214,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         fact_to_forget = "they like pizza"
         
         # Act - Try to forget from empty memory
-        response = await self.fact_handler._forget_fact(self.guild_id, self.user_id, fact_to_forget)
+        response = await self.fact_handler._forget_fact(self.guild_id, self.user_id, fact_to_forget, "English")
         
         # Assert - No memory should be saved (nothing to update)
         memory = await self.test_store.get_user_facts(self.guild_id, self.user_id)
@@ -229,7 +232,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         english_fact = "they are a software engineer"
         
         # Act
-        response = await self.fact_handler._remember_fact(self.guild_id, self.user_id, english_fact)
+        response = await self.fact_handler._remember_fact(self.guild_id, self.user_id, english_fact, "English")
         
         # Assert - Memory and confirmation should be in English
         saved_memory = await self.test_store.get_user_facts(self.guild_id, self.user_id)
@@ -248,7 +251,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         specific_fact = "they graduated from MIT in 2020"
         
         # Act
-        response = await self.fact_handler._remember_fact(self.guild_id, self.user_id, specific_fact)
+        response = await self.fact_handler._remember_fact(self.guild_id, self.user_id, specific_fact, "English")
         
         # Assert - Confirmation should be specific, not generic
         response_lower = response.lower()

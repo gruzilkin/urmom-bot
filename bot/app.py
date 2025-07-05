@@ -6,7 +6,6 @@ from typing import Callable, Awaitable
 from functools import lru_cache
 
 import nextcord
-from langdetect import detect, LangDetectException
 from goose3 import Goose
 
 from opentelemetry.trace import SpanKind, Status, StatusCode
@@ -459,11 +458,7 @@ async def process_joke_request(payload: nextcord.RawReactionActionEvent, country
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
 
-    # Detect message language
-    try:
-        language = detect(message.content)
-    except LangDetectException:
-        language = 'en'  # Default to English if detection fails
+    language = await container.language_detector.detect_language(message.content)
 
     if country:
         joke = await container.joke_generator.generate_country_joke(message.content, country)

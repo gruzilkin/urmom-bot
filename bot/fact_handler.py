@@ -69,7 +69,7 @@ class FactHandler:
     
     
     
-    async def _remember_fact(self, guild_id: int, user_id: int, fact_content: str) -> str:
+    async def _remember_fact(self, guild_id: int, user_id: int, fact_content: str, language_name: str) -> str:
         """Add or update a fact about a user. Fact content is already in third-person perspective from parameter extraction."""
         async with self.telemetry.async_create_span("remember_fact") as span:
             span.set_attribute("guild_id", guild_id)
@@ -86,15 +86,14 @@ class FactHandler:
                 
                 New information: {fact_content}
                 
-                Create the memory entry maintaining third-person perspective and the same language as the fact_content.
+                Create the memory entry maintaining third-person perspective. Please respond in {language_name}.
                 
-                For the confirmation_message field, provide a brief, friendly confirmation that includes the specific fact you're remembering, using the same language as the fact_content. For example:
+                For the confirmation_message field, provide a brief, friendly confirmation that includes the specific fact you're remembering. For example:
                 - "I'll remember that their birthday is March 15th"
                 - "I'll remember that Sarah worked at Google"  
                 - "I'll remember that they visited Japan last year"
-                - "Я запомню, что они любят пиццу" (if fact_content is in Russian)
                 
-                Include the actual fact content in your confirmation message and match its language.
+                Include the actual fact content in your confirmation message.
                 """
             else:
                 prompt = f"""
@@ -104,17 +103,14 @@ class FactHandler:
                 New information: {fact_content}
                 
                 Merge the new information with the existing memory, resolving any conflicts intelligently 
-                and maintaining a natural narrative flow. Maintain third-person perspective.
+                and maintaining a natural narrative flow. Maintain third-person perspective. Please respond in {language_name}.
                 
-                **IMPORTANT: Generate the updated memory in the same language as the current memory to maintain consistency.**
-                
-                For the confirmation_message field, provide a brief, friendly confirmation that includes the specific fact you're adding, using the same language as the existing memory. For example:
+                For the confirmation_message field, provide a brief, friendly confirmation that includes the specific fact you're adding. For example:
                 - "I'll remember that their birthday is March 15th" 
                 - "I'll remember that John worked at Google"
                 - "I'll remember that they graduated from MIT"
-                - "Я запомню, что они любят пиццу" (if existing memory is in Russian)
                 
-                Include the actual new fact content in your confirmation message and match the memory language.
+                Include the actual new fact content in your confirmation message.
                 """
             
             memory_response = await self.ai_client.generate_content(
@@ -133,7 +129,7 @@ class FactHandler:
             # Return the language-appropriate confirmation message from the schema
             return memory_response.confirmation_message
     
-    async def _forget_fact(self, guild_id: int, user_id: int, fact_content: str) -> str:
+    async def _forget_fact(self, guild_id: int, user_id: int, fact_content: str, language_name: str) -> str:
         """Remove a specific fact about a user. Fact content is already in third-person perspective from parameter extraction."""
         async with self.telemetry.async_create_span("forget_fact") as span:
             span.set_attribute("guild_id", guild_id)
@@ -149,9 +145,8 @@ class FactHandler:
                 
                 Information they wanted to forget: {fact_content}
                 
-                For the confirmation_message field, provide a brief message explaining that you don't have any memory about that user to forget, using the same language as the fact_content. For example:
+                Please respond in {language_name}. For the confirmation_message field, provide a brief message explaining that you don't have any memory about that user to forget. For example:
                 - "I don't have any memory about that user to forget."
-                - "Я не помню ничего об этом пользователе, что можно забыть." (if fact_content is in Russian)
                 
                 Set fact_found to false and leave updated_memory empty since there's no memory to update.
                 """
@@ -173,16 +168,13 @@ class FactHandler:
             
             If the information exists in the memory, remove it and return the updated memory with fact_found=true.
             If the information is not found, set fact_found=false (the updated_memory field will be ignored).
-            Maintain third-person perspective.
+            Maintain third-person perspective. Please respond in {language_name}.
             
-            **IMPORTANT: Generate the updated memory in the same language as the current memory to maintain consistency.**
-            
-            For the confirmation_message field, include the specific fact content and use the same language as the existing memory:
+            For the confirmation_message field, include the specific fact content:
             - If fact_found=true: "I've forgotten that [specific fact]" (e.g., "I've forgotten that their birthday is March 15th", "I've forgotten that they visited Paris")
             - If fact_found=false: "I couldn't find that information in my memory" (e.g., "I couldn't find that information about their favorite food")
-            - Use same language as existing memory: "Я забыл, что они работали в Apple" (if memory is in Russian)
             
-            Include the actual fact content in your confirmation message and match the memory language.
+            Include the actual fact content in your confirmation message.
             """
             
             forget_response = await self.ai_client.generate_content(
@@ -220,8 +212,8 @@ class FactHandler:
             return f"I couldn't identify the user '{params.user_mention}'. Please use a standard Discord mention, user ID, or a recognizable nickname."
         
         if params.operation == "remember":
-            return await self._remember_fact(guild_id, user_id, params.fact_content)
+            return await self._remember_fact(guild_id, user_id, params.fact_content, params.language_name)
         elif params.operation == "forget":
-            return await self._forget_fact(guild_id, user_id, params.fact_content)
+            return await self._forget_fact(guild_id, user_id, params.fact_content, params.language_name)
         else:
             return f"Unknown operation: {params.operation}"

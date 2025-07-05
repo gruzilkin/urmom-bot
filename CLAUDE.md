@@ -117,3 +117,33 @@ def process_data(items: Optional[List[str]]) -> Dict[str, Any]:  # Old syntax
 ### Import Guidelines
 - Use `from typing import Callable, Awaitable` for function type hints
 - Import specific types needed rather than importing everything from typing
+
+### Exception Logging
+- **All exceptions must be logged at ERROR level** with full stack trace
+- **Format**: `logger.error(f"descriptive error based on operation: {e}", exc_info=True)`
+- **Description**: Include what operation was being attempted when the error occurred
+- **Examples**:
+  ```python
+  # Good - Descriptive error with operation context
+  except ValueError as e:
+      logger.error(f"Failed to parse user configuration: {e}", exc_info=True)
+  
+  except APIException as e:
+      logger.error(f"OpenAI API call failed during joke generation: {e}", exc_info=True)
+  
+  # Avoid - Generic or missing error logging
+  except Exception as e:
+      logger.warning(f"Error: {e}")  # Wrong level, no context, no stack trace
+  ```
+
+### Telemetry Span Attributes
+- **Reuse attribute names consistently** across different components when they represent the same concept
+- **Common attribute names** should be standardized for easier aggregation and analysis in observability tools
+- **Avoid inconsistent naming**:
+  ```python
+  # Avoid - Different names for same concept across components
+  span.set_attribute("confidence", score)           # In one component
+  span.set_attribute("detection_confidence", score) # In another component  
+  span.set_attribute("lang_confidence", score)      # In third component
+  ```
+- **When creating new attributes**, check existing codebase for similar concepts and reuse existing names

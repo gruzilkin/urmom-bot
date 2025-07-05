@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, Mock
 from joke_generator import JokeGenerator
+from language_detector import LanguageDetector
 from tests.null_telemetry import NullTelemetry
 
 
@@ -25,7 +26,11 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         store = MockStore()
         telemetry = NullTelemetry()
         
-        joke_generator = JokeGenerator(ai_client, store, telemetry)
+        # Use real LanguageDetector with mock AI client that raises error if accessed
+        mock_language_ai = Mock()
+        mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
+        language_detector = LanguageDetector(ai_client=mock_language_ai, telemetry=telemetry)
+        joke_generator = JokeGenerator(ai_client, store, telemetry, language_detector)
         
         result = await joke_generator.is_joke("original message", "funny response")
         
@@ -38,7 +43,11 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         store = MockStore()
         telemetry = NullTelemetry()
         
-        joke_generator = JokeGenerator(ai_client, store, telemetry)
+        # Use real LanguageDetector with mock AI client that raises error if accessed
+        mock_language_ai = Mock()
+        mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
+        language_detector = LanguageDetector(ai_client=mock_language_ai, telemetry=telemetry)
+        joke_generator = JokeGenerator(ai_client, store, telemetry, language_detector)
         
         result = await joke_generator.is_joke("original message", "serious response")
         
@@ -51,7 +60,11 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         store = MockStore()
         telemetry = NullTelemetry()
         
-        joke_generator = JokeGenerator(ai_client, store, telemetry)
+        # Use real LanguageDetector with mock AI client that raises error if accessed
+        mock_language_ai = Mock()
+        mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
+        language_detector = LanguageDetector(ai_client=mock_language_ai, telemetry=telemetry)
+        joke_generator = JokeGenerator(ai_client, store, telemetry, language_detector)
         
         result = await joke_generator.is_joke("original message", "funny response")
         
@@ -64,7 +77,11 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         store = MockStore()
         telemetry = NullTelemetry()
         
-        joke_generator = JokeGenerator(ai_client, store, telemetry)
+        # Use real LanguageDetector with mock AI client that raises error if accessed
+        mock_language_ai = Mock()
+        mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
+        language_detector = LanguageDetector(ai_client=mock_language_ai, telemetry=telemetry)
+        joke_generator = JokeGenerator(ai_client, store, telemetry, language_detector)
         
         # First call should hit the AI
         result1 = await joke_generator.is_joke("original", "response", message_id=123)
@@ -88,7 +105,11 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         store = MockStore()
         telemetry = NullTelemetry()
         
-        joke_generator = JokeGenerator(ai_client, store, telemetry)
+        # Use real LanguageDetector with mock AI client that raises error if accessed
+        mock_language_ai = Mock()
+        mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
+        language_detector = LanguageDetector(ai_client=mock_language_ai, telemetry=telemetry)
+        joke_generator = JokeGenerator(ai_client, store, telemetry, language_detector)
         
         await joke_generator.save_joke(
             source_message_id=123,
@@ -115,7 +136,11 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         store = MockStore()
         telemetry = NullTelemetry()
         
-        joke_generator = JokeGenerator(ai_client, store, telemetry)
+        # Use real LanguageDetector with mock AI client that raises error if accessed
+        mock_language_ai = Mock()
+        mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
+        language_detector = LanguageDetector(ai_client=mock_language_ai, telemetry=telemetry)
+        joke_generator = JokeGenerator(ai_client, store, telemetry, language_detector)
         
         result = await joke_generator.generate_joke("test message", "en")
         
@@ -128,7 +153,11 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         store = MockStore()
         telemetry = NullTelemetry()
         
-        joke_generator = JokeGenerator(ai_client, store, telemetry)
+        # Use real LanguageDetector with mock AI client that raises error if accessed
+        mock_language_ai = Mock()
+        mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
+        language_detector = LanguageDetector(ai_client=mock_language_ai, telemetry=telemetry)
+        joke_generator = JokeGenerator(ai_client, store, telemetry, language_detector)
         
         result = await joke_generator.generate_country_joke("test message", "USA")
         

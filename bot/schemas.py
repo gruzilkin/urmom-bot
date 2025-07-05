@@ -17,6 +17,8 @@ class YesNo(BaseModel):
 class FamousParams(BaseModel):
     """Parameters for famous person impersonation requests."""
     famous_person: str = Field(description="Name of the famous person to impersonate (celebrity, fictional character, or historical figure)")
+    language_code: str | None = Field(default=None, description="ISO 639-1 language code (e.g., 'en', 'ru', 'de') - populated after parameter extraction")
+    language_name: str | None = Field(default=None, description="Full name of the detected language (e.g., 'English', 'Russian', 'German') - populated after parameter extraction")
 
 
 class GeneralParams(BaseModel):
@@ -29,6 +31,8 @@ class GeneralParams(BaseModel):
         ge=0.0, le=1.0
     )
     cleaned_query: str = Field(description="User's request with 'BOT' mentions and routing instructions removed")
+    language_code: str | None = Field(default=None, description="ISO 639-1 language code (e.g., 'en', 'ru', 'de') - populated after parameter extraction")
+    language_name: str | None = Field(default=None, description="Full name of the detected language (e.g., 'English', 'Russian', 'German') - populated after parameter extraction")
 
 
 class FactParams(BaseModel):
@@ -36,6 +40,8 @@ class FactParams(BaseModel):
     operation: Literal["remember", "forget"] = Field(description="Memory operation type: 'remember' to store a fact, 'forget' to remove a fact")
     user_mention: str = Field(description="User reference: Discord mention like '<@123456>' or nickname like 'gruzilkin'")
     fact_content: str = Field(description="The specific fact to remember or forget about the user")
+    language_code: str | None = Field(default=None, description="ISO 639-1 language code (e.g., 'en', 'ru', 'de') - populated after parameter extraction")
+    language_name: str | None = Field(default=None, description="Full name of the detected language (e.g., 'English', 'Russian', 'German') - populated after parameter extraction")
 
 
 class MemoryUpdate(BaseModel):
