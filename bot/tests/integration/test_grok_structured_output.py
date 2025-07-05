@@ -23,6 +23,10 @@ class TestGrokStructuredOutput(unittest.IsolatedAsyncioTestCase):
         """Set up test dependencies."""
         self.telemetry = NullTelemetry()
         
+        # Skip paid tests unless explicitly enabled
+        if os.getenv('ENABLE_PAID_TESTS', '').lower() != 'true':
+            self.skipTest("Paid tests disabled (set ENABLE_PAID_TESTS=true to enable)")
+        
         # Check for API key and model name
         self.api_key = os.getenv('GROK_API_KEY')
         self.model_name = os.getenv('GROK_MODEL')

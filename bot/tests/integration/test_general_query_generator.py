@@ -45,10 +45,12 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             self.skipTest("GEMINI_FLASH_MODEL environment variable not set")
         if not gemma_model:
             self.skipTest("GEMINI_GEMMA_MODEL environment variable not set")
-        if not grok_api_key:
-            self.skipTest("GROK_API_KEY environment variable not set")
-        if not grok_model:
-            self.skipTest("GROK_MODEL environment variable not set")
+        # Only check Grok credentials if paid tests are enabled
+        if os.getenv('ENABLE_PAID_TESTS', '').lower() == 'true':
+            if not grok_api_key:
+                self.skipTest("GROK_API_KEY environment variable not set")
+            if not grok_model:
+                self.skipTest("GROK_MODEL environment variable not set")
             
         self.gemini_client = GeminiClient(
             api_key=gemini_api_key,
@@ -64,12 +66,19 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             temperature=0.1
         )
         
-        self.grok_client = GrokClient(
-            api_key=grok_api_key,
-            model_name=grok_model,
-            telemetry=self.telemetry,
-            temperature=0.1
-        )
+        # Create conditional Grok client - mock if paid tests disabled
+        if os.getenv('ENABLE_PAID_TESTS', '').lower() != 'true':
+            self.grok_client = Mock()
+            self.grok_client.generate_content = AsyncMock(
+                side_effect=Exception("Grok API calls disabled (set ENABLE_PAID_TESTS=true to enable)")
+            )
+        else:
+            self.grok_client = GrokClient(
+                api_key=grok_api_key,
+                model_name=grok_model,
+                telemetry=self.telemetry,
+                temperature=0.1
+            )
         
         # Create response summarizer
         self.response_summarizer = ResponseSummarizer(self.gemma_client, self.telemetry)
