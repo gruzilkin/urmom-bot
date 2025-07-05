@@ -52,6 +52,7 @@ async def on_ready() -> None:
 @bot.event
 async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
     async with container.telemetry.async_create_span("on_raw_reaction_add", kind=SpanKind.CONSUMER) as span:
+        span.set_attribute("guild_id", str(payload.guild_id) if payload.guild_id else "dm")
         container.telemetry.increment_reaction_counter(payload)
         
         try:
@@ -76,6 +77,7 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
 @bot.event
 async def on_message(message: nextcord.Message):
     async with container.telemetry.async_create_span("on_message", kind=SpanKind.CONSUMER) as span:
+        span.set_attribute("guild_id", str(message.guild.id) if message.guild else "dm")
         container.telemetry.increment_message_counter(message)
         
         # Ingest message into transient memory using materialized content
@@ -124,6 +126,7 @@ async def on_message(message: nextcord.Message):
 @bot.event
 async def on_message_edit(before: nextcord.Message, after: nextcord.Message):
     async with container.telemetry.async_create_span("on_message_edit", kind=SpanKind.CONSUMER) as span:
+        span.set_attribute("guild_id", str(after.guild.id) if after.guild else "dm")
         # Ignore edits from bots
         if after.author.bot:
             return
