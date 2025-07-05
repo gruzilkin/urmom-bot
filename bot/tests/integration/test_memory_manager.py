@@ -77,7 +77,7 @@ class TestMemoryManagerIntegration(unittest.IsolatedAsyncioTestCase):
         test_date = date(1905, 3, 3)
         
         # Act - Let real AI process the actual physics conversations
-        result = await self.memory_manager._generate_daily_summaries_batch(self.physics_guild_id, test_date)
+        result = await self.memory_manager._create_daily_summaries(self.physics_guild_id, test_date)
         
         # Assert - Verify real AI understood the physics context
         self.assertGreater(len(result), 0, "Should generate summaries for active physicists")
@@ -105,7 +105,13 @@ class TestMemoryManagerIntegration(unittest.IsolatedAsyncioTestCase):
         current_date = date(1905, 3, 6)  # Thursday - asking for history of Mon-Wed
         
         # Act - Let real AI process multiple days of Einstein's discussions
-        result = await self.memory_manager._get_historical_summary(self.physics_guild_id, einstein_id, current_date)
+        # Create test daily summaries for Einstein over multiple days
+        user_daily_summaries = {
+            date(1905, 3, 5): "Einstein discussed wave-particle duality and quantum mechanics",
+            date(1905, 3, 4): "Einstein explored photoelectric effect implications", 
+            date(1905, 3, 3): "Einstein proposed quantum energy packets theory"
+        }
+        result = await self.memory_manager._create_week_summary(user_daily_summaries)
         
         # Assert - Verify real AI created coherent historical summary
         self.assertIsNotNone(result, "Should generate historical summary for Einstein")
@@ -135,7 +141,7 @@ class TestMemoryManagerIntegration(unittest.IsolatedAsyncioTestCase):
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
             
             # Act - Let the complete memory system process everything with real AI
-            result = await self.memory_manager.get_memories(self.physics_guild_id, einstein_id)
+            result = await self.memory_manager.get_memory(self.physics_guild_id, einstein_id)
         
         # Assert - Verify complete memory integration worked
         self.assertIsNotNone(result, "Should generate complete memory context")

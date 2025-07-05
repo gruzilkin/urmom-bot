@@ -1,5 +1,7 @@
+import asyncio
 import hashlib
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta, date, timezone
 
 from cachetools import LRUCache, TTLCache
@@ -79,67 +81,231 @@ class MemoryManager:
 
         # Caches
         self._current_day_batch_cache = TTLCache(maxsize=100, ttl=3600)  # 1-hour TTL for current day batch summaries
-        self._historical_summary_cache = LRUCache(maxsize=500)  # Permanent cache for historical summaries
+        self._week_summary_cache = LRUCache(maxsize=500)  # Permanent cache for week summaries
         self._context_cache = LRUCache(maxsize=500)  # Final context cache
-        self._daily_summaries_batch_cache = LRUCache(maxsize=200)  # Batch summaries cache (guild_id, date) -> dict[user_id, summary]
+        self._closed_day_batch_cache = LRUCache(maxsize=200)  # Batch summaries cache for closed days (guild_id, date) -> dict[user_id, summary]
 
-    async def get_memories(self, guild_id: int, user_id: int) -> str | None:
+    async def get_memories(self, guild_id: int, user_ids: list[int]) -> dict[int, str | None]:
+        """Get memories for multiple users with concurrent processing."""
         async with self._telemetry.async_create_span("get_memories") as span:
             span.set_attribute("guild_id", guild_id)
-            span.set_attribute("user_id", user_id)
+            span.set_attribute("user_count", len(user_ids))
+            span.set_attribute("user_ids", str(user_ids))
             
-            # Always get facts first - these are reliable and from DB
-            facts = await self._store.get_user_facts(guild_id, user_id)
+            if not user_ids:
+                return {}
             
-            # Try to get transient memory with best effort
             today = datetime.now(timezone.utc).date()
-            current_day_summary = None
-            historical_summary = None
+            all_dates = [today] + [today - timedelta(days=i) for i in range(1, 7)]
             
-            try:
-                current_day_summary = await self._get_current_day_summary(guild_id, user_id, today)
-            except Exception as e:
-                logger.warning(f"Failed to get current day summary for user {user_id} in guild {guild_id}: {e}", exc_info=True)
-                span.record_exception(e)
-                
-            try:
-                historical_summary = await self._get_historical_summary(guild_id, user_id, today)
-            except Exception as e:
-                logger.warning(f"Failed to get historical summary for user {user_id} in guild {guild_id}: {e}", exc_info=True)
-                span.record_exception(e)
+            # Step 1: Get all daily summaries
+            daily_summaries_by_date = await self._fetch_all_daily_summaries(guild_id, all_dates)
             
+            # Step 2: Create historical summaries for all users  
+            historical_summaries = await self._create_historical_summaries_for_users(
+                user_ids, daily_summaries_by_date
+            )
             
-            # If no memories exist at all, return None
-            if not facts and not current_day_summary and not historical_summary:
-                return None
+            # Step 3: Create combined memories
+            return await self._create_combined_memories(
+                guild_id, user_ids, daily_summaries_by_date, historical_summaries
+            )
 
-            # If only one type exists, return it directly
-            if facts and not current_day_summary and not historical_summary:
+    async def get_memory(self, guild_id: int, user_id: int) -> str | None:
+        """Get memory for a single user (backward compatibility wrapper)."""
+        memories_dict = await self.get_memories(guild_id, [user_id])
+        return memories_dict.get(user_id)
+
+    async def _fetch_all_daily_summaries(self, guild_id: int, all_dates: list[date]) -> dict[date, dict[int, str]]:
+        """Fetch daily summaries for all dates concurrently."""
+        async with self._telemetry.async_create_span("fetch_all_daily_summaries") as span:
+            # Fire concurrent calls to get all daily summaries
+            daily_summary_results = await asyncio.gather(*[
+                self._daily_summary(guild_id, date) for date in all_dates
+            ], return_exceptions=True)
+            
+            # Create a map of date -> result for easy lookup (defaults to empty dict for failed dates)
+            daily_summaries_by_date = defaultdict(dict)
+            for date, result in zip(all_dates, daily_summary_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"Daily summary failed for {date}: {result}")
+                    span.record_exception(result)
+                    # defaultdict will automatically provide {} for this date
+                else:
+                    daily_summaries_by_date[date] = result
+            
+            return daily_summaries_by_date
+
+    async def _create_historical_summaries_for_users(self, user_ids: list[int], daily_summaries_by_date: dict[date, dict[int, str]]) -> dict[int, str | None]:
+        """Create historical summaries for all users concurrently."""
+        async with self._telemetry.async_create_span("create_historical_summaries_for_users") as span:
+            historical_tasks = []
+            # Skip first item (today) and use rest for historical summaries
+            historical_dates_items = list(daily_summaries_by_date.items())[1:]
+            
+            for user_id in user_ids:
+                user_daily_summaries = {}
+                for date, daily_batch in historical_dates_items:
+                    if user_id in daily_batch:
+                        user_daily_summaries[date] = daily_batch[user_id]
+                
+                historical_tasks.append(self._create_week_summary(user_daily_summaries))
+            
+            historical_results_raw = await asyncio.gather(*historical_tasks, return_exceptions=True)
+            
+            # Convert exceptions to None and log them
+            historical_results = {}
+            for i, result in enumerate(historical_results_raw):
+                if isinstance(result, Exception):
+                    logger.warning(f"Historical summary failed for user {user_ids[i]}: {result}")
+                    span.record_exception(result)
+                    historical_results[user_ids[i]] = None
+                else:
+                    historical_results[user_ids[i]] = result
+            
+            return historical_results
+
+    async def _create_combined_memories(self, guild_id: int, user_ids: list[int], daily_summaries_by_date: dict[date, dict[int, str]], historical_summaries: dict[int, str | None]) -> dict[int, str | None]:
+        """Create combined memories for all users by merging facts, current day, and historical summaries."""
+        async with self._telemetry.async_create_span("create_combined_memories") as span:
+            # Find today (most recent date in daily_summaries_by_date)
+            if not daily_summaries_by_date:
+                # If no daily summaries available, use current date
+                today = datetime.now(timezone.utc).date()
+            else:
+                today = max(daily_summaries_by_date.keys())
+            
+            merge_tasks = []
+            for user_id in user_ids:
+                # Get facts (fast DB operation)
+                facts = await self._store.get_user_facts(guild_id, user_id)
+                historical_summary = historical_summaries.get(user_id)
+                current_day_summary = daily_summaries_by_date[today].get(user_id)
+                
+                # Add merge task
+                merge_tasks.append(
+                    self._create_user_memory(guild_id, user_id, facts, current_day_summary, historical_summary)
+                )
+            
+            # Concurrently merge contexts for all users
+            memories = await asyncio.gather(*merge_tasks)
+            
+            # Build result dictionary
+            result = {}
+            for user_id, memory in zip(user_ids, memories):
+                result[user_id] = memory
+            
+            return result
+
+    async def _create_user_memory(self, guild_id: int, user_id: int, facts: str | None, 
+                                 current_day: str | None, historical: str | None) -> str | None:
+        """Process memory for a single user."""
+        # If no memories exist at all, return None
+        if not facts and not current_day and not historical:
+            return None
+
+        # If only one type exists, return it directly
+        if facts and not current_day and not historical:
+            return facts
+        if current_day and not facts and not historical:
+            return current_day
+        if historical and not facts and not current_day:
+            return historical
+            
+        # Multiple sources exist - try to merge them with AI, fall back to facts if it fails
+        try:
+            merged = await self._merge_context(guild_id, user_id, facts, current_day, historical)
+            return merged
+        except Exception as e:
+            logger.warning(f"Failed to merge context for user {user_id} in guild {guild_id}: {e}", exc_info=True)
+            # Fall back to facts if available, otherwise return what we have
+            if facts:
                 return facts
-            if current_day_summary and not facts and not historical_summary:
-                return current_day_summary
-            if historical_summary and not facts and not current_day_summary:
-                return historical_summary
-                
-            # Multiple sources exist - try to merge them with AI, fall back to facts if it fails
-            try:
-                merged = await self._merge_context(guild_id, user_id, facts, current_day_summary, historical_summary)
-                return merged
-            except Exception as e:
-                logger.warning(f"Failed to merge context for user {user_id} in guild {guild_id}: {e}", exc_info=True)
-                span.record_exception(e)
-                # Fall back to facts if available, otherwise return what we have
-                if facts:
-                    return facts
-                elif current_day_summary:
-                    return current_day_summary
-                elif historical_summary:
-                    return historical_summary
-                return None
+            elif current_day:
+                return current_day
+            elif historical:
+                return historical
+            return None
 
-    async def _generate_daily_summaries_batch(self, guild_id: int, for_date: date) -> dict[int, str]:
+    async def _daily_summary(self, guild_id: int, for_date: date) -> dict[int, str]:
+        """Get daily summaries for all users on a given date with smart caching."""
+        async with self._telemetry.async_create_span("daily_summary") as span:
+            span.set_attribute("guild_id", guild_id)
+            span.set_attribute("for_date", str(for_date))
+            
+            # Determine if this is current day or historical
+            current_date = datetime.now(timezone.utc).date()
+            is_current_day = for_date == current_date
+            
+            # Use appropriate cache based on date type
+            if is_current_day:
+                cache = self._current_day_batch_cache
+            else:
+                cache = self._closed_day_batch_cache
+            
+            cache_key = (guild_id, for_date)
+            
+            # Check cache first
+            if cache_key in cache:
+                span.set_attribute("cache_hit", True)
+                return cache[cache_key]
+            
+            span.set_attribute("cache_hit", False)
+            
+            # Generate batch summaries and cache the result
+            batch_summaries = await self._create_daily_summaries(guild_id, for_date)
+            cache[cache_key] = batch_summaries
+            
+            return batch_summaries
+
+    async def _create_week_summary(self, daily_summaries: dict[date, str]) -> str | None:
+        """Build historical summary from daily summaries dictionary."""
+        async with self._telemetry.async_create_span("create_week_summary") as span:
+            if not daily_summaries:
+                return None
+                
+            # Create cache key from hash of all summary strings
+            summaries_concat = "".join(daily_summaries.values())
+            cache_key = hashlib.md5(summaries_concat.encode()).hexdigest()
+            
+            if cache_key in self._week_summary_cache:
+                span.set_attribute("cache_hit", True)
+                return self._week_summary_cache[cache_key]
+            
+            span.set_attribute("cache_hit", False)
+            span.set_attribute("daily_summaries_count", len(daily_summaries))
+            
+            # Format summaries for prompt
+            daily_summary_blocks = []
+            dates = sorted(daily_summaries.keys(), reverse=True)  # Most recent first
+            for date in dates:
+                summary = daily_summaries[date]
+                daily_summary_blocks.append(f"<daily_summary>\n<date>{date}</date>\n<summary>{summary}</summary>\n</daily_summary>")
+            
+            # Create date range string
+            date_range = f"{min(dates)} to {max(dates)}" if len(dates) > 1 else str(dates[0])
+            
+            # Create structured prompt with XML data
+            structured_prompt = f"""{SUMMARIZE_HISTORICAL_PROMPT}
+
+<date_range>{date_range}</date_range>
+<daily_summaries>
+{"\\n".join(daily_summary_blocks)}
+</daily_summaries>"""
+            
+            response = await self._gemma_client.generate_content(
+                message=structured_prompt,
+                response_schema=MemoryContext,
+                temperature=0
+            )
+            historical_summary = response.context
+
+            self._week_summary_cache[cache_key] = historical_summary
+            return historical_summary
+
+    async def _create_daily_summaries(self, guild_id: int, for_date: date) -> dict[int, str]:
         """Generate daily summaries for all active users in a single API call. Pure generation method - no caching."""
-        async with self._telemetry.async_create_span("generate_daily_summaries_batch") as span:
+        async with self._telemetry.async_create_span("create_daily_summaries") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
             
@@ -191,112 +357,6 @@ class MemoryManager:
             # Convert list of UserSummary objects to dict[int, str]
             summaries_dict = {user_summary.user_id: user_summary.summary for user_summary in response.summaries}
             return summaries_dict
-
-
-    async def _get_current_day_summary(self, guild_id: int, user_id: int, for_date: date) -> str | None:
-        """Get current day summary with 1-hour TTL caching using hour buckets."""
-        async with self._telemetry.async_create_span("get_current_day_summary") as span:
-            span.set_attribute("guild_id", guild_id)
-            span.set_attribute("user_id", user_id)
-            span.set_attribute("for_date", str(for_date))
-            
-            current_hour = datetime.now(timezone.utc).hour
-            hour_bucket = f"{for_date}-{current_hour:02d}"
-            batch_cache_key = (guild_id, hour_bucket)
-            
-            # Check batch cache
-            if batch_cache_key in self._current_day_batch_cache:
-                span.set_attribute("cache_hit", True)
-                batch_summaries = self._current_day_batch_cache[batch_cache_key]
-            else:
-                span.set_attribute("cache_hit", False)
-                # Generate batch summaries and cache the entire result
-                batch_summaries = await self._generate_daily_summaries_batch(guild_id, for_date)
-                self._current_day_batch_cache[batch_cache_key] = batch_summaries
-            
-            # Extract this user's summary from batch
-            summary = batch_summaries.get(user_id)
-            return summary
-
-    async def _get_historical_daily_summary(self, guild_id: int, user_id: int, for_date: date) -> str | None:
-        """Get historical daily summary with permanent LRU caching."""
-        async with self._telemetry.async_create_span("get_historical_daily_summary") as span:
-            span.set_attribute("guild_id", guild_id)
-            span.set_attribute("user_id", user_id)
-            span.set_attribute("for_date", str(for_date))
-            
-            batch_cache_key = (guild_id, for_date)
-            
-            # Check batch cache
-            if batch_cache_key in self._daily_summaries_batch_cache:
-                span.set_attribute("cache_hit", True)
-                batch_summaries = self._daily_summaries_batch_cache[batch_cache_key]
-            else:
-                span.set_attribute("cache_hit", False)
-                # Generate batch summaries and cache the entire result
-                batch_summaries = await self._generate_daily_summaries_batch(guild_id, for_date)
-                self._daily_summaries_batch_cache[batch_cache_key] = batch_summaries
-            
-            # Extract this user's summary from batch
-            summary = batch_summaries.get(user_id)
-            return summary
-
-    async def _get_historical_summary(self, guild_id: int, user_id: int, current_date: date) -> str | None:
-        """Get historical summary for days 2-7 with permanent LRU caching."""
-        async with self._telemetry.async_create_span("get_historical_summary") as span:
-            span.set_attribute("guild_id", guild_id)
-            span.set_attribute("user_id", user_id)
-            span.set_attribute("current_date", str(current_date))
-            
-            # Historical end date is day 2 (yesterday relative to current_date)
-            historical_end_date = current_date - timedelta(days=1)
-            cache_key = (guild_id, user_id, historical_end_date)
-            
-            if cache_key in self._historical_summary_cache:
-                span.set_attribute("cache_hit", True)
-                return self._historical_summary_cache[cache_key]
-            
-            span.set_attribute("cache_hit", False)
-            daily_summaries = []
-            start_date = None
-            end_date = None
-            
-            # Get days 2-7 (6 days total, starting from yesterday)
-            for i in range(6):
-                target_date = historical_end_date - timedelta(days=i)
-                daily_summary = await self._get_historical_daily_summary(guild_id, user_id, target_date)
-                if daily_summary:
-                    daily_summaries.append(f"<daily_summary>\n<date>{target_date}</date>\n<summary>{daily_summary}</summary>\n</daily_summary>")
-                    if start_date is None:
-                        start_date = target_date
-                    end_date = target_date
-
-            span.set_attribute("daily_summaries_count", len(daily_summaries))
-            if not daily_summaries:
-                return None
-
-            user_nick = await self._user_resolver.get_display_name(guild_id, user_id)
-            # Create date range string
-            date_range = f"{end_date} to {start_date}" if start_date and end_date else "recent days"
-            
-            # Create structured prompt with XML data
-            structured_prompt = f"""{SUMMARIZE_HISTORICAL_PROMPT}
-
-<user_name>{user_nick}</user_name>
-<date_range>{date_range}</date_range>
-<daily_summaries>
-{"\n".join(daily_summaries)}
-</daily_summaries>"""
-            
-            response = await self._gemma_client.generate_content(
-                message=structured_prompt,
-                response_schema=MemoryContext,
-                temperature=0
-            )
-            historical_summary = response.context
-
-            self._historical_summary_cache[cache_key] = historical_summary
-            return historical_summary
 
     async def _merge_context(self, guild_id: int, user_id: int, facts: str | None, current_day: str | None, historical: str | None) -> str:
         """Merge factual memory with current day and historical summaries using AI."""
