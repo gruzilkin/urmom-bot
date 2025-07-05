@@ -54,7 +54,6 @@ class FactHandler:
         
         For fact_content conversion to third-person perspective:
         - Use appropriate third person forms for the language when gender is unknown
-        - **IMPORTANT: Preserve the original language of the fact content. Only change the perspective (first/second person → third person), do NOT translate the language.**
         
         Examples:
         - "Bot remember that gruzilkin is Sergey" → operation: "remember", user_mention: "gruzilkin", fact_content: "He is Sergey"
