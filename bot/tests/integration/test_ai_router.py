@@ -15,6 +15,7 @@ from gemma_client import GemmaClient
 from general_query_generator import GeneralQueryGenerator
 from famous_person_generator import FamousPersonGenerator
 from fact_handler import FactHandler
+from language_detector import LanguageDetector
 from tests.null_telemetry import NullTelemetry
 
 load_dotenv()
@@ -57,10 +58,14 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         )
         self.fact_handler = FactHandler(ai_client=None, store=None, telemetry=self.telemetry, user_resolver=mock_user_resolver)
 
+        # The language detector is a required dependency
+        self.language_detector = LanguageDetector(ai_client=self.gemma_client, telemetry=self.telemetry)
+
         # The component under test
         self.router = AiRouter(
             ai_client=self.gemma_client,
             telemetry=self.telemetry,
+            language_detector=self.language_detector,
             famous_generator=self.famous_generator,
             general_generator=self.general_generator,
             fact_handler=self.fact_handler
@@ -132,7 +137,8 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(params)
         self.assertEqual(params.operation, "forget")
         self.assertEqual(params.user_mention, "gruzilkin")
-        self.assertIn("they like pizza", params.fact_content)
+        self.assertIn("pizza", params.fact_content.lower())
+        self.assertIn("like", params.fact_content.lower())
 
 
 if __name__ == '__main__':

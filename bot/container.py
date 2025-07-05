@@ -13,6 +13,7 @@ from response_summarizer import ResponseSummarizer
 from fact_handler import FactHandler
 from user_resolver import UserResolver
 from memory_manager import MemoryManager
+from language_detector import LanguageDetector
 from config import AppConfig
 
 class Container:
@@ -68,10 +69,17 @@ class Container:
         # Create response summarizer for handling long responses
         self.response_summarizer = ResponseSummarizer(self.gemma, self.telemetry)
 
+        # Initialize language detector early since it's needed by multiple components
+        self.language_detector = LanguageDetector(
+            ai_client=self.gemma,
+            telemetry=self.telemetry
+        )
+
         self.joke_generator = JokeGenerator(
             self.grok, 
             self.store, 
-            self.telemetry, 
+            self.telemetry,
+            self.language_detector,
             sample_count=self.config.sample_jokes_count
         )
 
@@ -112,6 +120,7 @@ class Container:
         self.ai_router = AiRouter(
             self.ai_client,
             self.telemetry,
+            self.language_detector,
             self.famous_person_generator,
             self.general_query_generator,
             self.fact_handler

@@ -104,7 +104,7 @@ class FamousPersonGenerator:
             logger.info(f"Detection result: '{person_name}'")
             return person_name
 
-    async def generate_famous_person_response(self, extracted_message: str, person: str, conversation_fetcher, guild_id: int) -> str:
+    async def generate_famous_person_response(self, extracted_message: str, person: str, language_name: str, conversation_fetcher, guild_id: int) -> str:
         """
         Generate a famous person response. Returns the response string.
         
@@ -139,6 +139,8 @@ class FamousPersonGenerator:
             The user specifically asked: '{extracted_message}'
             Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions.
             
+            **Always respond in {language_name} unless the user specifically requests a different language or translation.**
+            
             Keep responses under 2000 characters due to Discord's message limit but no need to report on the length of the response.
             
             Here is the conversation context:
@@ -167,7 +169,7 @@ class FamousPersonGenerator:
         Handle a famous person request using the provided parameters.
         
         Args:
-            params (FamousParams): Parameters containing the famous person's name
+            params (FamousParams): Parameters containing the famous person's name and language
             extracted_message (str): The user's message with bot mentions removed
             conversation_fetcher: Parameterless async function that returns conversation history
             guild_id (int): The guild ID for user name resolution
@@ -175,6 +177,6 @@ class FamousPersonGenerator:
         Returns:
             str: The response string ready to be sent by the caller
         """
-        return await self.generate_famous_person_response(extracted_message, params.famous_person, conversation_fetcher, guild_id)
+        return await self.generate_famous_person_response(extracted_message, params.famous_person, params.language_name, conversation_fetcher, guild_id)
 
 

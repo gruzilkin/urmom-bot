@@ -64,7 +64,7 @@ class TestUserResolver(UserResolver):
         # Replace Discord mentions <@123456> with names
         return re.sub(r'<@(\d+)>', replace_mention, text)
     
-    def resolve_user_id(self, user_mention: str) -> int | None:
+    async def resolve_user_id(self, guild_id: int, user_mention: str) -> int | None:
         """Resolve physicist name or mention to user ID."""
         # Handle Discord mentions
         if user_mention.startswith('<@') and user_mention.endswith('>'):

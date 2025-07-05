@@ -75,8 +75,11 @@ class GeneralQueryGenerator:
         * Goal: Produce a clean, direct query for the AI assistant. The user's message will contain the placeholder 'BOT' to refer to the assistant.
         * Rule 1: Rephrase the query from the BOT's perspective. Convert the user's request into a direct, second-person command or question.
         * Rule 2: Remove routing instructions like `use gemini`, `be creative`, or temperature hints.
+        * Rule 3: Keep the query in the original language of the user's message - do not translate.
         * Examples:
           - "BOT, what is the capital of France?" → "what is the capital of France?"
+          - "БОТ, объясни квантовую физику" → "объясни квантовую физику"
+          - "Bot, utilise gemini pour expliquer ceci" → "expliquer ceci"
           - "what does BOT think about this?" → "what do you think about this?"
           - "let's ask BOT to investigate this" → "investigate this"
           - "ask grok to write a poem about cats" → "write a poem about cats"
@@ -168,6 +171,7 @@ Guidelines:
 - Use the conversation context to better understand what the user is asking about
 - If the question relates to something mentioned in the conversation, reference it appropriately
 - For complex topics, provide a brief summary with key points rather than detailed explanations
+- **Always respond in {params.language_name} unless the user specifically requests a different language or translation.**
 
 Memory Usage:
 - Use the provided memories naturally in your responses, as if you simply remember these things about people

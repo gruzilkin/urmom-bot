@@ -2,7 +2,7 @@ import logging
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from store import Store
-from langdetect import detect, LangDetectException
+from language_detector import LanguageDetector
 from typing import Dict
 from opentelemetry.trace import SpanKind
 
@@ -11,11 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 class JokeGenerator:
-    def __init__(self, ai_client: AIClient, store: Store, telemetry: Telemetry, sample_count: int = 10):  # Added type annotation
+    def __init__(self, ai_client: AIClient, store: Store, telemetry: Telemetry, language_detector: LanguageDetector, sample_count: int = 10):
         self.ai_client = ai_client
         self.store = store
         self.sample_count = sample_count
         self.telemetry = telemetry
+        self.language_detector = language_detector
         self._joke_cache: Dict[int, bool] = {}  # message_id -> bool cache
         self.base_prompt = """You are a chatbot that receives a message and you should generate a ur mom joke.
         Response should be fully in the language of the user message which includes translating "your mom" or "ur mom" into the user's language. 
@@ -86,16 +87,9 @@ Is it actually a joke? Reply only yes or no."""
         Save a joke to the store with language detection.
         """
         async with self.telemetry.async_create_span("save_joke") as span:
-            # Detect languages with "unknown" fallback
-            try:
-                source_lang = detect(source_message_content)
-            except LangDetectException:
-                source_lang = 'unknown'
-                
-            try:
-                joke_lang = detect(joke_message_content)
-            except LangDetectException:
-                joke_lang = 'unknown'
+            # Detect languages using the language detection service
+            source_lang = await self.language_detector.detect_language(source_message_content)
+            joke_lang = await self.language_detector.detect_language(joke_message_content)
             
             await self.store.save(
                 source_message_id=source_message_id,

@@ -3,6 +3,7 @@ from typing import Union, Optional, Tuple
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import FamousParams, GeneralParams, FactParams, RouteSelection
+from language_detector import LanguageDetector
 from pydantic import BaseModel, Field
 from typing import Literal
 
@@ -14,9 +15,11 @@ logger = logging.getLogger(__name__)
 
 class AiRouter:
     def __init__(self, ai_client: AIClient, telemetry: Telemetry, 
+                 language_detector: LanguageDetector,
                  famous_generator, general_generator, fact_handler):
         self.ai_client = ai_client
         self.telemetry = telemetry
+        self.language_detector = language_detector
         self.famous_generator = famous_generator
         self.general_generator = general_generator
         self.fact_handler = fact_handler
@@ -31,11 +34,18 @@ class AiRouter:
 <system_instructions>
 Analyze the user message and decide how to route it. Choose exactly one route.
 
+**IMPORTANT: The user message can be in ANY language (English, Russian, French, Japanese, etc.). 
+Route based on the SEMANTIC MEANING and INTENT of the message, not specific keywords or language.**
+
 Instructions:
-1. Read the user message carefully.
-2. Determine which route best matches the intent.
-3. ALWAYS provide a brief (1-2 sentence) reason for your decision.
-4. Focus ONLY on route selection - parameter extraction happens later.
+1. Read the user message carefully, understanding its meaning regardless of language.
+2. Determine which route best matches the intent semantically.
+3. Consider that all route types can be expressed in any language:
+   - Famous person requests: "What would X say?" / "Что бы сказал X?" / "¿Qué diría X?"
+   - Memory operations: "Remember that..." / "Запомни что..." / "Recuerda que..."
+   - General queries: "Explain..." / "Объясни..." / "Explica..."
+4. ALWAYS provide a brief (1-2 sentence) reason for your decision.
+5. Focus ONLY on route selection - parameter extraction happens later.
 </system_instructions>
 
 <route_definitions>
@@ -94,12 +104,12 @@ NONE: For everything else
                 temperature=0.0,  # Deterministic parameter extraction
                 response_schema=param_schema
             )
-            
+                
             logger.info(f"Extracted parameters for {route}: {params}")
             return params
     
     async def route_request(self, message: str) -> Tuple[str, Union[FamousParams, GeneralParams, FactParams, None]]:
-        """Route a message using 2-tier approach: route selection then parameter extraction."""
+        """Route a message using 2-tier approach: route selection, language detection, then parameter extraction."""
         async with self.telemetry.async_create_span("route_request") as span:
             span.set_attribute("message", message)
             
@@ -118,8 +128,22 @@ NONE: For everything else
             span.set_attribute("reason", route_selection.reason)
             logger.info(f"Route selection: {route_selection.route}, Reason: {route_selection.reason}")
             
+            # Language detection (between route selection and parameter extraction)
+            language_code = await self.language_detector.detect_language(message)
+            language_name = await self.language_detector.get_language_name(language_code)
+            span.set_attribute("language_code", language_code)
+            span.set_attribute("language_name", language_name)
+            logger.info(f"Detected language: {language_code} ({language_name})")
+            
             # Tier 2: Parameter extraction (if needed)
             params = await self._extract_parameters(route_selection.route, message)
+            
+            # Add language information to the extracted parameters
+            if params:
+                if hasattr(params, 'language_code'):
+                    params.language_code = language_code
+                if hasattr(params, 'language_name'):
+                    params.language_name = language_name
             
             # Add parameter details to telemetry
             if params:
