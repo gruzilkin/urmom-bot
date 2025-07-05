@@ -6,6 +6,7 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 """
 
 import os
+import re
 import unittest
 from unittest.mock import Mock, AsyncMock
 
@@ -114,7 +115,9 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         params = GeneralParams(
             ai_backend="gemini_flash",
             temperature=0.5,
-            cleaned_query="What do you know about pets from our conversation?"
+            cleaned_query="What do you know about pets from our conversation?",
+            language_code="en",
+            language_name="English"
         )
         
         result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
@@ -135,7 +138,9 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         params = GeneralParams(
             ai_backend="gemini_flash",
             temperature=0.3,
-            cleaned_query="Write a detailed essay about climate change, its causes, effects, and solutions"
+            cleaned_query="Write a detailed essay about climate change, its causes, effects, and solutions",
+            language_code="en",
+            language_name="English"
         )
         
         result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
@@ -144,6 +149,29 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(len(result), 0)
         # Verify response is reasonably sized for Discord chat (Discord limit is 2000 chars)
         self.assertLessEqual(len(result), 2000, f"Response should be under 2000 characters but was {len(result)}: {result}")
+    
+    async def test_translation_request_produces_target_language_response(self):
+        """Test that translation requests produce responses in the target language."""
+        # Mock conversation fetcher
+        async def mock_conversation_fetcher():
+            return []
+        
+        params = GeneralParams(
+            ai_backend="gemini_flash",
+            temperature=0.3,
+            cleaned_query="translate 'Hello, how are you?' into Russian",
+            language_code="en",
+            language_name="English"
+        )
+        
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
+        
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+        
+        # Check if response contains Cyrillic characters (Russian)
+        contains_cyrillic = bool(re.search(r'[а-яё]', result.lower()))
+        self.assertTrue(contains_cyrillic, f"Response should contain Russian text but got: {result}")
 
 
 if __name__ == '__main__':
