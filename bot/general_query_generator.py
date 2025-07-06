@@ -60,9 +60,9 @@ class GeneralQueryGenerator:
         Extract parameters for a general AI query request.
         
         ai_backend selection:
-        * gemini_flash: General questions, explanations, factual information, real-time news/current events
+        * gemini_flash: General questions, explanations, real-time news/current events
         * grok: Creative tasks, uncensored content, wild requests
-        * claude: Coding help, technical explanations, detailed analysis, complex reasoning
+        * claude: Coding help, technical explanations, detailed analysis, complex reasoning, fact-checking and verification questions
         * gemma: Do not select unless explicitly requested
         * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
         
