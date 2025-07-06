@@ -15,7 +15,6 @@ class TestAppConfig(unittest.TestCase):
             postgres_user="test",
             postgres_password="test",
             postgres_db="test",
-            ai_provider="GROK",
             gemini_api_key="test-key",
             gemini_flash_model="gemini-1.5-flash",
             gemini_gemma_model="gemini-2.0-flash-exp",
@@ -28,28 +27,7 @@ class TestAppConfig(unittest.TestCase):
         
         self.assertEqual(config.postgres_host, "localhost")
         self.assertEqual(config.postgres_port, 5432)
-        self.assertEqual(config.ai_provider, "GROK")
         
-    def test_ai_provider_validation(self):
-        """Test that invalid AI provider raises ValueError."""
-        with self.assertRaises(ValueError) as cm:
-            AppConfig(
-                postgres_host="localhost",
-                postgres_port=5432,
-                postgres_user="test",
-                postgres_password="test",
-                postgres_db="test",
-                ai_provider="INVALID",
-                gemini_api_key="test-key",
-                gemini_flash_model="gemini-1.5-flash",
-                gemini_gemma_model="gemini-2.0-flash-exp",
-                grok_api_key="test-grok-key",
-                grok_model="grok-beta",
-                discord_token="test-token",
-                sample_jokes_count=5,
-                sample_jokes_coef=1.0
-            )
-        self.assertIn("AI_PROVIDER must be one of", str(cm.exception))
     
     def test_port_validation(self):
         """Test that invalid port raises ValueError."""
@@ -60,7 +38,6 @@ class TestAppConfig(unittest.TestCase):
                 postgres_user="test",
                 postgres_password="test",
                 postgres_db="test",
-                ai_provider="GROK",
                 gemini_api_key="test-key",
                 gemini_flash_model="gemini-1.5-flash",
                 gemini_gemma_model="gemini-2.0-flash-exp",
@@ -81,7 +58,6 @@ class TestAppConfig(unittest.TestCase):
                 postgres_user="test",
                 postgres_password="test",
                 postgres_db="test",
-                ai_provider="GROK",
                 gemini_api_key="test-key",
                 gemini_flash_model="gemini-1.5-flash",
                 gemini_gemma_model="gemini-2.0-flash-exp",
@@ -100,7 +76,6 @@ class TestAppConfig(unittest.TestCase):
         'POSTGRES_USER': 'test-user',
         'POSTGRES_PASSWORD': 'test-pass',
         'POSTGRES_DB': 'test-db',
-        'AI_PROVIDER': 'flash',
         'GEMINI_API_KEY': 'test-gemini-key',
         'GEMINI_FLASH_MODEL': 'test-flash-model',
         'GEMINI_GEMMA_MODEL': 'test-gemma-model',
@@ -121,7 +96,6 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(config.postgres_user, 'test-user')
         self.assertEqual(config.postgres_password, 'test-pass')
         self.assertEqual(config.postgres_db, 'test-db')
-        self.assertEqual(config.ai_provider, 'FLASH')  # Should be uppercase
         self.assertEqual(config.gemini_api_key, 'test-gemini-key')
         self.assertEqual(config.gemini_flash_model, 'test-flash-model')
         self.assertEqual(config.gemini_gemma_model, 'test-gemma-model')

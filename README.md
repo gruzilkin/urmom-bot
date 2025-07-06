@@ -3,10 +3,14 @@
 A Discord bot that responds with "ur mom" jokes when messages are reacted to with a clown emoji (🤡).
 
 ## Features
-- Generates AI-powered "ur mom" jokes in response to 🤡 emoji reactions
-- Creates inappropriate culturally-themed jokes when triggered by country flag emoji reactions
-- Impersonates famous people with AI-generated responses in their unique style and personality
-- Powered by Google's Gemini (free) and Grok (paid) for enhanced joke generation
+- **Memory System**: Remembers facts about users and provides personalized responses
+- **General AI Assistant**: Answers questions as any AI does
+- **Celebrity Impersonation**: Generates responses as famous people with their unique style and personality
+- **AI-Powered Jokes**: Creates "ur mom" jokes and culturally-themed humor based on reactions
+- **Multi-Language Support**: Works in any language (English, Russian, French, Japanese, etc.)
+- **Multiple AI Providers**: Uses different AI models for different tasks
+  - Gemini Flash: General questions and information retrieval
+  - Grok: Creative tasks, jokes, and celebrity impersonation
 
 ## Adaptive Learning
 The bot features an adaptive learning system that improves its joke generation over time:
@@ -28,26 +32,25 @@ The learning system prioritizes jokes with higher engagement (more reactions) wh
 Create a `.env` file in the root directory with the following variables:
 
 ```env
-# Select AI Provider (Required)
-AI_PROVIDER=GEMINI                        # Choose either GEMINI or GROK
-
 # Discord Configuration (Required)
 DISCORD_TOKEN=your_discord_bot_token      # Get from Discord Developer Portal
 
-# Gemini Configuration (Required if AI_PROVIDER=GEMINI)
+# Gemini/Gemma Configuration (Required)
 GEMINI_API_KEY=your_gemini_api_key        # Get from Google AI Studio
-GEMINI_TEMPERATURE=0.7                    # Value between 0-2, higher = more creative
-GEMINI_MODEL=gemini-2.0-flash-thinking-exp-01-21  # Latest experimental model for best results
+GEMINI_FLASH_MODEL=gemini-2.5-flash      # Flash model name
+GEMINI_GEMMA_MODEL=gemma-3-27b-it        # Gemma model name
 
-# Grok Configuration (Required if AI_PROVIDER=GROK)
+# Grok Configuration (Required)
 GROK_API_KEY=your_grok_api_key            # Get from xAI platform
-GROK_TEMPERATURE=0.7                      # Value between 0-2, higher = more creative
-GROK_MODEL=grok-2-1212                    # Latest model version
+GROK_MODEL=grok-3-mini                    # Grok model name
 ```
 
 ### Where to get the keys:
 - Discord token: [Discord Developer Portal](https://discord.com/developers/applications)
 - Gemini API key: [Google AI Studio](https://aistudio.google.com)
+- Grok API key: [xAI Platform](https://console.x.ai/)
+
+**Note**: All AI provider keys are required for full functionality.
 
 ### Required Bot Permissions
 1. In Discord Developer Portal:
@@ -69,6 +72,11 @@ To view logs:
 docker compose logs -f
 ```
 
+## Memory Commands
+The bot can remember and forget facts about users:
+- `@urmom-bot remember that @John likes pizza` - Store a fact about a user
+- `@urmom-bot forget that @John likes pizza` - Remove a specific fact
+
 ## Bot Configuration
 The following commands are available:
 - `@urmom-bot help` - Show info on available commands
@@ -80,11 +88,20 @@ The following commands are available:
 
 ## Bot Behavior
 What can this bot do?
+
+### General AI Assistant
+- **Answer any question**: `@urmom-bot explain quantum physics`
+- **Query memories**: `@urmom-bot what do you remember about John?`
+- **Choose AI backend**: `@urmom-bot ask grok about creative writing` or `@urmom-bot have claude explain this code`
+
+### Celebrity Impersonation
 - Respond as famous personalities with `@urmom-bot what would <famous person> say?`
   - Examples:
     - `@urmom-bot what would Jesus say if we could rap like Eminen?`
     - `@urmom-bot what would Trump say if he was a software developer?`
     - `@urmom-bot Что бы сказал Гоблин если бы он делал свой перевод?`
+
+### Automated Features
 - Generate "ur mom" jokes when someone reacts to a message with 🤡
 - Create country-specific jokes when someone uses a flag emoji reaction
 - Archive all jokes to a dedicated channel of your choice

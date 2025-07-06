@@ -64,7 +64,6 @@ class Container:
             telemetry=self.telemetry
         )
 
-        self.ai_client = self._get_ai_client()
 
         # Create response summarizer for handling long responses
         self.response_summarizer = ResponseSummarizer(self.gemma, self.telemetry)
@@ -118,7 +117,7 @@ class Container:
         )
         
         self.ai_router = AiRouter(
-            self.ai_client,
+            self.gemma,
             self.telemetry,
             self.language_detector,
             self.famous_person_generator,
@@ -126,20 +125,8 @@ class Container:
             self.fact_handler
         )
 
-        self.country_resolver = CountryResolver(self.ai_client, self.telemetry)
+        self.country_resolver = CountryResolver(self.gemma, self.telemetry)
 
-    def _get_ai_client(self):
-        if self.config.ai_provider == "FLASH":
-            return self.gemini_flash
-        elif self.config.ai_provider == "GEMMA":
-            return self.gemma
-        elif self.config.ai_provider == "GROK":
-            return self.grok
-        elif self.config.ai_provider == "CLAUDE":
-            return self.claude
-        else:
-            # This should not happen due to Pydantic validation, but keeping for safety
-            raise ValueError(f"Invalid AI_PROVIDER: {self.config.ai_provider}")
 
 # Create a single instance to be imported by other modules
 container = Container()

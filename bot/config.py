@@ -13,8 +13,6 @@ class AppConfig(BaseSettings):
     postgres_password: str = Field(env="POSTGRES_PASSWORD")
     postgres_db: str = Field(env="POSTGRES_DB")
     
-    # AI Provider configuration
-    ai_provider: str = Field(env="AI_PROVIDER")
     
     # Gemini/Gemma configuration
     gemini_api_key: str = Field(env="GEMINI_API_KEY")
@@ -45,14 +43,6 @@ class AppConfig(BaseSettings):
         "extra": "ignore"  # Ignore extra environment variables
     }
     
-    @field_validator("ai_provider")
-    @classmethod
-    def validate_ai_provider(cls, v: str) -> str:
-        """Validate AI provider is one of the supported options."""
-        valid_providers = {"FLASH", "GEMMA", "GROK", "CLAUDE"}
-        if v.upper() not in valid_providers:
-            raise ValueError(f"AI_PROVIDER must be one of {valid_providers}")
-        return v.upper()
     
     @field_validator("postgres_port")
     @classmethod
