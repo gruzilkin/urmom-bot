@@ -1,22 +1,17 @@
 """
-Language detection service with two-tier detection strategy.
+Language detection service using Gemma LLM for accurate detection.
 
-Implements hybrid detection using langdetect for high-confidence cases
-and LLM fallback for ambiguous scenarios.
+Uses AI-powered detection for all text lengths, optimized for Discord messages.
 """
 
 import logging
 import re
 from typing import Optional
-from langdetect import detect, detect_langs, LangDetectException, DetectorFactory
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
-
-# Set seed for deterministic results
-DetectorFactory.seed = 0
 
 
 class LanguageCode(BaseModel):
@@ -30,7 +25,7 @@ class LanguageName(BaseModel):
 
 
 class LanguageDetector:
-    """Two-tier language detection with offline and LLM fallback."""
+    """AI-powered language detection using Gemma LLM for accurate results."""
     
     def __init__(self, ai_client: AIClient, telemetry: Telemetry):
         self.ai_client = ai_client
@@ -89,10 +84,9 @@ IMPORTANT INSTRUCTIONS:
 
     async def detect_language(self, text: str) -> str:
         """
-        Detect language using a hybrid approach with a short-text bypass.
+        Detect language using Gemma LLM for accurate results on all text lengths.
 
-        - For text < 15 chars, uses LLM directly.
-        - For longer text, uses high-confidence offline detection first, then LLM fallback.
+        Uses AI-powered detection optimized for Discord messages and short text.
 
         Args:
             text: Input text to analyze.
@@ -105,20 +99,6 @@ IMPORTANT INSTRUCTIONS:
 
             if not text or not text.strip():
                 raise ValueError("Text cannot be empty or whitespace-only")
-
-            if len(text) > 15:
-                try:
-                    lang_probs = detect_langs(text)
-                    if lang_probs:
-                        result = lang_probs[0]
-                        if result.prob >= 0.95:
-                            span.set_attribute("confidence", result.prob)
-                            span.set_attribute("detection_method", "offline")
-                            span.set_attribute("detected_language", result.lang)
-                            return result.lang
-                except LangDetectException as e:
-                    logger.warning(f"Offline language detection failed: {e}", exc_info=True)
-                    span.record_exception(e)
 
             try:
                 detected_lang = await self._detect_language_with_llm(text)
