@@ -107,11 +107,15 @@ class GeneralQueryGenerator:
             span.set_attribute("user_count", len(user_ids))
             span.set_attribute("user_ids", str(sorted(user_ids)))
             
+            # Use new batch interface for concurrent processing
+            user_ids_list = list(user_ids)
+            memories_dict = await self.memory_manager.get_memories(guild_id, user_ids_list)
+            
             memory_blocks = []
-            for user_id in user_ids:
-                display_name = await self.user_resolver.get_display_name(guild_id, user_id)
-                memories = await self.memory_manager.get_memories(guild_id, user_id)
+            for user_id in user_ids_list:
+                memories = memories_dict.get(user_id)
                 if memories:
+                    display_name = await self.user_resolver.get_display_name(guild_id, user_id)
                     memory_block = f"""<memory>
 <name>{display_name}</name>
 <facts>{memories}</facts>

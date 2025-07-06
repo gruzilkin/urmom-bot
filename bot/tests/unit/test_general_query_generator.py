@@ -34,7 +34,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda text, guild_id: text)
         
         self.mock_memory_manager = Mock()
-        self.mock_memory_manager.get_memories = AsyncMock(return_value=None) # Default to no memories
+        self.mock_memory_manager.get_memories = AsyncMock(return_value={}) # Default to no memories (empty dict)
 
         self.telemetry = NullTelemetry()
         self.generator = GeneralQueryGenerator(

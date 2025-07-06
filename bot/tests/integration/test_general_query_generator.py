@@ -99,7 +99,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             telemetry=self.telemetry,
             store=self.mock_store,
             user_resolver=self.mock_user_resolver,
-            memory_manager=AsyncMock()
+            memory_manager=Mock(get_memories=AsyncMock(return_value={}))
         )
     
     async def test_handle_request_with_conversation_context(self):
