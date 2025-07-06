@@ -60,16 +60,9 @@ class GrokClient(AIClient):
 
             logger.info(f"Grok input messages: {messages}")
 
-            # Configure search parameters based on grounding flag
+            # Log unsupported features
             if enable_grounding:
-                extra_body = {
-                    "search_parameters": {
-                        "mode": "on"
-                    }
-                }
-                logger.info("[GROK] Grounding enabled with search mode: on")
-            else:
-                extra_body = None
+                logger.warning("Grounding is disabled for Grok")
 
             # Use provided temperature or fallback to instance temperature
             actual_temperature = temperature if temperature is not None else self.temperature
@@ -81,8 +74,7 @@ class GrokClient(AIClient):
                     model=self.model_name,
                     messages=messages,
                     temperature=actual_temperature,
-                    response_format=response_schema,
-                    extra_body=extra_body
+                    response_format=response_schema
                 )
                 
                 logger.info(f"Grok completion: {completion}")
@@ -96,8 +88,7 @@ class GrokClient(AIClient):
                 completion = self.model.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
-                    temperature=actual_temperature,
-                    extra_body=extra_body
+                    temperature=actual_temperature
                 )
 
                 logger.info(f"Grok completion: {completion}")
