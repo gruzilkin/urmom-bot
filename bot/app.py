@@ -9,7 +9,6 @@ import nextcord
 from goose3 import Goose
 
 from opentelemetry.trace import SpanKind, Status, StatusCode
-from opentelemetry import baggage
 
 from container import container  # Import the instance instead of the class
 from conversation_graph import ConversationGraphBuilder, ConversationMessage
@@ -53,9 +52,7 @@ async def on_ready() -> None:
 @bot.event
 async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
     async with container.telemetry.async_create_span("on_raw_reaction_add", kind=SpanKind.CONSUMER) as span:
-        guild_id = str(payload.guild_id) if payload.guild_id else "dm"
-        span.set_attribute("guild_id", guild_id)
-        baggage.set_baggage("guild_id", guild_id)
+        span.set_attribute("guild_id", str(payload.guild_id) if payload.guild_id else "dm")
         container.telemetry.increment_reaction_counter(payload)
         
         try:
@@ -80,9 +77,7 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
 @bot.event
 async def on_message(message: nextcord.Message):
     async with container.telemetry.async_create_span("on_message", kind=SpanKind.CONSUMER) as span:
-        guild_id = str(message.guild.id) if message.guild else "dm"
-        span.set_attribute("guild_id", guild_id)
-        baggage.set_baggage("guild_id", guild_id)
+        span.set_attribute("guild_id", str(message.guild.id) if message.guild else "dm")
         container.telemetry.increment_message_counter(message)
         
         # Ingest message into transient memory using materialized content
@@ -131,9 +126,7 @@ async def on_message(message: nextcord.Message):
 @bot.event
 async def on_message_edit(before: nextcord.Message, after: nextcord.Message):
     async with container.telemetry.async_create_span("on_message_edit", kind=SpanKind.CONSUMER) as span:
-        guild_id = str(after.guild.id) if after.guild else "dm"
-        span.set_attribute("guild_id", guild_id)
-        baggage.set_baggage("guild_id", guild_id)
+        span.set_attribute("guild_id", str(after.guild.id) if after.guild else "dm")
         # Ignore edits from bots
         if after.author.bot:
             return

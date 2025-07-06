@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import nextcord
 # OpenTelemetry imports
-from opentelemetry import metrics, trace, baggage
+from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.metrics import MeterProvider
@@ -275,10 +275,6 @@ class Telemetry:
             if attributes is None:
                 attributes = {}
 
-            # Add guild_id from baggage if available
-            guild_id = baggage.get_baggage("guild_id")
-            if guild_id:
-                attributes["guild_id"] = guild_id
 
             attributes = {k: v for k, v in attributes.items() if v is not None}
 
