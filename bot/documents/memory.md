@@ -92,30 +92,35 @@ class MemoryManager:
     async def ingest_message(self, guild_id: int, message: MessageNode) -> None:
         """Store message in chat_history table"""
     
-    async def get_memories(self, guild_id: int, user_id: int) -> str | None:
-        """Returns unified context for a user via 3-way merge with resilient fallback
+    async def get_memories(self, guild_id: int, user_ids: list[int]) -> dict[int, str | None]:
+        """Returns unified context for multiple users via concurrent 3-way merge with resilient fallback
         
         Combines: factual memory + current day summary + historical summary (days 2-7)
-        Returns: Single unified context string or None if no memories exist
+        Returns: Dictionary mapping user_id to unified context string or None if no memories exist
         
         Resilience guarantees:
         - Database facts always returned even if AI operations fail
         - Graceful fallback to partial context when AI quota exhausted
         - Best-effort approach ensures users get available memory data
+        - Concurrent processing for optimal performance
         
         All complex summarization pipeline happens internally with dual caching strategy.
         """
+    
+    async def get_memory(self, guild_id: int, user_id: int) -> str | None:
+        """Single-user wrapper around batch get_memories method for backward compatibility"""
 ```
 
 ### Internal Implementation ✅ IMPLEMENTED
 - **Message Storage**: Automatic ingestion to `chat_history` table
-- **Daily Summarization**: Gemma client for current day and historical day processing
-- **Historical Summary**: Gemma client for reasoning over days 2-7 with behavioral focus
+- **Concurrent Batch Processing**: Multiple users processed simultaneously with `asyncio.gather`
+- **Daily Summarization**: Gemini client for batch daily summaries across all users
+- **Historical Summary**: Gemma client for individual user reasoning over days 2-7 with behavioral focus
 - **3-Way Context Merging**: Gemma client intelligently combines facts + current day + historical
 - **Dual Caching Strategy**: TTLCache (1-hour) for current day, LRUCache for historical data
-- **Content-Based Hashing**: Cache keys use content hashes for final context merge
-- **Code Deduplication**: Shared daily summary generation with separate caching layers
-- **Daily Summaries Batch Cache**: LRU cache for historical daily summaries per guild/date
+- **Content-Based Hashing**: Cache keys use content hashes for both historical summaries and final context merge
+- **Exception Handling**: Graceful degradation with concurrent exception handling
+- **Daily Summaries Batch Cache**: Separate caches for current day (TTL) and historical days (LRU)
 
 ### AI Client Strategy (Cost-Optimized)
 - **Batch Daily Summaries (Gemini Flash)**: Multi-user daily summary generation using superior analysis capabilities
@@ -200,17 +205,18 @@ Context Merging (3-way merge):
 ## On-Demand Processing
 
 ### Context Assembly Pipeline
-1. **Retrieve Components**:
-   - User facts from `user_facts` table by user_id
-   - Raw messages from `chat_history` table for recent period
-   - Convert user IDs to nicknames only for LLM processing
-2. **Generate Transient Context**:
-   - Get current day summary (1-hour cache with hour buckets)
-   - Get historical summary (permanent LRU cache for days 2-7)
-   - Use content-based caching for optimal efficiency
-3. **AI Merge**: Create final context using `merge_context(facts, current_day, historical)`
-4. **Cache Result**: LRU cache stores final context
-5. **Inject Context**: Provide to conversation processors
+1. **Concurrent Daily Summary Fetching**:
+   - Fetch all daily summaries for all requested dates simultaneously using `asyncio.gather`
+   - Current day and historical days processed concurrently
+   - Exception handling ensures partial results don't block the entire operation
+2. **Batch Historical Summary Generation**:
+   - Generate historical summaries for all requested users concurrently
+   - Uses content-based hashing for efficient caching
+3. **Concurrent Context Merging**:
+   - Retrieve user facts from `user_facts` table for all users
+   - Merge facts + current day + historical summaries for all users simultaneously
+   - Content-based caching ensures optimal efficiency
+4. **Result Assembly**: Return dictionary mapping user_id to final context
 
 ### Memory Operations Integration
 - **AI Router Integration**: Memory operations (remember/forget) integrated into AI routing
@@ -228,11 +234,11 @@ Context Merging (3-way merge):
 Cache keys use different strategies based on operation type:
 
 **Batch Operations (all users per guild):**
-- **Current day summaries**: `(guild_id, hour_bucket)` - 1-hour TTL, stores `dict[user_id, summary]`
+- **Current day summaries**: `(guild_id, date)` - 1-hour TTL, stores `dict[user_id, summary]`
 - **Historical daily summaries**: `(guild_id, date)` - permanent LRU, stores `dict[user_id, summary]`
 
 **Per-User Operations:**
-- **Historical summary**: `(guild_id, user_id, historical_end_date)` - permanent LRU, e.g., "2024-01-14" for days 2-7
+- **Historical summary**: `hash(daily_summaries_content)` - content-based hashing for robustness
 - **Final context**: `(guild_id, user_id, hash(facts), hash(current_day), hash(historical))` - content-based hashing for encapsulation
 
 ### Memory Footprint Analysis
@@ -299,9 +305,11 @@ user_context = get_user_context(guild_id, user_nick)
 ## Performance Considerations
 
 ### Efficiency Optimizations
-- **Lazy Loading**: Context generated only when needed for active conversations
+- **Concurrent Processing**: Multiple users processed simultaneously with `asyncio.gather`
+- **Batch Operations**: Single API call generates daily summaries for all users
+- **Content-Based Caching**: Historical summaries use content hashes for robust cache invalidation
 - **LRU Caching**: Automatic cache management with size limits
-- **Immutable Keys**: Absolute date keys ensure cached results never invalidate
+- **Dual Cache Strategy**: TTL for current day, LRU for historical data
 - **Message Retention**: Use 7-day window for summarization
 
 ### Scalability

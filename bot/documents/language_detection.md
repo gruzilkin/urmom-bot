@@ -7,36 +7,27 @@ This document describes the language detection and propagation system that provi
 The language detection system ensures that user messages are processed in their original language throughout the entire request chain. The system detects the user's language once at the entry point and propagates this information explicitly to all components, preventing language drift and ensuring consistent responses.
 
 ### Core Philosophy
-- **Explicit over Implicit**: Language information is passed explicitly through the processing chain
-- **Hybrid Detection**: Fast offline detection combined with LLM fallback for accuracy
-- **Unambiguous Instructions**: Clear language names in prompts rather than ambiguous codes
-- **Single Source of Truth**: Language detected once and propagated consistently
+- **Explicit over Implicit**: Language information is passed explicitly through the processing chain.
+- **AI-Powered Accuracy**: A dedicated Large Language Model (LLM) is used for all language detection to ensure high accuracy, especially for short and ambiguous text common in chat.
+- **Unambiguous Instructions**: Clear, full language names are used in prompts rather than ambiguous codes.
+- **Single Source of Truth**: Language is detected once at the start of a request and propagated consistently.
 
 ## Architecture
 
-### Hybrid Language Detection with Short-Text Bypass
+### LLM-Powered Language Detection
 
-The system uses a two-tier detection strategy that optimizes for both accuracy and performance:
+The system uses a single, AI-powered strategy for all language detection, which is optimized for the chat-based nature of the bot.
 
-#### Tier 1: Offline Detection (for longer text)
-- **Method**: `langdetect` library with `detect_langs()` function
-- **Threshold**: 95% confidence ensures high accuracy
-- **Performance**: Fast offline detection for majority of clear cases
-- **Scope**: Applied to text longer than 15 characters
-- **Output**: Language code (e.g., "en", "ru", "de")
-
-#### Tier 2: LLM Fallback (short text or low confidence)
-- **Trigger**: Text ≤ 15 characters OR ambiguous text with confidence < 95%
-- **AI Backend**: Gemma exclusively for language detection fallback
-- **Enhanced Prompting**: Contextual bias for ambiguous cases (Cyrillic→Russian, Latin→English)
-- **Capability**: Handles complex language scenarios, edge cases, and very short text
-- **Output**: Validated language code with fallback to English
+- **Method**: A dedicated AI client performs all language detection.
+- **Scope**: Applied to all incoming text, regardless of length. This provides consistent and accurate handling of short messages, which are common in Discord.
+- **Enhanced Prompting**: The prompt sent to the LLM includes contextual guidance to improve accuracy for ambiguous cases.
+- **Structured Output**: The LLM is constrained to return a valid, structured language code, ensuring the output is well-formed.
+- **Validation**: The returned language code undergoes robust validation, with a fallback to English ('en') if invalid.
 
 ### Language Name Resolution
-- **Purpose**: Convert language codes to unambiguous names for prompts
-- **Cache**: Language code to language name mapping cached to avoid repeated LLM queries
-- **Fallback**: Query Gemma for unknown language codes
-- **Validation**: Extended language code support (e.g., "en-us", "zh-cn") with fallback to English for invalid codes
+- **Purpose**: Convert language codes (e.g., "en", "ru") to full, unambiguous names (e.g., "English", "Russian") for clear instructions in generator prompts.
+- **Cache**: A local cache stores mappings for the most common languages to reduce latency.
+- **Fallback**: If a language code is not in the cache, the system queries the LLM to get the full language name. The result is then cached for future requests.
 
 ## Request Processing Flow
 
@@ -45,88 +36,68 @@ User Message → AI Router (Route Selection + Language Detection + Parameter Ext
 ```
 
 **Processing Steps:**
-1. **Route Selection**: Determine request type (FAMOUS, GENERAL, FACT)
-2. **Language Detection**: Hybrid detection with short-text bypass
-3. **Parameter Extraction**: Extract route-specific parameters and populate language fields
-4. **Generator Processing**: Use explicit language instructions in prompts
+1. **Route Selection**: Determine the request type (e.g., FAMOUS, GENERAL, FACT).
+2. **Language Detection**: The `LanguageDetector` service uses an LLM to determine the language of the user's message.
+3. **Parameter Extraction**: Extract route-specific parameters and populate the `language_code` and `language_name` fields in the request schema.
+4. **Generator Processing**: The assigned generator uses the explicit `language_name` in its prompt to the LLM.
 
 ## Core Components
 
 ### Language Detection Service
-```python
-class LanguageDetector:
-    async def detect_language(text: str) -> str:
-        # Short text bypass: ≤ 15 chars goes directly to LLM
-        # For longer text: try langdetect with 95% confidence threshold
-        # Fall back to Gemma with enhanced prompting for ambiguous cases
-        # Validate language codes and return with fallback to English
-    
-    async def get_language_name(code: str) -> str:
-        # Return cached name or query Gemma
-        # Cache results to avoid repeated queries
-```
+
+This service provides two primary functions:
+- **Language Detection**: Identifies the language of a given text using an LLM, with enhanced prompting for accuracy and robust validation.
+- **Language Name Resolution**: Converts language codes into full, human-readable names, leveraging a cache for efficiency and falling back to an LLM when necessary.
 
 ### Schema Integration
-All parameter schemas (`FamousPersonParams`, `GeneralQueryParams`, `FactParams`) include:
+All parameter schemas include:
 - **language_code**: ISO 639-1 language code (e.g., "en", "ru", "de")
 - **language_name**: Full language name (e.g., "English", "Russian", "German")
-- **Population**: Fields populated automatically by AI router after language detection
-- **Propagation**: Language information flows through entire processing chain
+- **Population**: Fields populated automatically by the AI router after language detection.
+- **Propagation**: Language information flows through the entire processing chain.
 
 ### Prompt Language Specification
 - **Standard Pattern**: "Please respond in {language_name}"
-- **Consistency**: Uniform language specification across all generators
-- **Clarity**: Simple, direct language instructions for reliable LLM behavior
+- **Consistency**: Uniform language specification across all generators.
+- **Clarity**: Simple, direct language instructions for reliable LLM behavior.
 
 ## Integration Points
 
-- **AI Router**: Language detection occurs between route selection and parameter extraction
-- **All Generators**: Use explicit language parameter in prompts
-- **Components**: Centralized language detection across `joke_generator.py` and other components
-- **Container**: LanguageDetector uses Gemma client exclusively for consistency
+- **AI Router**: Language detection occurs between route selection and parameter extraction.
+- **All Generators**: Use explicit language parameter in prompts.
+- **Components**: Centralized language detection across various components.
+- **Container**: The `LanguageDetector` is integrated via the dependency injection container.
 
 ## Edge Cases & Language Handling
 
 ### Translation Requests
 - **Example**: "BOT translate this into French"
-- **Detection**: Query language = English, Response language = French
-- **Handling**: LLM interprets user intent within language guidelines
+- **Detection**: The primary language of the query is detected (e.g., English), and the LLM in the generator is responsible for interpreting the user's intent to translate.
 
 ### Mixed Language Scenarios
 - **Example**: "BOT what does 'bonjour' mean?"
-- **Strategy**: Detect primary query language, LLM handles response appropriately
-- **Flexibility**: LLM interprets user intent within language guidelines
+- **Strategy**: The system detects the primary language of the query. The generator's LLM is flexible enough to handle the mixed-language content and provide a relevant response.
 
 ### Ambiguous Cases
-- **Fallback**: Detection failures default to English silently
-- **Validation**: Invalid language codes automatically fallback to English
-- **Telemetry**: Language detection span marked with error status on failure
-- **Graceful Degradation**: System continues functioning transparently with comprehensive error handling
+- **Fallback**: Detection failures or invalid language codes from the LLM default silently to English ('en').
+- **Telemetry**: The language detection span is marked with an error status on failure, and relevant attributes track validation failures and fallbacks.
+- **Graceful Degradation**: The system continues to function transparently, ensuring a response is always provided.
 
 ## Performance Considerations
 
 ### Performance Strategy
-- **Fast Path**: Short-text bypass and 95% confidence threshold optimize LLM usage
-- **Caching**: Language name translation cached to avoid repeated queries
-- **Monitoring**: Track detection confidence, fallback frequency, and performance metrics
-
-### Telemetry & Observability
-- **Comprehensive Tracking**: Detection method, confidence levels, cache performance
-- **Attribute Consistency**: Standardized telemetry attribute names for aggregation and analysis
-- **Error Logging**: Structured error handling with proper logging levels and stack traces
-- **Validation Tracking**: Monitor validation failures and fallback behavior
+- **Optimized Prompts**: Prompts are designed to be efficient and get structured, accurate results from the LLM.
+- **Caching**: Language name translations are cached locally to avoid repeated LLM queries for the same language codes, reducing latency.
+- **Monitoring**: The system tracks key metrics, cache performance, and validation failures through telemetry.
 
 ## System Features
 
-The language detection system provides:
-
-- **Language Preservation**: User's original language maintained through complete request chain
-- **Override Support**: Translation and language change requests handled correctly
-- **Consistency**: No unexpected language switching in responses or memory operations
-- **Performance**: Minimal latency impact with proper telemetry integration
-- **Reliability**: Graceful degradation and fallback handling for edge cases
-- **Observability**: Comprehensive telemetry for monitoring and debugging
+- **Language Preservation**: The user's original language is maintained throughout the complete request chain.
+- **Override Support**: Translation and language change requests are handled correctly by the downstream generators.
+- **Consistency**: The bot does not unexpectedly switch languages in its responses or memory operations.
+- **Reliability**: Graceful degradation and fallback handling ensure stability.
+- **Observability**: Comprehensive telemetry provides deep insights for monitoring and debugging.
 
 ## Conclusion
 
-This architecture provides robust, consistent language handling while maintaining flexibility for complex language scenarios and edge cases. The system ensures reliable multilingual support across all bot features through explicit language propagation and hybrid detection strategies.
+This architecture provides robust, consistent language handling while maintaining flexibility for complex language scenarios and edge cases. The system ensures reliable multilingual support across all bot features through explicit language propagation and an AI-powered detection strategy.
