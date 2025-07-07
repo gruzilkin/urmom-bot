@@ -58,7 +58,6 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Create real instances for route descriptions but mock parameter extraction to prevent execution
         from famous_person_generator import FamousPersonGenerator
         from general_query_generator import GeneralQueryGenerator
-        from unittest.mock import Mock
         
         # Real famous generator instance (with mocked dependencies since we only need route description)
         self.famous_generator = FamousPersonGenerator(
@@ -339,7 +338,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIn("like", params.fact_content.lower())
         
         # Continue with fact handling
-        response = await self.fact_handler.handle_request(params, self.guild_id)
+        await self.fact_handler.handle_request(params, self.guild_id)
         
         # Memory should be saved
         saved_memory = await self.test_store.get_user_facts(self.guild_id, self.user_id)

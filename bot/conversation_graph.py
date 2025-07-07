@@ -3,6 +3,7 @@ import logging
 from typing import Callable, Awaitable, Any
 from dataclasses import dataclass
 import nextcord
+from message_node import MessageNode
 
 logger = logging.getLogger(__name__)
 

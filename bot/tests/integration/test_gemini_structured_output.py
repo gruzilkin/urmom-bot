@@ -7,7 +7,6 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 
 import os
 import unittest
-from unittest.mock import Mock
 from dotenv import load_dotenv
 from gemini_client import GeminiClient
 from schemas import YesNo

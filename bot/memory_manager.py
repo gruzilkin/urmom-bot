@@ -166,7 +166,7 @@ class MemoryManager:
 
     async def _create_combined_memories(self, guild_id: int, user_ids: list[int], daily_summaries_by_date: dict[date, dict[int, str]], historical_summaries: dict[int, str | None]) -> dict[int, str | None]:
         """Create combined memories for all users by merging facts, current day, and historical summaries."""
-        async with self._telemetry.async_create_span("create_combined_memories") as span:
+        async with self._telemetry.async_create_span("create_combined_memories"):
             # Find today (most recent date in daily_summaries_by_date)
             if not daily_summaries_by_date:
                 # If no daily summaries available, use current date

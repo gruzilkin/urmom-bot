@@ -7,11 +7,10 @@ from memory_manager import MemoryManager
 from ai_client import AIClient
 from message_node import MessageNode
 from schemas import MemoryContext, DailySummaries, UserSummary
-from store import Store, ChatMessage
+from store import Store
 from tests.null_telemetry import NullTelemetry
 from tests.test_user_resolver import TestUserResolver
 from tests.test_store import TestStore  # Moved import to top
-from user_resolver import UserResolver
 
 
 class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
@@ -720,7 +719,7 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
             # Act
-            today_result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            await self.memory_manager._daily_summary(self.physics_guild_id, today)
             yesterday_result = await self.memory_manager._daily_summary(self.physics_guild_id, yesterday)
 
             # Assert

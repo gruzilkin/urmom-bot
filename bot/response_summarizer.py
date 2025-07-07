@@ -92,7 +92,7 @@ The summary should be comprehensive and maintain the same style as the original 
 Original response to summarize:
 {original_response}"""
 
-        logger.info(f"Attempting summarization with gemma")
+        logger.info("Attempting summarization with gemma")
         
         summarized = await self.gemma_client.generate_content(
             message="Please summarize the response provided in the system prompt.",

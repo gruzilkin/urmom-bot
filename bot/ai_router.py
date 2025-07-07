@@ -1,11 +1,9 @@
 import logging
-from typing import Union, Optional, Tuple
+from typing import Union, Tuple
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import FamousParams, GeneralParams, FactParams, RouteSelection
 from language_detector import LanguageDetector
-from pydantic import BaseModel, Field
-from typing import Literal
 
 logger = logging.getLogger(__name__)
 

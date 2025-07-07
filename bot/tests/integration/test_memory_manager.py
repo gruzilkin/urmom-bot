@@ -6,7 +6,7 @@ These tests use actual Gemini/Gemma APIs and the full physics chat history.
 import unittest
 import os
 from datetime import date
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock
 from dotenv import load_dotenv
 import time
 
@@ -102,8 +102,7 @@ class TestMemoryManagerIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_realistic_historical_summary_integration(self):
         """Integration test: Generate historical summary spanning multiple days of real physics data."""
         # Arrange - Get historical summary for Einstein spanning multiple days
-        einstein_id = self.physicist_ids["Einstein"]
-        current_date = date(1905, 3, 6)  # Thursday - asking for history of Mon-Wed
+        # current_date = date(1905, 3, 6)  # Thursday - asking for history of Mon-Wed
         
         # Act - Let real AI process multiple days of Einstein's discussions
         # Create test daily summaries for Einstein over multiple days
@@ -128,7 +127,7 @@ class TestMemoryManagerIntegration(unittest.IsolatedAsyncioTestCase):
         """Integration test: Complete get_memories workflow with facts + current day + historical + AI merge."""
         # Arrange - Set up a complete memory scenario for Einstein
         einstein_id = self.physicist_ids["Einstein"]
-        current_date = date(1905, 3, 6)  # Thursday - has current day + historical data
+        # current_date = date(1905, 3, 6)  # Thursday - has current day + historical data
         
         # Add some facts about Einstein to the store
         einstein_facts = "Einstein is a theoretical physicist known for developing the theory of relativity and quantum mechanics contributions"

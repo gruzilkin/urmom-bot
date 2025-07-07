@@ -28,7 +28,7 @@ class JokeGenerator:
 
     async def generate_joke(self, content: str, language: str) -> str:
         sample_jokes = await self.store.get_random_jokes(self.sample_count, language)
-        async with self.telemetry.async_create_span("generate_joke") as span:
+        async with self.telemetry.async_create_span("generate_joke"):
             response = await self.ai_client.generate_content(
                 message=content,
                 prompt=self.base_prompt,
@@ -41,7 +41,7 @@ class JokeGenerator:
                   Your response should only contain the joke itself and it should start with 'In {country}'.
                   Response should be fully in the language of the user message which includes translating the country name into the user's language. 
                   Apply stereotypes and cliches about the country."""
-        async with self.telemetry.async_create_span("generate_country_joke") as span:
+        async with self.telemetry.async_create_span("generate_country_joke"):
             response = await self.ai_client.generate_content(message=message, prompt=prompt)
             return response
 
@@ -54,7 +54,7 @@ class JokeGenerator:
         if message_id is not None and message_id in self._joke_cache:
             return self._joke_cache[message_id]
             
-        async with self.telemetry.async_create_span("is_joke", kind=SpanKind.INTERNAL) as span:
+        async with self.telemetry.async_create_span("is_joke", kind=SpanKind.INTERNAL):
             prompt = f"""Tell me if the response is a joke, a wordplay or a sarcastic remark to the original message, reply in English with only yes or no:
 original message: {original_message}
 response: {response_message}
@@ -86,7 +86,7 @@ Is it actually a joke? Reply only yes or no."""
         """
         Save a joke to the store with language detection.
         """
-        async with self.telemetry.async_create_span("save_joke") as span:
+        async with self.telemetry.async_create_span("save_joke"):
             # Detect languages using the language detection service
             source_lang = await self.language_detector.detect_language(source_message_content)
             joke_lang = await self.language_detector.detect_language(joke_message_content)

@@ -2,8 +2,7 @@ import psycopg
 from psycopg import AsyncConnection
 from dataclasses import dataclass
 import logging
-from cachetools import LRUCache, cachedmethod
-from typing import Dict, Tuple
+from cachetools import LRUCache
 from datetime import datetime, date, timedelta
 from open_telemetry import Telemetry
 
@@ -56,7 +55,7 @@ class Store:
             if self.conn is not None:
                 try:
                     await self.conn.close()
-                except:
+                except Exception:
                     pass
             self.conn = await self._connect()
     
@@ -133,7 +132,7 @@ class Store:
                     params = [language, self.weight_coef, n]
                     
                     await cur.execute(
-                        f"""
+                        """
                         SELECT m1.content, m2.content
                         FROM jokes j
                         JOIN messages m1 ON j.source_message_id = m1.message_id

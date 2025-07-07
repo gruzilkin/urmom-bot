@@ -6,7 +6,6 @@ Uses AI-powered detection for all text lengths, optimized for Discord messages.
 
 import logging
 import re
-from typing import Optional
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from pydantic import BaseModel, Field

@@ -1,6 +1,5 @@
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 
 class AppConfig(BaseSettings):

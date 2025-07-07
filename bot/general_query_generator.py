@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, Set, Callable, Awaitable
+from typing import Set, Callable, Awaitable
+from memory_manager import MemoryManager
 
 from ai_client import AIClient
 from conversation_graph import ConversationMessage
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry, store: Store, user_resolver: UserResolver, memory_manager: 'MemoryManager'):
+    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry, store: Store, user_resolver: UserResolver, memory_manager: MemoryManager):
         self.gemini_flash = gemini_flash
         self.grok = grok
         self.claude = claude

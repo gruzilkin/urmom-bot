@@ -1,5 +1,4 @@
 import logging
-import traceback
 
 from ai_client import AIClient
 from open_telemetry import Telemetry

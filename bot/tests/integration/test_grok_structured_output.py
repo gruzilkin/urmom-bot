@@ -7,7 +7,6 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 
 import os
 import unittest
-from unittest.mock import Mock
 from dotenv import load_dotenv
 from grok_client import GrokClient
 from schemas import YesNo

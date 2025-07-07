@@ -1,8 +1,6 @@
 import uuid
-import contextlib
 import logging
 import sys
-import os
 from types import SimpleNamespace
 
 import nextcord
@@ -54,7 +52,7 @@ class Telemetry:
                 for line in f:
                     if '/docker/' in line:
                         return line.split('/')[-1][:12]  # Get the 12-char container ID
-        except:
+        except (FileNotFoundError, OSError, IOError):
             pass
         
         # Try hostname file as backup
@@ -64,7 +62,7 @@ class Telemetry:
                 # Check if this looks like a container ID (hexadecimal)
                 if len(hostname) == 12 and all(c in '0123456789abcdef' for c in hostname):
                     return hostname
-        except:
+        except (FileNotFoundError, OSError, IOError):
             pass
             
         # Fall back to a generated UUID if we can't get container ID

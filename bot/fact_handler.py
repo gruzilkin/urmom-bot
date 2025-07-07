@@ -1,15 +1,11 @@
 import logging
-from typing import Dict, Any
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import FactParams, MemoryUpdate, MemoryForget
 from store import Store
-import re
+from user_resolver import UserResolver
 
 logger = logging.getLogger(__name__)
-
-
-from user_resolver import UserResolver
 
 
 class FactHandler:

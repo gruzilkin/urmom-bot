@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Optional, Dict
+from typing import Optional
 from cachetools import LRUCache
 
 import nextcord
