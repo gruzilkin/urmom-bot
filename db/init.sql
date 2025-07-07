@@ -38,6 +38,15 @@ CREATE TABLE chat_history (
 
 CREATE INDEX idx_chat_history_guild_timestamp ON chat_history (guild_id, timestamp);
 
+CREATE TABLE daily_chat_summaries (
+    guild_id BIGINT NOT NULL,
+    for_date DATE NOT NULL,
+    user_id BIGINT NOT NULL,
+    summary TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (guild_id, for_date, user_id)
+);
+
 -- Insert messages
 INSERT INTO messages VALUES
 (1, 'en', 'My son is bioterrorising me. He walked in my office, sat down for a few minutes, farted, and then immediately left'),

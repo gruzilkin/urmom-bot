@@ -22,8 +22,11 @@ class FactHandler:
     def get_route_description(self) -> str:
         return """
         FACT: For imperative memory operations (remember/forget facts about users)
-        - Strictly for commands to store or remove permanent facts about users.
-        - Examples:
+        - Strictly for COMMANDS that instruct the bot to store or remove facts
+        - Must be imperative sentences (giving orders/instructions)
+        - Questions are NOT fact operations - route questions to GENERAL regardless of content
+
+        Examples:
           * "Bot remember that gruzilkin is Sergey"
           * "Bot, remember this about Florent: he likes pizza"
           * "Bot forget that gruzilkin likes pizza"
@@ -31,7 +34,7 @@ class FactHandler:
           * "forget <@123456789012345678>'s birthday"
         
         Non-examples (NOT a FACT request - these are GENERAL queries):
-        - "What do you remember about X?"
+        - "What do you remember about X?" (question about memory)
         - "Does John like apples?"
         - "What is X's name?"
         - "What food does <@123456789012345678> like?"
@@ -48,12 +51,18 @@ class FactHandler:
         return """
         Extract parameters for a memory fact operation (remember/forget).
         
+        CRITICAL: Only extract parameters if the message is an IMPERATIVE SENTENCE commanding the bot to store/remove facts.
+        DO NOT extract parameters for ANY QUESTION.
+        
         operation: "remember" or "forget" based on an EXPLICIT and IMPERATIVE command.
         user_mention: Extract user reference (Discord ID for <@1333878858138652682> or nickname)
         fact_content: The specific fact to remember or forget, converted to third-person perspective using appropriate pronouns. This can be extracted both from the user message and inferred from the conversation history.
         
-        For fact_content conversion to third-person perspective:
-        - Use appropriate third person forms for the language when gender is unknown
+        Questions are never fact operations:
+        - "What do you remember about X?" → NOT a fact operation
+        - Any question → do NOT extract
+        
+        Only extract from imperative sentences that command an action.
         
         Examples:
         - "Bot remember that gruzilkin is Sergey" → operation: "remember", user_mention: "gruzilkin", fact_content: "He is Sergey"
@@ -64,6 +73,9 @@ class FactHandler:
         - "БОТ запомни что gruzilkin так же известен как Медвед" → operation: "remember", user_mention: "gruzilkin", fact_content: "он также известен как Медвед"
         - "запомни что <@123456> живёт в Москве" → operation: "remember", user_mention: "123456", fact_content: "они живут в Москве"
         - "Bot oublie que Pierre aime le fromage" → operation: "forget", user_mention: "Pierre", fact_content: "il aime le fromage"
+        
+        For fact_content conversion to third-person perspective:
+        - Use appropriate third person forms for the language when gender is unknown
         """
     
     

@@ -45,6 +45,7 @@ class Store:
         self.weight_coef = weight_coef
         self._guild_configs = {}  # Add cache dictionary
         self._user_facts_cache = LRUCache(maxsize=500)
+        self._daily_summaries_cache = LRUCache(maxsize=200)  # Cache for daily summaries
 
     async def _connect(self) -> AsyncConnection:
         conn = await psycopg.AsyncConnection.connect(**self.connection_params)
@@ -351,6 +352,120 @@ class Store:
                 logger.error(f"Error adding chat message: {e}", exc_info=True)
                 raise e
 
+
+    async def has_chat_messages_for_date(self, guild_id: int, for_date: date) -> bool:
+        """Check if any chat messages exist for a specific guild and date."""
+        async with self._telemetry.async_create_span("has_chat_messages_for_date") as span:
+            span.set_attribute("guild_id", guild_id)
+            span.set_attribute("for_date", str(for_date))
+            
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    # Calculate start and end timestamps for the date
+                    start_time = datetime.combine(for_date, datetime.min.time())
+                    end_time = start_time + timedelta(days=1)
+                    
+                    await cur.execute(
+                        """
+                        SELECT 1 FROM chat_history
+                        WHERE guild_id = %s AND timestamp >= %s AND timestamp < %s
+                        LIMIT 1
+                        """,
+                        (guild_id, start_time, end_time)
+                    )
+                    result = await cur.fetchone()
+                    has_messages = result is not None
+                    span.set_attribute("has_messages", has_messages)
+                    return has_messages
+            except Exception as e:
+                logger.error(f"Error checking chat messages for date: {e}", exc_info=True)
+                span.record_exception(e)
+                return False
+
+    async def get_daily_summaries(self, guild_id: int, for_date: date) -> dict[int, str]:
+        """Get daily summaries for all users on a specific date with caching."""
+        async with self._telemetry.async_create_span("get_daily_summaries") as span:
+            span.set_attribute("guild_id", guild_id)
+            span.set_attribute("for_date", str(for_date))
+            
+            cache_key = (guild_id, for_date)
+            
+            # Check cache first
+            if cache_key in self._daily_summaries_cache:
+                span.set_attribute("cache_hit", True)
+                cached_result = self._daily_summaries_cache[cache_key]
+                span.set_attribute("summary_count", len(cached_result))
+                return cached_result
+            
+            span.set_attribute("cache_hit", False)
+            
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        SELECT user_id, summary
+                        FROM daily_chat_summaries
+                        WHERE guild_id = %s AND for_date = %s
+                        """,
+                        (guild_id, for_date)
+                    )
+                    results = await cur.fetchall()
+                    summaries_dict = {user_id: summary for user_id, summary in results}
+                    span.set_attribute("summary_count", len(summaries_dict))
+                    
+                    # Cache the result
+                    self._daily_summaries_cache[cache_key] = summaries_dict
+                    
+                    return summaries_dict
+            except Exception as e:
+                logger.error(f"Error retrieving daily summaries: {e}", exc_info=True)
+                span.record_exception(e)
+                return {}
+
+    async def save_daily_summaries(self, guild_id: int, for_date: date, summaries_dict: dict[int, str]) -> None:
+        """Save daily summaries for multiple users on a specific date."""
+        async with self._telemetry.async_create_span("save_daily_summaries") as span:
+            span.set_attribute("guild_id", guild_id)
+            span.set_attribute("for_date", str(for_date))
+            span.set_attribute("summary_count", len(summaries_dict))
+            
+            if not summaries_dict:
+                span.set_attribute("skipped", True)
+                return
+            
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    # Prepare batch insert data
+                    insert_data = []
+                    for user_id, summary in summaries_dict.items():
+                        insert_data.extend([guild_id, for_date, user_id, summary])
+                    
+                    # Create placeholder string for batch insert
+                    placeholders = ','.join(['(%s, %s, %s, %s)'] * len(summaries_dict))
+                    
+                    await cur.execute(
+                        f"""
+                        INSERT INTO daily_chat_summaries (guild_id, for_date, user_id, summary)
+                        VALUES {placeholders}
+                        ON CONFLICT (guild_id, for_date, user_id)
+                        DO UPDATE SET summary = EXCLUDED.summary, created_at = CURRENT_TIMESTAMP
+                        """,
+                        insert_data
+                    )
+                    await self.conn.commit()
+                    
+                    # Update cache with new data
+                    cache_key = (guild_id, for_date)
+                    self._daily_summaries_cache[cache_key] = summaries_dict
+                    
+                    logger.info(f"Saved {len(summaries_dict)} daily summaries for guild {guild_id} on {for_date}")
+                        
+            except Exception as e:
+                logger.error(f"Error saving daily summaries: {e}", exc_info=True)
+                raise e
 
     async def close(self) -> None:
         """Close the database connection."""

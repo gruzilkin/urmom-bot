@@ -10,6 +10,7 @@ from schemas import MemoryContext, DailySummaries, UserSummary
 from store import Store, ChatMessage
 from tests.null_telemetry import NullTelemetry
 from tests.test_user_resolver import TestUserResolver
+from tests.test_store import TestStore  # Moved import to top
 from user_resolver import UserResolver
 
 
@@ -19,18 +20,18 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.telemetry = NullTelemetry()
         
-        # Real test double with physicists
-        self.user_resolver = TestUserResolver()
+        # Use TestStore for realistic data and interactions
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
         
-        # Mock AI clients and store
-        self.mock_store = Mock(spec=Store)
+        # Mock AI clients
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
         
         # Component under test
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
-            store=self.mock_store,
+            store=self.test_store,
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver
@@ -45,11 +46,6 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         """Test that current day summary cache hits within the same hour."""
         # Arrange - Einstein discussing photoelectric effect
         einstein_id = self.physicist_ids["Einstein"]
-        self.mock_store.get_chat_messages_for_date = AsyncMock(return_value=[
-            ChatMessage(self.physics_guild_id, 1111, 2222, einstein_id, 
-                       "Good morning colleagues. I've been pondering the photoelectric effect. Light seems to behave as discrete packets of energy.", 
-                       datetime(1905, 3, 3, 9, 15))
-        ])
         self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
             summaries=[UserSummary(user_id=einstein_id, summary="Einstein proposed that light behaves as discrete energy packets, challenging wave theory")]
         ))
@@ -77,11 +73,6 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         """Test that current day summary cache hits for same date regardless of hour."""
         # Arrange - Planck's quantum discussions continuing throughout the day
         planck_id = self.physicist_ids["Planck"]
-        self.mock_store.get_chat_messages_for_date = AsyncMock(return_value=[
-            ChatMessage(self.physics_guild_id, 1111, 2222, planck_id, 
-                       "Albert, your quantum hypothesis is intriguing, but surely you don't mean to abandon wave theory entirely?", 
-                       datetime(1905, 3, 3, 9, 18))
-        ])
         self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
             summaries=[UserSummary(user_id=planck_id, summary="Planck questioned Einstein's quantum theory while defending wave theory")]
         ))
@@ -104,30 +95,37 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.mock_gemini_client.generate_content.call_count, 1)  # Only one AI call since hour buckets are eliminated
 
     async def test_historical_daily_cache_hit(self):
-        """Test that historical daily summary cache hits for same guild/date."""
-        # Arrange - Bohr's atomic model discussions from previous day
-        historical_date = date(1905, 3, 2)  # Day before the main physics discussions
+        """Test that historical daily summary cache hits for same guild/date, avoiding AI calls."""
+        # Arrange - Use TestStore for realistic database behavior
+        from tests.test_store import TestStore
+        test_store = TestStore()
+        self.memory_manager._store = test_store  # Replace mock store with real test double
+
+        # Use a date that has messages in TestStore to make the test realistic
+        historical_date = date(1905, 3, 4)
         bohr_id = self.physicist_ids["Bohr"]
-        self.mock_store.get_chat_messages_for_date = AsyncMock(return_value=[
-            ChatMessage(self.physics_guild_id, 1111, 2222, bohr_id, 
-                       "I believe the atom itself might have quantized energy levels. This could explain hydrogen's spectral lines perfectly.", 
-                       datetime(1905, 3, 2, 14, 22))
-        ])
-        self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
-            summaries=[UserSummary(user_id=bohr_id, summary="Bohr proposed quantized atomic energy levels to explain hydrogen spectra")]
-        ))
-        
-        # Act - Two calls for same date should hit cache on second
-        daily_summaries1 = await self.memory_manager._daily_summary(self.physics_guild_id, historical_date)
-        result1 = daily_summaries1.get(bohr_id)
-        daily_summaries2 = await self.memory_manager._daily_summary(self.physics_guild_id, historical_date)
-        result2 = daily_summaries2.get(bohr_id)
-        
-        # Assert
         expected_summary = "Bohr proposed quantized atomic energy levels to explain hydrogen spectra"
-        self.assertEqual(result1, expected_summary)
-        self.assertEqual(result2, expected_summary)
-        self.mock_gemini_client.generate_content.assert_called_once()  # Only one AI call
+        expected_summaries = {bohr_id: expected_summary}
+
+        # Pre-populate the "database" with the summary to simulate a cache hit
+        await test_store.save_daily_summaries(self.physics_guild_id, historical_date, expected_summaries)
+
+        # Ensure the AI client mock is clean before the test action
+        self.mock_gemini_client.generate_content.reset_mock()
+
+        with patch('memory_manager.datetime') as mock_datetime:
+            # Set current time to be after the historical date
+            mock_datetime.now.return_value = datetime(1905, 3, 5, 12, 0, tzinfo=timezone.utc)
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            # Act - A single call should be sufficient to test the database cache
+            daily_summaries = await self.memory_manager._daily_summary(self.physics_guild_id, historical_date)
+            result = daily_summaries.get(bohr_id)
+
+        # Assert
+        self.assertEqual(result, expected_summary)
+        # The key assertion: The database cache was hit, so no AI call was made
+        self.mock_gemini_client.generate_content.assert_not_called()
 
     async def test_context_cache_hit_identical_content(self):
         """Test that context merge cache hits when content is identical."""
@@ -176,11 +174,11 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
 
     async def test_empty_messages_returns_empty_dict(self):
         """Test that batch generation with no messages returns empty dict."""
-        # Arrange
-        self.mock_store.get_chat_messages_for_date = AsyncMock(return_value=[])
+        # Arrange - Use a date with no messages in TestStore
+        no_message_date = date(1905, 3, 2)
         
         # Act
-        result = await self.memory_manager._create_daily_summaries(self.physics_guild_id, self.test_date)
+        result = await self.memory_manager._create_daily_summaries(self.physics_guild_id, no_message_date)
         
         # Assert
         self.assertEqual(result, {})
@@ -375,18 +373,18 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.telemetry = NullTelemetry()
         
-        # Real test double with physicists
-        self.user_resolver = TestUserResolver()
+        # Use TestStore for realistic data and interactions
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
         
-        # Mock AI clients and store
-        self.mock_store = Mock(spec=Store)
+        # Mock AI clients
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
         
         # Component under test
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
-            store=self.mock_store,
+            store=self.test_store,
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver
@@ -399,19 +397,9 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
 
     async def test_message_formatting_xml_structure(self):
         """Test that messages are formatted correctly in XML structure."""
-        # Arrange - Einstein discussing photoelectric effect with mention to Planck
+        # Arrange
         einstein_id = self.physicist_ids["Einstein"]
-        planck_id = self.physicist_ids["Planck"]
-        test_message = ChatMessage(
-            guild_id=self.physics_guild_id,
-            channel_id=1111,
-            message_id=2222,
-            user_id=einstein_id,
-            message_text=f"Hello <@{planck_id}>, I've been thinking about your quantum hypothesis!",
-            timestamp=datetime(1905, 3, 3, 9, 15, tzinfo=timezone.utc)
-        )
         
-        self.mock_store.get_chat_messages_for_date = AsyncMock(return_value=[test_message])
         self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
             summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed quantum hypothesis with Planck")]
         ))
@@ -427,22 +415,19 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         self.assertIn('<timestamp>1905-03-03 09:15:00+00:00</timestamp>', prompt)
         self.assertIn(f'<author_id>{einstein_id}</author_id>', prompt)
         self.assertIn('<author>Einstein</author>', prompt)
-        self.assertIn('<content>Hello Planck, I\'ve been thinking about your quantum hypothesis!</content>', prompt)
+        
+        # This content comes directly from TestStore's data for March 3rd, 1905
+        expected_content = "Good morning colleagues. I've been pondering the photoelectric effect. Light seems to behave as discrete packets of energy, not continuous waves as we've long assumed."
+        self.assertIn(f'<content>{expected_content}</content>', prompt)
+        
         self.assertIn('</message>', prompt)
 
     async def test_user_deduplication(self):
         """Test that AI prompt contains deduplicated user list despite duplicate messages."""
-        # Arrange - 4 messages from 2 users (Einstein has 3 messages, Bohr has 1)
+        # Arrange - TestStore for March 3rd contains 10 messages from multiple users, with duplicates
         einstein_id = self.physicist_ids["Einstein"]
         bohr_id = self.physicist_ids["Bohr"]
-        messages = [
-            ChatMessage(self.physics_guild_id, 1111, 2222, einstein_id, "Light behaves as discrete packets", datetime(1905, 3, 3, 9, 15)),
-            ChatMessage(self.physics_guild_id, 1111, 3333, einstein_id, "This explains the photoelectric effect", datetime(1905, 3, 3, 9, 18)),  # Same user
-            ChatMessage(self.physics_guild_id, 1111, 4444, bohr_id, "Atoms might have quantized energy levels", datetime(1905, 3, 3, 9, 22)),  # Different user
-            ChatMessage(self.physics_guild_id, 1111, 5555, einstein_id, "Quantum mechanics is revolutionary", datetime(1905, 3, 3, 9, 25)),  # Same user again
-        ]
         
-        self.mock_store.get_chat_messages_for_date = AsyncMock(return_value=messages)
         self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
             summaries=[
                 UserSummary(user_id=einstein_id, summary="Einstein discussed quantum theory"),
@@ -457,15 +442,15 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         call_args = self.mock_gemini_client.generate_content.call_args
         prompt = call_args[1]['message']
         
-        # Should contain exactly 2 users in target_users section, not 4
+        # Should contain each user only once in the target_users section
         einstein_user_entries = prompt.count(f"<user_id>{einstein_id}</user_id>")
         bohr_user_entries = prompt.count(f"<user_id>{bohr_id}</user_id>")
         
-        self.assertEqual(einstein_user_entries, 1, "Einstein should appear only once in user list despite 3 messages")
+        self.assertEqual(einstein_user_entries, 1, "Einstein should appear only once in user list despite multiple messages")
         self.assertEqual(bohr_user_entries, 1, "Bohr should appear only once in user list")
         
-        # But all 4 messages should still be in the messages section
-        self.assertEqual(prompt.count("<message>"), 4, "All 4 individual messages should be included")
+        # But all 10 messages from TestStore for that date should be in the prompt
+        self.assertEqual(prompt.count("<message>"), 10, "All 10 individual messages should be included")
 
     async def test_historical_date_arithmetic(self):
         """Test that historical date ranges are calculated correctly (days 2-7)."""
@@ -496,32 +481,40 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         self.assertIn('<date>2025-06-29</date>', prompt)
         self.assertIn('<date>2025-06-28</date>', prompt)
 
-    async def test_ingest_message_delegates_to_store(self):
-        """Test that ingest_message properly delegates to store."""
+    async def test_ingest_message_adds_to_store(self):
+        """Test that ingest_message correctly adds a message to the store."""
         # Arrange
+        message_date = date(2025, 7, 1)
         message = MessageNode(
             id=12345,
             channel_id=67890,
             author_id=11111,
-            content="Test message content",
+            content="Test message content for state-based test",
             mentioned_user_ids=[],
             created_at=datetime(2025, 7, 1, 12, 0, tzinfo=timezone.utc)
         )
         
-        self.mock_store.add_chat_message = AsyncMock()
-        
+        # Get initial state
+        initial_messages = await self.test_store.get_chat_messages_for_date(self.physics_guild_id, message_date)
+        initial_message_count = len(initial_messages)
+
         # Act
         await self.memory_manager.ingest_message(self.physics_guild_id, message)
-        
+
         # Assert
-        self.mock_store.add_chat_message.assert_called_once_with(
-            self.physics_guild_id,
-            message.channel_id, 
-            message.id,
-            message.author_id,
-            message.content,
-            message.created_at
-        )
+        # Check that the number of messages has increased by one for that date
+        final_messages = await self.test_store.get_chat_messages_for_date(self.physics_guild_id, message_date)
+        self.assertEqual(len(final_messages), initial_message_count + 1)
+        
+        # Find the newly added message (it should be the last one)
+        added_message = final_messages[-1]
+        
+        # Check that the added message has the correct data
+        self.assertEqual(added_message.guild_id, self.physics_guild_id)
+        self.assertEqual(added_message.channel_id, message.channel_id)
+        self.assertEqual(added_message.user_id, message.author_id)
+        self.assertEqual(added_message.message_text, message.content)
+        self.assertEqual(added_message.timestamp, message.created_at)
 
 
 class TestMemoryManagerBatchProcessing(unittest.IsolatedAsyncioTestCase):
@@ -529,13 +522,16 @@ class TestMemoryManagerBatchProcessing(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.user_resolver = TestUserResolver()
-        self.mock_store = Mock(spec=Store)
+        
+        # Use TestStore for realistic data and interactions
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
+
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
-            store=self.mock_store,
+            store=self.test_store,
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver
@@ -690,13 +686,16 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.user_resolver = TestUserResolver()
-        self.mock_store = Mock(spec=Store)
+        
+        # Use TestStore for realistic data and interactions
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
+
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
-            store=self.mock_store,
+            store=self.test_store,
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver
@@ -704,28 +703,39 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
 
-    async def test_current_day_vs_closed_day_cache_separation(self):
-        """Test that current day uses TTL cache while historical days use LRU cache."""
+    async def test_current_day_vs_historical_day_cache_separation(self):
+        """Test that current day uses TTL cache while historical days use Store's database caching."""
         # Arrange
-        today = date(1905, 3, 6)
-        yesterday = date(1905, 3, 5)
+        today = date(1905, 3, 6)  # March 6th has real physics messages
+        yesterday = date(1905, 3, 5)  # March 5th also has real physics messages
+        
+        # Mock AI responses
+        einstein_id = self.physicist_ids["Einstein"]
+        self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
+            summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed physics")]
+        ))
 
         with patch('memory_manager.datetime') as mock_datetime:
             mock_datetime.now.return_value = datetime(1905, 3, 6, 12, 0, tzinfo=timezone.utc)
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Mock the AI call to return a value
-            self.mock_gemini_client.generate_content.return_value = DailySummaries(summaries=[])
-
             # Act
-            await self.memory_manager._daily_summary(self.physics_guild_id, today)
-            await self.memory_manager._daily_summary(self.physics_guild_id, yesterday)
+            today_result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            yesterday_result = await self.memory_manager._daily_summary(self.physics_guild_id, yesterday)
 
             # Assert
+            # Current day should be in MemoryManager's TTL cache
             self.assertIn((self.physics_guild_id, today), self.memory_manager._current_day_batch_cache)
-            self.assertNotIn((self.physics_guild_id, today), self.memory_manager._closed_day_batch_cache)
-            self.assertIn((self.physics_guild_id, yesterday), self.memory_manager._closed_day_batch_cache)
+            # Yesterday should not be in current day cache
             self.assertNotIn((self.physics_guild_id, yesterday), self.memory_manager._current_day_batch_cache)
+            
+            # Historical day should be stored in database via Store
+            stored_yesterday = await self.test_store.get_daily_summaries(self.physics_guild_id, yesterday)
+            self.assertEqual(stored_yesterday, yesterday_result)
+            
+            # Current day should NOT be stored in database (uses TTL cache only)
+            stored_today = await self.test_store.get_daily_summaries(self.physics_guild_id, today)
+            self.assertEqual(stored_today, {})  # Should be empty
 
     async def test_week_summary_cache_content_based_hashing(self):
         """Test that historical summaries use content hashes as cache keys."""
@@ -819,13 +829,16 @@ class TestMemoryManagerConcurrency(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.user_resolver = TestUserResolver()
-        self.mock_store = Mock(spec=Store)
+        
+        # Use TestStore for realistic data and interactions
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
+
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
-            store=self.mock_store,
+            store=self.test_store,
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver
@@ -879,13 +892,16 @@ class TestMemoryManagerDatabaseConcurrency(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.user_resolver = TestUserResolver()
-        self.mock_store = Mock(spec=Store)
+        
+        # Use TestStore for realistic data and interactions
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
+
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
-            store=self.mock_store,
+            store=self.test_store,
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver
@@ -902,16 +918,7 @@ class TestMemoryManagerDatabaseConcurrency(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.1)  # Simulate AI processing time
             return f"Memory for {user_id}"
 
-        with patch.object(self.memory_manager, '_fetch_all_daily_summaries', new_callable=AsyncMock) as mock_fetch_daily, \
-             patch.object(self.memory_manager, '_create_historical_summaries_for_users', new_callable=AsyncMock) as mock_create_historical, \
-             patch.object(self.memory_manager, '_create_user_memory', side_effect=slow_create_user_memory):
-            
-            mock_fetch_daily.return_value = {date(1905, 3, 6): {uid: f"Summary for {uid}" for uid in user_ids}}
-            mock_create_historical.return_value = {uid: f"Historical for {uid}" for uid in user_ids}
-            
-            # Mock facts to be empty to avoid sequential fetch complexity
-            self.mock_store.get_user_facts = AsyncMock(return_value=None)
-
+        with patch.object(self.memory_manager, '_create_user_memory', side_effect=slow_create_user_memory):
             start_time = asyncio.get_event_loop().time()
             # Act
             await self.memory_manager.get_memories(self.physics_guild_id, user_ids)
@@ -945,7 +952,7 @@ class TestMemoryManagerDatabaseConcurrency(unittest.IsolatedAsyncioTestCase):
                 return "Historical summary"
             return "Historical summary"
 
-        self.mock_store.get_user_facts = AsyncMock(side_effect=facts_side_effect)
+        self.test_store.get_user_facts = AsyncMock(side_effect=facts_side_effect)
         
         with patch.object(self.memory_manager, '_fetch_all_daily_summaries', new_callable=AsyncMock) as mock_fetch_daily, \
              patch.object(self.memory_manager, '_create_historical_summaries_for_users', new_callable=AsyncMock) as mock_create_historical, \
@@ -979,13 +986,16 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.user_resolver = TestUserResolver()
-        self.mock_store = Mock(spec=Store)
+        
+        # Use TestStore for realistic data and interactions
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
+
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
-            store=self.mock_store,
+            store=self.test_store,
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver
@@ -997,11 +1007,6 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         """Test that repeated daily summary requests hit cache instead of making AI calls."""
         # Arrange - Use real physics conversation data from Monday, March 3rd
         test_date = date(1905, 3, 3)  # Monday with rich physics discussions
-        
-        # Use TestStore to provide real physics messages
-        from tests.test_store import TestStore
-        test_store = TestStore()
-        self.memory_manager._store = test_store
         
         self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
             summaries=[UserSummary(user_id=self.physicist_ids["Einstein"], summary="Einstein discussed photoelectric effect and quantum theory")]
@@ -1061,13 +1066,16 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.user_resolver = TestUserResolver()
-        self.mock_store = Mock(spec=Store)
+        
+        # Use TestStore for realistic data and interactions
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
+
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
-            store=self.mock_store,
+            store=self.test_store,
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver
@@ -1080,11 +1088,6 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
         # Arrange - Use real physics conversation data from Tuesday, March 4th
         transition_date = date(1905, 3, 4)  # Tuesday with Marie Curie and Einstein discussions
         
-        # Use TestStore to provide real physics messages
-        from tests.test_store import TestStore
-        test_store = TestStore()
-        self.memory_manager._store = test_store
-        
         self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
             summaries=[UserSummary(user_id=self.physicist_ids["Einstein"], summary="Einstein discussed relativity and mass-energy equivalence")]
         ))
@@ -1094,21 +1097,22 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
             mock_datetime.now.return_value = datetime(1905, 3, 4, 23, 59, tzinfo=timezone.utc)
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
             
-            await self.memory_manager._daily_summary(self.physics_guild_id, transition_date)
+            result1 = await self.memory_manager._daily_summary(self.physics_guild_id, transition_date)
             first_call_count = self.mock_gemini_client.generate_content.call_count
             
             # Second call when date becomes "historical" (next day)
             mock_datetime.now.return_value = datetime(1905, 3, 5, 0, 1, tzinfo=timezone.utc)
             
-            await self.memory_manager._daily_summary(self.physics_guild_id, transition_date)
+            result2 = await self.memory_manager._daily_summary(self.physics_guild_id, transition_date)
             second_call_count = self.mock_gemini_client.generate_content.call_count
 
-            # Assert - Should use different caches and potentially make separate AI calls
+            # Assert - Different cache systems should be used
             self.assertIn((self.physics_guild_id, transition_date), self.memory_manager._current_day_batch_cache)
-            self.assertIn((self.physics_guild_id, transition_date), self.memory_manager._closed_day_batch_cache)
+            # Both calls should return the same summary data
+            self.assertEqual(result1, result2)
             # Each cache system should get the result, but AI calls depend on implementation
             self.assertGreaterEqual(first_call_count, 1)  # First call should trigger AI
-            self.assertGreaterEqual(second_call_count, 1)  # Second call might hit new cache or make new call
+            self.assertGreaterEqual(second_call_count, 1)  # Second call might hit Store cache or make new call
 
     async def test_empty_date_range_handling(self):
         """Test behavior with empty or invalid date ranges."""
@@ -1124,14 +1128,173 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
         """Test behavior when requesting summaries for future dates."""
         # Arrange
         future_date = date(2025, 12, 31)
-        self.mock_store.get_chat_messages_for_date = AsyncMock(return_value=[])
         
-        # Act
-        result = await self.memory_manager._daily_summary(self.physics_guild_id, future_date)
+        with patch('memory_manager.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 12, 0, tzinfo=timezone.utc)
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            
+            # Act
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, future_date)
+            
+            # Assert - Should handle future dates gracefully (no messages = empty summary)
+            self.assertEqual(result, {})
+            self.mock_gemini_client.generate_content.assert_not_called()
+
+
+class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
+    """Test database-backed daily summaries functionality."""
+    
+    def setUp(self):
+        self.telemetry = NullTelemetry()
         
-        # Assert - Should handle future dates gracefully (no messages = empty summary)
-        self.assertEqual(result, {})
-        self.mock_gemini_client.generate_content.assert_not_called()
+        # Use TestStore for realistic database simulation
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
+        
+        # Mock AI clients only
+        self.mock_gemini_client = Mock(spec=AIClient)
+        self.mock_gemma_client = Mock(spec=AIClient)
+        
+        # Component under test
+        self.memory_manager = MemoryManager(
+            telemetry=self.telemetry,
+            store=self.test_store,
+            gemini_client=self.mock_gemini_client,
+            gemma_client=self.mock_gemma_client,
+            user_resolver=self.user_resolver
+        )
+        
+        # Test data
+        self.physics_guild_id = self.user_resolver.physics_guild_id
+        self.physicist_ids = self.user_resolver.physicist_ids
+
+    async def test_historical_date_database_hit(self):
+        """Test that historical dates use database and avoid LLM calls when summaries exist."""
+        # Arrange - Use a date with messages and pre-populate summaries
+        physics_date = date(1905, 3, 4)  # March 4th has real physics messages in TestStore
+        einstein_id = self.physicist_ids["Einstein"]
+        expected_summaries = {einstein_id: "Einstein discussed photoelectric effect"}
+        
+        # Pre-save summaries to TestStore to simulate existing database data
+        await self.test_store.save_daily_summaries(self.physics_guild_id, physics_date, expected_summaries)
+        
+        with patch('memory_manager.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(1905, 3, 5, 12, 0, tzinfo=timezone.utc)  # Next day
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            
+            # Act
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, physics_date)
+            
+            # Assert
+            self.assertEqual(result, expected_summaries)
+            self.mock_gemini_client.generate_content.assert_not_called()  # No LLM call needed
+
+    async def test_historical_date_database_miss_generates_and_saves(self):
+        """Test that historical dates generate summaries and save to database when missing."""
+        # Arrange - Use date with real messages in TestStore but no pre-saved summaries
+        physics_discussion_date = date(1905, 3, 3)  # March 3rd has real Einstein photoelectric effect discussion
+        einstein_id = self.physicist_ids["Einstein"]
+        generated_summaries = {einstein_id: "Einstein discussed photoelectric effect"}
+        
+        # Mock AI response for generating summaries
+        self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
+            summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed photoelectric effect")]
+        ))
+        
+        with patch('memory_manager.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(1905, 3, 4, 12, 0, tzinfo=timezone.utc)  # Next day
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            
+            # Act
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, physics_discussion_date)
+            
+            # Assert
+            self.assertEqual(result, generated_summaries)
+            self.mock_gemini_client.generate_content.assert_called_once()  # LLM call made
+            
+            # Verify summaries were saved to TestStore and can be retrieved
+            saved_summaries = await self.test_store.get_daily_summaries(self.physics_guild_id, physics_discussion_date)
+            self.assertEqual(saved_summaries, generated_summaries)
+
+    async def test_historical_date_no_messages_skips_database_and_llm(self):
+        """Test that historical dates with no messages return empty without DB or LLM calls."""
+        # Arrange - Use March 2nd which has no messages in TestStore
+        historical_date = date(1905, 3, 2)  # Date with no physics discussions
+        
+        with patch('memory_manager.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 12, 0, tzinfo=timezone.utc)
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            
+            # Act
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, historical_date)
+            
+            # Assert
+            self.assertEqual(result, {})
+            self.mock_gemini_client.generate_content.assert_not_called()  # Skip LLM
+            
+            # Verify TestStore correctly reports no messages for this date
+            has_messages = await self.test_store.has_chat_messages_for_date(self.physics_guild_id, historical_date)
+            self.assertFalse(has_messages)
+
+    async def test_current_day_still_uses_ttl_cache(self):
+        """Test that current day continues to use TTL cache and not database."""
+        # Arrange - Use date with real messages in TestStore
+        today = date(1905, 3, 3)  # March 3rd has real Einstein discussion
+        einstein_id = self.physicist_ids["Einstein"]
+        generated_summaries = {einstein_id: "Einstein discussed photoelectric effect"}
+        
+        # Mock AI response for generating summaries
+        self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
+            summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed photoelectric effect")]
+        ))
+        
+        with patch('memory_manager.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 12, 0, tzinfo=timezone.utc)
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            
+            # Act - Two calls should hit TTL cache on second call
+            result1 = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            result2 = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            
+            # Assert
+            self.assertEqual(result1, generated_summaries)
+            self.assertEqual(result2, generated_summaries)
+            self.mock_gemini_client.generate_content.assert_called_once()  # Only one LLM call due to TTL cache
+            
+            # Verify database was not used for current day - no summaries should be saved there
+            db_summaries = await self.test_store.get_daily_summaries(self.physics_guild_id, today)
+            self.assertEqual(db_summaries, {})  # Should be empty - current day uses TTL cache, not database
+
+    async def test_database_persistence_integration(self):
+        """Test that summaries are properly saved and retrieved from database via Store."""
+        # Arrange - Use date with real messages in TestStore
+        physics_date = date(1905, 3, 3)  # March 3rd has real physics discussion
+        einstein_id = self.physicist_ids["Einstein"]
+        generated_summaries = {einstein_id: "Einstein discussed photoelectric effect"}
+        
+        # Mock AI response for generating summaries
+        self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
+            summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed photoelectric effect")]
+        ))
+        
+        with patch('memory_manager.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(1905, 3, 4, 12, 0, tzinfo=timezone.utc)  # Next day
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            
+            # Act - First call should generate and save summaries
+            result1 = await self.memory_manager._daily_summary(self.physics_guild_id, physics_date)
+            
+            # Second call should retrieve from database (no additional AI call)
+            result2 = await self.memory_manager._daily_summary(self.physics_guild_id, physics_date)
+            
+            # Assert
+            self.assertEqual(result1, generated_summaries)
+            self.assertEqual(result2, generated_summaries)
+            self.mock_gemini_client.generate_content.assert_called_once()  # Only one AI call
+            
+            # Verify persistence integration - summaries stored and retrievable
+            stored_summaries = await self.test_store.get_daily_summaries(self.physics_guild_id, physics_date)
+            self.assertEqual(stored_summaries, generated_summaries)
 
 
 if __name__ == '__main__':

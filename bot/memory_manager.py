@@ -83,7 +83,6 @@ class MemoryManager:
         self._current_day_batch_cache = TTLCache(maxsize=100, ttl=3600)  # 1-hour TTL for current day batch summaries
         self._week_summary_cache = LRUCache(maxsize=500)  # Permanent cache for week summaries
         self._context_cache = LRUCache(maxsize=500)  # Final context cache
-        self._closed_day_batch_cache = LRUCache(maxsize=200)  # Batch summaries cache for closed days (guild_id, date) -> dict[user_id, summary]
 
     async def get_memories(self, guild_id: int, user_ids: list[int]) -> dict[int, str | None]:
         """Get memories for multiple users with concurrent processing."""
@@ -228,7 +227,7 @@ class MemoryManager:
             return None
 
     async def _daily_summary(self, guild_id: int, for_date: date) -> dict[int, str]:
-        """Get daily summaries for all users on a given date with smart caching."""
+        """Get daily summaries for all users on a given date."""
         async with self._telemetry.async_create_span("daily_summary") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
@@ -237,26 +236,46 @@ class MemoryManager:
             current_date = datetime.now(timezone.utc).date()
             is_current_day = for_date == current_date
             
-            # Use appropriate cache based on date type
             if is_current_day:
-                cache = self._current_day_batch_cache
+                # Current day: Use existing TTL cache behavior
+                cache_key = (guild_id, for_date)
+                
+                # Check cache first
+                if cache_key in self._current_day_batch_cache:
+                    span.set_attribute("cache_hit", True)
+                    return self._current_day_batch_cache[cache_key]
+                
+                span.set_attribute("cache_hit", False)
+                
+                # Generate batch summaries and cache the result
+                batch_summaries = await self._create_daily_summaries(guild_id, for_date)
+                self._current_day_batch_cache[cache_key] = batch_summaries
+                
+                return batch_summaries
             else:
-                cache = self._closed_day_batch_cache
-            
-            cache_key = (guild_id, for_date)
-            
-            # Check cache first
-            if cache_key in cache:
-                span.set_attribute("cache_hit", True)
-                return cache[cache_key]
-            
-            span.set_attribute("cache_hit", False)
-            
-            # Generate batch summaries and cache the result
-            batch_summaries = await self._create_daily_summaries(guild_id, for_date)
-            cache[cache_key] = batch_summaries
-            
-            return batch_summaries
+                # Historical day: Database-first approach (caching handled by Store)
+                
+                # Check if any messages exist for this date
+                has_messages = await self._store.has_chat_messages_for_date(guild_id, for_date)
+                if not has_messages:
+                    span.set_attribute("has_messages", False)
+                    empty_dict: dict[int, str] = {}
+                    return empty_dict
+                
+                span.set_attribute("has_messages", True)
+                
+                # Check database for existing summaries (Store handles caching)
+                db_summaries = await self._store.get_daily_summaries(guild_id, for_date)
+                if db_summaries:
+                    return db_summaries
+                
+                # Messages exist but no summaries = needs processing
+                batch_summaries = await self._create_daily_summaries(guild_id, for_date)
+                
+                # Save to database (Store handles caching)
+                await self._store.save_daily_summaries(guild_id, for_date, batch_summaries)
+                
+                return batch_summaries
 
     async def _create_week_summary(self, daily_summaries: dict[date, str]) -> str | None:
         """Build historical summary from daily summaries dictionary."""

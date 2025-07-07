@@ -24,6 +24,9 @@ class TestStore(Store):
         
         # Store for user facts (empty by default for testing)
         self._user_facts = {}
+        
+        # Store for daily summaries: (guild_id, for_date) -> dict[user_id, summary]
+        self._daily_summaries = {}
     
     def _parse_physics_chat_history(self) -> List[ChatMessage]:
         """Parse the physics chat history into ChatMessage objects."""
@@ -244,3 +247,18 @@ class TestStore(Store):
         
         dates = [msg.timestamp.date() for msg in self._messages]
         return min(dates), max(dates)
+    
+    async def has_chat_messages_for_date(self, guild_id: int, for_date: date) -> bool:
+        """Check if any chat messages exist for a specific guild and date (test implementation)."""
+        messages = await self.get_chat_messages_for_date(guild_id, for_date)
+        return len(messages) > 0
+    
+    async def get_daily_summaries(self, guild_id: int, for_date: date) -> dict[int, str]:
+        """Get daily summaries for all users on a specific date (test implementation)."""
+        cache_key = (guild_id, for_date)
+        return self._daily_summaries.get(cache_key, {})
+    
+    async def save_daily_summaries(self, guild_id: int, for_date: date, summaries_dict: dict[int, str]) -> None:
+        """Save daily summaries for multiple users on a specific date (test implementation)."""
+        cache_key = (guild_id, for_date)
+        self._daily_summaries[cache_key] = summaries_dict
