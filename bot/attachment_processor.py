@@ -51,6 +51,7 @@ class AttachmentProcessor:
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
         self._download_cache = LRUCache(maxsize=128)
         self._article_cache = LRUCache(maxsize=128)
+        self._processed_attachment_cache = LRUCache(maxsize=128)
         
     def is_supported_image(self, attachment: nextcord.Attachment) -> bool:
         """
@@ -162,6 +163,11 @@ class AttachmentProcessor:
             descriptions = []
             
             for attachment in attachments:
+                cache_key = attachment.url
+                if cache_key in self._processed_attachment_cache:
+                    descriptions.append(self._processed_attachment_cache[cache_key])
+                    continue
+
                 try:
                     # Download attachment
                     attachment_data = await self.download_attachment(attachment)
@@ -174,6 +180,7 @@ class AttachmentProcessor:
                     # Format as embedding similar to article embeddings
                     embedding_text = f'<embedding type="image" filename="{attachment.filename}">{description}</embedding>'
                     descriptions.append(embedding_text)
+                    self._processed_attachment_cache[cache_key] = embedding_text
                     
                 except Exception as e:
                     logger.error(f"Error processing attachment {attachment.filename}: {e}", exc_info=True)
