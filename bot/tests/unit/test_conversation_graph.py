@@ -144,7 +144,7 @@ class TestMessageGraph(BaseMessageGraphTest):
         self.assertEqual(frontier[0].id, 2)
         self.assertEqual(frontier[1].id, 1)
     
-    def test_chronological_conversation(self):
+    async def test_chronological_conversation(self):
         """Test conversion to chronological conversation format."""
         msg1 = self.create_mock_discord_message(
             msg_id=1,
@@ -163,7 +163,7 @@ class TestMessageGraph(BaseMessageGraphTest):
         self.graph.add_node(msg2)  # Add in reverse order
         self.graph.add_node(msg1)
         
-        def mock_discord_to_message_node(discord_msg):
+        async def mock_discord_to_message_node(discord_msg):
             return MessageNode(
                 id=discord_msg.id,
                 content=discord_msg.content,
@@ -174,7 +174,7 @@ class TestMessageGraph(BaseMessageGraphTest):
                 reference_id=discord_msg.reference.message_id if discord_msg.reference else None
             )
         
-        conversation = self.graph.to_chronological_conversation(mock_discord_to_message_node)
+        conversation = await self.graph.to_chronological_conversation(mock_discord_to_message_node)
         
         self.assertEqual(len(conversation), 2)
         # Should be in chronological order
@@ -267,7 +267,7 @@ class TestConversationGraphBuilder(BaseMessageGraphTest):
         
         # Build conversation graph requesting all 200 messages starting from message 200
         trigger_message = self.messages[200]
-        def mock_discord_to_message_node(discord_msg):
+        async def mock_discord_to_message_node(discord_msg):
             return MessageNode(
                 id=discord_msg.id,
                 content=discord_msg.content,
