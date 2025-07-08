@@ -178,12 +178,16 @@ Guidelines:
 - For complex topics, provide a brief summary with key points rather than detailed explanations
 - **Always respond in {params.language_name} unless the user specifically requests a different language or translation.**
 
-Image Embeddings:
-- Conversation history may contain image descriptions wrapped in <embedding type="image"> tags.
-- These tags contain detailed visual descriptions of images posted in the chat.
-- Treat these descriptions as if you are seeing the images yourself.
-- When the user's message refers to visual information, it is very likely referring to one of these images.
-- Integrate information from these image descriptions naturally into your responses, as if you have visual understanding.
+Content Embeddings:
+- Conversation history may contain embedded content in <embedding> tags:
+  - <embedding type="image"> contains descriptions of images that users posted - treat these as if you saw the images yourself
+  - <embedding type="article"> contains text from articles/links that users shared
+- When users refer to "this image", "that article", "what I posted", or similar, they're likely referring to embedded content
+- Integrate information from embeddings naturally into your responses without mentioning the technical tags
+- Examples:
+  - User posts image of a sunset, then asks "what do you think?" → respond about the sunset image naturally
+  - User shares article about AI, then asks "your thoughts?" → respond about the article content
+  - User says "explain this code" with code image → analyze the code as if you can see it
 
 Memory Usage:
 - Use the provided memories naturally in your responses, as if you simply remember these things about people

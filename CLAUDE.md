@@ -139,6 +139,7 @@ def process_data(items: Optional[List[str]]) -> Dict[str, Any]:  # Old syntax
 ### Telemetry Span Attributes
 - **Reuse attribute names consistently** across different components when they represent the same concept
 - **Common attribute names** should be standardized for easier aggregation and analysis in observability tools
+- **Cache hit tracking**: Whenever there's caching involved, surrounding open telemetry span should have `cache_hit` attribute set to `True` when cache is used
 - **Avoid inconsistent naming**:
   ```python
   # Avoid - Different names for same concept across components
@@ -147,3 +148,9 @@ def process_data(items: Optional[List[str]]) -> Dict[str, Any]:  # Old syntax
   span.set_attribute("lang_confidence", score)      # In third component
   ```
 - **When creating new attributes**, check existing codebase for similar concepts and reuse existing names
+
+## Development Workflow
+
+### Code Quality Checks
+- **After making file changes**: Always run `ruff` to check files for linting issues and formatting
+- Use `ruff check` for linting and `ruff format` for code formatting

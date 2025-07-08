@@ -15,19 +15,6 @@ from user_resolver import UserResolver
 
 logger = logging.getLogger(__name__)
 
-SUMMARIZE_DAILY_PROMPT = """
-Analyze the provided chat messages and create a concise daily summary focusing specifically on the target user.
-
-Focus on these areas about the target user:
-- Notable events or experiences they mentioned
-- Their mood and emotional state
-- Important interactions and topics they discussed
-- Behavioral patterns they exhibited
-- Information revealed about them through their messages or messages from others
-
-Keep the summary in the third person and under 300 characters.
-"""
-
 SUMMARIZE_HISTORICAL_PROMPT = """
 Analyze the provided daily summaries for the user and create a coherent historical behavioral summary.
 
@@ -59,6 +46,12 @@ For each user, focus on:
 - Important interactions and topics they discussed
 - Behavioral patterns they exhibited
 - Information revealed about them through their messages or messages from others
+
+Embeddings in Messages:
+- Messages may contain <embedding type="image"> tags with descriptions of images that users posted
+- These descriptions should be treated as if you saw the images yourself
+- Messages may contain <embedding type="article"> tags with article content that users shared
+- Include relevant details from shared images and articles when summarizing user behavior or interests
 
 Keep each summary in the third person and under 300 characters.
 Return a list of summaries, one for each active user.
