@@ -38,15 +38,14 @@ class AttachmentProcessor:
 
     # Image analysis prompts
     IMAGE_ANALYSIS_MESSAGE = (
-        "Extract all visible text from this image exactly as it appears, then describe the image "
-        "as if you're explaining it to a blind person who will need to answer questions about it later. "
-        "Include all text you can see - signs, labels, captions, usernames, timestamps, UI elements, "
-        "or any other written content. Then describe what you see in a natural, comprehensive way."
+        "First, identify and list all unique text visible in this image, showing each distinct text only once. "
+        "Organize the text logically (e.g., product names, prices, signs, labels). Then describe what you see "
+        "in a natural, comprehensive way as if explaining to a blind person who will need to answer questions about it later."
     )
 
     IMAGE_ANALYSIS_PROMPT = (
-        "You are helping someone understand an image they cannot see. Your goal is to extract "
-        "every piece of text visible in the image and provide a clear, thorough description "
+        "You are helping someone understand an image they cannot see. Start by listing all unique text elements "
+        "visible in the image organized logically, then provide a clear, thorough description "
         "that would help someone answer questions about the image later."
     )
 
