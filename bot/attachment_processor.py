@@ -7,12 +7,12 @@ extracting attachment processing logic from the main app flow into a focused com
 
 import logging
 from dataclasses import dataclass
-from functools import lru_cache
 
 import aiohttp
 import nextcord
 from goose3 import Goose
 from opentelemetry.trace import SpanKind, Status, StatusCode
+from cachetools import LRUCache
 
 from ai_client import AIClient
 from open_telemetry import Telemetry
@@ -49,6 +49,8 @@ class AttachmentProcessor:
         self.ai_client = ai_client
         self.telemetry = telemetry
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
+        self._download_cache = LRUCache(maxsize=128)
+        self._article_cache = LRUCache(maxsize=128)
         
     def is_supported_image(self, attachment: nextcord.Attachment) -> bool:
         """
@@ -63,9 +65,11 @@ class AttachmentProcessor:
         return (attachment.content_type in self.SUPPORTED_IMAGE_TYPES and 
                 attachment.size <= self.max_file_size_bytes)
     
-    @lru_cache(maxsize=32)
     async def _download_from_url(self, url: str) -> bytes | None:
         """Download binary data from URL with caching."""
+        if url in self._download_cache:
+            return self._download_cache[url]
+
         async with self.telemetry.async_create_span("download_from_url", kind=SpanKind.CLIENT) as span:
             span.set_attribute("url", url)
             
@@ -78,11 +82,13 @@ class AttachmentProcessor:
                         
                         binary_data = await response.read()
                         span.set_attribute("downloaded_size", len(binary_data))
+                        self._download_cache[url] = binary_data
                         return binary_data
                         
             except Exception as e:
                 logger.error(f"Error downloading from URL {url}: {e}", exc_info=True)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.set_status(Status(StatusCode.ERROR))
+                span.record_exception(e)
                 return None
     
     async def download_attachment(self, attachment: nextcord.Attachment) -> AttachmentData | None:
@@ -171,15 +177,19 @@ class AttachmentProcessor:
                     
                 except Exception as e:
                     logger.error(f"Error processing attachment {attachment.filename}: {e}", exc_info=True)
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR))
                     continue
             
             span.set_attribute("success_count", len(descriptions))
             
             return descriptions
     
-    @lru_cache(maxsize=128)
     def extract_article(self, url: str) -> str:
         """Extract article content with LRU caching."""
+        if url in self._article_cache:
+            return self._article_cache[url]
+
         with self.telemetry.create_span("extract_article") as span:
             span.set_attribute("url", url)
             try:
@@ -190,6 +200,7 @@ class AttachmentProcessor:
                     logger.info(f"Extracted article content from {url}: {content[:500]}{'...' if len(content) > 500 else ''}")
                 else:
                     logger.info(f"No content extracted from {url}")
+                self._article_cache[url] = content
                 return content
             except Exception as e:
                 span.record_exception(e)
