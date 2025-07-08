@@ -194,11 +194,13 @@ class AttachmentProcessor:
             descriptions = []
 
             for attachment in attachments:
-                cache_key = attachment.url
+                cache_key = attachment.id
                 if cache_key in self._processed_attachment_cache:
                     descriptions.append(self._processed_attachment_cache[cache_key])
                     span.set_attribute("cache_hit", True)
                     continue
+
+                span.set_attribute("cache_hit", False)
 
                 try:
                     # Download attachment
