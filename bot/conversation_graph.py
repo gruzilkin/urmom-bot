@@ -63,13 +63,12 @@ class MessageGraph:
         for message in messages:
             message_node = await discord_to_message_node_func(message)
             
-            if message_node.content.strip():
-                conversation_messages.append(ConversationMessage(
-                    author_id=message_node.author_id,
-                    content=message_node.content,
-                    timestamp=message_node.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                    mentioned_user_ids=message_node.mentioned_user_ids
-                ))
+            conversation_messages.append(ConversationMessage(
+                author_id=message_node.author_id,
+                content=message_node.content,
+                timestamp=message_node.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                mentioned_user_ids=message_node.mentioned_user_ids
+            ))
         
         return conversation_messages
 
