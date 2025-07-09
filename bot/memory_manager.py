@@ -24,7 +24,7 @@ Focus on:
 - Significant events or behavioral changes
 - Personality insights from consistent behaviors
 
-Keep the summary in the third person and under 500 characters.
+Keep the summary in the third person.
 """
 
 MERGE_CONTEXT_PROMPT = """
@@ -53,7 +53,7 @@ Embeddings in Messages:
 - Messages may contain <embedding type="article"> tags with article content that users shared
 - Include relevant details from shared images and articles when summarizing user behavior or interests
 
-Keep each summary in the third person and under 300 characters.
+Keep each summary in the third person.
 Return a list of summaries, one for each active user.
 """
 
