@@ -62,6 +62,22 @@ class GemmaClient(AIClient):
             logger.error(f"Error tracking token usage: {e}", exc_info=True)
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None, image_data: bytes | None = None, image_mime_type: str | None = None) -> str | T:
+        """
+        Generate content using Gemma model.
+        
+        Args:
+            message: The main user message/query
+            prompt: System prompt to guide the response
+            samples: Example conversations (not supported by Gemma)
+            enable_grounding: Enable web grounding (not supported by Gemma)
+            response_schema: Pydantic model for structured JSON output
+            temperature: Override default temperature for this request
+            image_data: Raw image bytes for multimodal input
+            image_mime_type: MIME type of the image (e.g., 'image/jpeg', 'image/png')
+            
+        Returns:
+            Generated text response or structured object if response_schema provided
+        """
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT):
             # Log unsupported features
             if samples:
