@@ -55,21 +55,20 @@ class MessageGraph:
     def __len__(self) -> int:
         return len(self.nodes)
     
-    def to_chronological_conversation(self, discord_to_message_node_func: Callable[[nextcord.Message], 'MessageNode']) -> list[ConversationMessage]:
+    async def to_chronological_conversation(self, discord_to_message_node_func: Callable[[nextcord.Message], Awaitable['MessageNode']]) -> list[ConversationMessage]:
         """Convert to chronological conversation format."""
         messages = sorted(self.nodes.values(), key=lambda m: m.created_at)
         conversation_messages = []
         
         for message in messages:
-            message_node = discord_to_message_node_func(message)
+            message_node = await discord_to_message_node_func(message)
             
-            if message_node.content.strip():
-                conversation_messages.append(ConversationMessage(
-                    author_id=message_node.author_id,
-                    content=message_node.content,
-                    timestamp=message_node.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                    mentioned_user_ids=message_node.mentioned_user_ids
-                ))
+            conversation_messages.append(ConversationMessage(
+                author_id=message_node.author_id,
+                content=message_node.content,
+                timestamp=message_node.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                mentioned_user_ids=message_node.mentioned_user_ids
+            ))
         
         return conversation_messages
 
@@ -172,7 +171,7 @@ class ConversationGraphBuilder:
                                      min_linear: int,
                                      max_total: int, 
                                      time_threshold_minutes: int,
-                                     discord_to_message_node_func: Callable[[nextcord.Message], 'MessageNode']) -> list[ConversationMessage]:
+                                     discord_to_message_node_func: Callable[[nextcord.Message], Awaitable['MessageNode']]) -> list[ConversationMessage]:
         """
         Build conversation graph using tik/tok alternating exploration.
         
@@ -207,7 +206,7 @@ class ConversationGraphBuilder:
             if not reference_step_added and not temporal_step_added:
                 break
         
-        return graph.to_chronological_conversation(discord_to_message_node_func)
+        return await graph.to_chronological_conversation(discord_to_message_node_func)
     
 
 

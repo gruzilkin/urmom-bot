@@ -10,6 +10,7 @@ from country_resolver import CountryResolver
 from open_telemetry import Telemetry
 from ai_router import AiRouter
 from response_summarizer import ResponseSummarizer
+from attachment_processor import AttachmentProcessor
 from fact_handler import FactHandler
 from user_resolver import UserResolver
 from memory_manager import MemoryManager
@@ -72,6 +73,13 @@ class Container:
         self.language_detector = LanguageDetector(
             ai_client=self.gemma,
             telemetry=self.telemetry
+        )
+        
+        # Initialize attachment processor for handling Discord attachments
+        self.attachment_processor = AttachmentProcessor(
+            ai_client=self.gemma,
+            telemetry=self.telemetry,
+            max_file_size_mb=10
         )
 
         self.joke_generator = JokeGenerator(

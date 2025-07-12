@@ -3,10 +3,7 @@ from enum import Enum
 from types import SimpleNamespace
 import logging
 from typing import Callable, Awaitable
-from functools import lru_cache
-
 import nextcord
-from goose3 import Goose
 
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
@@ -27,6 +24,7 @@ cache.processed_messages = set()
 
 # Set up a module-level logger
 logger = logging.getLogger(__name__)
+
 
 class BotCommand(Enum):
     HELP = "help"
@@ -81,7 +79,7 @@ async def on_message(message: nextcord.Message):
         container.telemetry.increment_message_counter(message)
         
         # Ingest message into transient memory using materialized content
-        materialized_message = discord_to_message_node(message)
+        materialized_message = await discord_to_message_node(message)
         await container.memory_manager.ingest_message(message.guild.id, materialized_message)
 
         if message.author.bot:
@@ -133,7 +131,7 @@ async def on_message_edit(before: nextcord.Message, after: nextcord.Message):
 
         # Ingest the updated message content, including embeds.
         # Caching in the materialization process handles efficiency.
-        materialized_message = discord_to_message_node(after)
+        materialized_message = await discord_to_message_node(after)
         await container.memory_manager.ingest_message(after.guild.id, materialized_message)
 
 
@@ -230,7 +228,7 @@ Current settings:
     return False
 
 
-def discord_to_message_node(message: nextcord.Message) -> MessageNode:
+async def discord_to_message_node(message: nextcord.Message) -> MessageNode:
     """Convert Discord message to MessageNode."""
     reference_id = None
     if message.reference and message.reference.message_id:
@@ -239,17 +237,17 @@ def discord_to_message_node(message: nextcord.Message) -> MessageNode:
     mentioned_user_ids = [user.id for user in message.mentions]
     
     content = message.content
-    if message.embeds:
-        article_contents = []
-        for embed in message.embeds:
-            if hasattr(embed, 'url') and embed.url:
-                article_text = extract_article(embed.url)
-                if article_text:
-                    article_contents.append(f'<embedding type="article" url="{embed.url}">{article_text}</embedding>')
-        
-        if article_contents:
-            embeddings_xml = f"<embeddings>{''.join(article_contents)}</embeddings>"
-            content = f"{content} {embeddings_xml}" if content.strip() else embeddings_xml
+    
+    # Process all content (articles and images) through AttachmentProcessor
+    if message.embeds or message.attachments:
+        try:
+            embeddings_xml = await container.attachment_processor.process_all_content(
+                message.attachments, message.embeds
+            )
+            if embeddings_xml:
+                content = f"{content} {embeddings_xml}" if content.strip() else embeddings_xml
+        except Exception as e:
+            logger.error(f"Error processing content for message {message.id}: {e}", exc_info=True)
     
     return MessageNode(
         id=message.id,
@@ -262,25 +260,6 @@ def discord_to_message_node(message: nextcord.Message) -> MessageNode:
     )
 
 
-@lru_cache(maxsize=128)
-def extract_article(url: str) -> str:
-    """Extract article content with LRU caching."""
-    with container.telemetry.create_span("extract_article") as span:
-        span.set_attribute("url", url)
-        try:
-            article = Goose().extract(url)
-            content = article.cleaned_text if article.cleaned_text else ""
-            span.set_attribute("content_length", len(content))
-            if content:
-                logger.info(f"Extracted article content from {url}: {content[:500]}{'...' if len(content) > 500 else ''}")
-            else:
-                logger.info(f"No content extracted from {url}")
-            return content
-        except Exception as e:
-            span.record_exception(e)
-            span.set_status(Status(StatusCode.ERROR))
-            logger.error(f"Error extracting article from {url}: {e}", exc_info=True)
-            return ""
 
 
 
