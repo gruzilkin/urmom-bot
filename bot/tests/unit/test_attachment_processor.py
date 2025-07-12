@@ -17,10 +17,12 @@ class TestAttachmentProcessorUnit(unittest.IsolatedAsyncioTestCase):
         """Set up test dependencies."""
         self.telemetry = NullTelemetry()
         self.mock_ai_client = AsyncMock(spec=AIClient)
+        self.mock_goose = Mock()
         self.attachment_processor = AttachmentProcessor(
             ai_client=self.mock_ai_client,
             telemetry=self.telemetry,
             max_file_size_mb=1,  # 1MB for easier testing
+            goose=self.mock_goose
         )
 
     def create_mock_attachment(self, filename, content_type, size, url):
@@ -153,13 +155,12 @@ class TestAttachmentProcessorUnit(unittest.IsolatedAsyncioTestCase):
             await self.attachment_processor._analyze_image(attachment_data)
         self.assertTrue("AI client failed" in str(context.exception))
 
-    @patch("attachment_processor.Goose")
-    def test_extract_article_success(self, mock_goose):
+    def test_extract_article_success(self):
         """Test successful article extraction."""
         # Arrange
         mock_article = Mock()
         mock_article.cleaned_text = "This is the article content."
-        mock_goose.return_value.extract.return_value = mock_article
+        self.mock_goose.extract.return_value = mock_article
 
         url = "http://example.com/article"
 
@@ -168,13 +169,12 @@ class TestAttachmentProcessorUnit(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.assertEqual(content, "This is the article content.")
-        mock_goose.return_value.extract.assert_called_once_with(url=url)
+        self.mock_goose.extract.assert_called_once_with(url=url)
 
-    @patch("attachment_processor.Goose")
-    def test_extract_article_failure(self, mock_goose):
+    def test_extract_article_failure(self):
         """Test that an empty string is returned on extraction failure."""
         # Arrange
-        mock_goose.return_value.extract.side_effect = Exception("Goose failed")
+        self.mock_goose.extract.side_effect = Exception("Goose failed")
         url = "http://example.com/failing-article"
 
         # Act
@@ -183,13 +183,12 @@ class TestAttachmentProcessorUnit(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertEqual(content, "")
 
-    @patch("attachment_processor.Goose")
-    def test_extract_article_caching(self, mock_goose):
+    def test_extract_article_caching(self):
         """Test that article extraction is cached."""
         # Arrange
         mock_article = Mock()
         mock_article.cleaned_text = "Article content"
-        mock_goose.return_value.extract.return_value = mock_article
+        self.mock_goose.extract.return_value = mock_article
         url = "http://example.com/cached-article"
 
         # Act
@@ -199,8 +198,8 @@ class TestAttachmentProcessorUnit(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertEqual(result1, "Article content")
         self.assertEqual(result2, "Article content")
-        # Goose().extract should only be called once
-        mock_goose.return_value.extract.assert_called_once_with(url=url)
+        # goose.extract should only be called once due to caching
+        self.mock_goose.extract.assert_called_once_with(url=url)
 
     async def test_process_all_content_mixed(self):
         """Test processing a mix of attachments and embeds."""

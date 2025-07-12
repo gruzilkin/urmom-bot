@@ -55,7 +55,7 @@ class AttachmentProcessor:
         return f'<embedding type="{embedding_type}" {attr_str}>{content}</embedding>'
 
     def __init__(
-        self, ai_client: AIClient, telemetry: Telemetry, max_file_size_mb: int = 10
+        self, ai_client: AIClient, telemetry: Telemetry, max_file_size_mb: int = 10, goose: Goose | None = None
     ):
         """
         Initialize the attachment processor.
@@ -64,9 +64,11 @@ class AttachmentProcessor:
             ai_client: AI client for image analysis (Gemma)
             telemetry: Telemetry instance for tracking metrics
             max_file_size_mb: Maximum file size in MB for processing
+            goose: Goose instance for article extraction (defaults to new instance)
         """
         self.ai_client = ai_client
         self.telemetry = telemetry
+        self.goose = goose or Goose()
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
         self._article_cache = LRUCache(maxsize=128)
         self._processed_attachment_cache = LRUCache(maxsize=128)
@@ -239,7 +241,7 @@ class AttachmentProcessor:
         with self.telemetry.create_span("extract_article") as span:
             span.set_attribute("url", url)
             try:
-                article = Goose().extract(url=url)
+                article = self.goose.extract(url=url)
                 content = article.cleaned_text if article.cleaned_text else ""
                 span.set_attribute("content_length", len(content))
                 if content:
