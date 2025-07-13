@@ -8,9 +8,9 @@ from ai_client import AIClient
 from message_node import MessageNode
 from schemas import MemoryContext, DailySummaries, UserSummary
 from store import Store
-from tests.null_telemetry import NullTelemetry
-from tests.test_user_resolver import TestUserResolver
-from tests.test_store import TestStore  # Moved import to top
+from null_telemetry import NullTelemetry
+from test_user_resolver import TestUserResolver
+from test_store import TestStore  # Moved import to top
 
 
 class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
@@ -96,7 +96,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
     async def test_historical_daily_cache_hit(self):
         """Test that historical daily summary cache hits for same guild/date, avoiding AI calls."""
         # Arrange - Use TestStore for realistic database behavior
-        from tests.test_store import TestStore
+        from test_store import TestStore
         test_store = TestStore()
         self.memory_manager._store = test_store  # Replace mock store with real test double
 

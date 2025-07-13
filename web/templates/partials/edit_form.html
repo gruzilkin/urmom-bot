@@ -1,0 +1,11 @@
+<div class="edit-form">
+    <form hx-post="/edit_message/{{ message_id }}" hx-target="closest td" hx-swap="innerHTML">
+        <textarea name="content" class="edit-textarea">{{ content }}</textarea>
+        <div class="edit-buttons">
+            <button type="submit" class="save-btn">Save</button>
+            <button type="button" class="cancel-btn" 
+                    hx-get="/cancel_edit_message/{{ message_id }}" 
+                    hx-target="closest td" hx-swap="innerHTML">Cancel</button>
+        </div>
+    </form>
+</div>

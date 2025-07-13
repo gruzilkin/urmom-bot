@@ -4,7 +4,7 @@ Tests for the TestStore test double to verify it correctly represents the physic
 
 import unittest
 from datetime import date, datetime, timezone
-from tests.test_store import TestStore
+from test_store import TestStore
 
 
 class TestTestStore(unittest.IsolatedAsyncioTestCase):

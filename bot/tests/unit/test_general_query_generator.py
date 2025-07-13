@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 from general_query_generator import GeneralQueryGenerator
 from schemas import GeneralParams
 from conversation_graph import ConversationMessage
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 
 class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):

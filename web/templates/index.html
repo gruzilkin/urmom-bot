@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joke Management Interface</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Joke Management Interface</h1>
+            <p>Manage and curate Discord bot jokes</p>
+        </header>
+
+        <div class="controls">
+            <form method="get" class="search-form">
+                <input type="text" name="search" placeholder="Search jokes..." value="{{ search }}" />
+                <button type="submit">Search</button>
+                {% if search %}
+                    <a href="/" class="clear-search">Clear</a>
+                {% endif %}
+            </form>
+            
+            <div class="stats">
+                Total jokes: {{ total_count }}
+            </div>
+        </div>
+
+        {% if jokes %}
+        <div class="table-container">
+            <table class="jokes-table">
+                <thead>
+                    <tr>
+                        <th>Source Message</th>
+                        <th>Joke Response</th>
+                        <th>Reactions</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for joke in jokes %}
+                    <tr id="joke-{{ joke.source_message_id }}-{{ joke.joke_message_id }}">
+                        <td class="editable">
+                            {% set content = joke.source_content %}
+                            {% set message_id = joke.source_message_id %}
+                            {% include 'partials/editable_content.html' with context %}
+                        </td>
+                        <td class="editable">
+                            {% set content = joke.joke_content %}
+                            {% set message_id = joke.joke_message_id %}
+                            {% include 'partials/editable_content.html' with context %}
+                        </td>
+                        <td class="reaction-count">{{ joke.reaction_count }}</td>
+                        <td class="actions">
+                            <button class="delete-btn" 
+                                    hx-delete="/delete/{{ joke.source_message_id }}/{{ joke.joke_message_id }}"
+                                    hx-target="closest tr"
+                                    hx-confirm="Are you sure you want to delete this joke?">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if not search and total_pages > 1 %}
+        <div class="pagination">
+            {% if current_page > 1 %}
+                <a href="?page={{ current_page - 1 }}" class="page-link">&laquo; Previous</a>
+            {% endif %}
+            
+            {% for page_num in range(1, total_pages + 1) %}
+                {% if page_num == current_page %}
+                    <span class="page-current">{{ page_num }}</span>
+                {% elif page_num <= 3 or page_num > total_pages - 3 or (page_num >= current_page - 2 and page_num <= current_page + 2) %}
+                    <a href="?page={{ page_num }}" class="page-link">{{ page_num }}</a>
+                {% elif page_num == 4 or page_num == total_pages - 3 %}
+                    <span class="page-ellipsis">...</span>
+                {% endif %}
+            {% endfor %}
+            
+            {% if current_page < total_pages %}
+                <a href="?page={{ current_page + 1 }}" class="page-link">Next &raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="no-results">
+            {% if search %}
+                <p>No jokes found matching "{{ search }}"</p>
+                <a href="/">View all jokes</a>
+            {% else %}
+                <p>No jokes found in the database.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Auto-focus on textarea when editing
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            const textarea = evt.detail.target.querySelector('textarea');
+            if (textarea) {
+                textarea.focus();
+                textarea.select();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -16,7 +16,7 @@ from general_query_generator import GeneralQueryGenerator
 from famous_person_generator import FamousPersonGenerator
 from fact_handler import FactHandler
 from language_detector import LanguageDetector
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 load_dotenv()
 

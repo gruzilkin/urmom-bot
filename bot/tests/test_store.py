@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone, date
 from typing import List
 from store import Store, ChatMessage
-from tests.test_user_resolver import TestUserResolver
+from test_user_resolver import TestUserResolver
 
 
 class TestStore(Store):

@@ -8,7 +8,7 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 import unittest
 from claude_client import ClaudeClient
 from schemas import YesNo
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 
 class TestClaudeStructuredOutput(unittest.IsolatedAsyncioTestCase):

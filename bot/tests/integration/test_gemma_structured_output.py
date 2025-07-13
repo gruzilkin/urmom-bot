@@ -10,7 +10,7 @@ import unittest
 from dotenv import load_dotenv
 from gemma_client import GemmaClient
 from schemas import YesNo
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 load_dotenv()
 

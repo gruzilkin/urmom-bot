@@ -3,7 +3,7 @@ import unittest
 from dotenv import load_dotenv
 from gemma_client import GemmaClient
 from language_detector import LanguageDetector
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 # Load environment variables from .env file
 load_dotenv()

@@ -7,7 +7,7 @@ from gemini_client import GeminiClient
 from gemma_client import GemmaClient
 from store import Store
 from language_detector import LanguageDetector
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 load_dotenv()
 

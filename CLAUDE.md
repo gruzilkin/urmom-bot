@@ -24,13 +24,13 @@ urmom-bot is a Discord bot that generates AI-powered "ur mom" jokes, country-spe
 ### Unit Tests
 Run unit tests only (excludes integration tests):
 ```bash
-source .venv/bin/activate && PYTHONPATH=bot python -m unittest discover -s bot/tests/unit -p "*test*.py" -v
+source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest discover -s bot/tests/unit -p "*test*.py" -v
 ```
 
 ### Integration Tests
 Run integration tests (requires API keys):
 ```bash
-source .venv/bin/activate && PYTHONPATH=bot python -m unittest discover -s bot/tests/integration -p "*test*.py" -v
+source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest discover -s bot/tests/integration -p "*test*.py" -v
 ```
 
 ### Test Structure
