@@ -23,7 +23,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Mock response summarizer that returns what it receives (passthrough)
         self.mock_response_summarizer = Mock()
-        self.mock_response_summarizer.process_response = AsyncMock(side_effect=lambda x: x)
+        self.mock_response_summarizer.process_response = AsyncMock(side_effect=lambda x, **kwargs: x)
         
         # Mock store and user_resolver
         self.mock_store = Mock()
