@@ -92,16 +92,21 @@ async def edit_message(request: Request, message_id: int, content: str = Form(..
         raise HTTPException(status_code=500, detail="Error updating message")
 
 @app.get("/edit_message_form/{message_id}")
-async def edit_message_form(request: Request, message_id: int, current_content: str):
+async def edit_message_form(request: Request, message_id: int):
     """Return edit form for message"""
-    from urllib.parse import unquote
-    decoded_content = unquote(current_content)
-    
-    return templates.TemplateResponse("partials/edit_form.html", {
-        "request": request,
-        "content": decoded_content,
-        "message_id": message_id
-    })
+    try:
+        content = await store.get_message_content(message_id)
+        if content is None:
+            raise HTTPException(status_code=404, detail="Message not found")
+            
+        return templates.TemplateResponse("partials/edit_form.html", {
+            "request": request,
+            "content": content,
+            "message_id": message_id
+        })
+    except Exception as e:
+        logger.error(f"Error getting edit form for message {message_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error getting edit form")
 
 @app.get("/cancel_edit_message/{message_id}")
 async def cancel_edit_message(request: Request, message_id: int):
