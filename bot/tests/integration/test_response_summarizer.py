@@ -6,11 +6,12 @@ the integration works correctly in practice.
 """
 
 import os
+import re
 import unittest
 from dotenv import load_dotenv
 from gemma_client import GemmaClient
 from response_summarizer import ResponseSummarizer
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 load_dotenv()
 
@@ -87,6 +88,125 @@ class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
         # Verify it's a meaningful summary, not just the start of the original
         self.assertNotEqual(result, long_response[:len(result)])
     
+    async def test_russian_language_preservation(self):
+        """Test that Russian scientific terms are preserved when summarizing Russian text."""
+        # Create a long Russian text about Einstein's work with key scientific terms
+        russian_einstein_text = """
+        Альберт Эйнштейн был одним из величайших физиков в истории человечества. Его работы революционизировали наше понимание пространства, времени и гравитации. Родившись в Ульме в 1879 году, Эйнштейн провел свои самые продуктивные годы в создании теорий, которые изменили науку навсегда.
+
+        Специальная теория относительности, опубликованная в 1905 году, стала одним из самых важных достижений в физике. Эта теория установила, что скорость света в вакууме является постоянной для всех наблюдателей, независимо от их движения. Знаменитая формула E=mc² показывает эквивалентность массы и энергии, что имело огромные последствия для понимания ядерной физики.
+
+        Фотоэлектрический эффект, за который Эйнштейн получил Нобелевскую премию в 1921 году, продемонстрировал квантовую природу света. Его работа показала, что свет состоит из дискретных пакетов энергии, называемых фотонами. Это открытие стало основой для развития квантовой механики, которая полностью изменила наше понимание атомного и субатомного мира.
+
+        Общая теория относительности, представленная в 1915 году, описывает гравитацию не как силу, а как искривление пространства-времени массивными объектами. Эта теория предсказала существование черных дыр, гравитационных волн и расширение Вселенной. Многие из этих предсказаний были подтверждены только десятилетия спустя с помощью современных технологий.
+
+        Работа Эйнштейна в области статистической механики и броуновского движения также внесла значительный вклад в понимание молекулярной структуры материи. Его теоретические исследования подтвердили существование атомов и молекул, что было спорным вопросом в начале XX века.
+
+        Космологические исследования Эйнштейна привели к пониманию того, что Вселенная может расширяться или сжиматься. Хотя сначала он сопротивлялся этой идее, введя космологическую постоянную, позже он признал, что динамическая Вселенная является естественным следствием его теории.
+
+        Влияние Эйнштейна на современную физику невозможно переоценить. Его работы заложили основы для квантовой теории поля, теории струн и современной космологии. Принцип относительности и квантовая механика стали двумя столпами современной физики, хотя попытки их объединения в единую теорию квантовой гравитации продолжаются и по сей день.
+        """
+        
+        result = await self.summarizer.process_response(russian_einstein_text, language="Russian")
+        
+        # Verify the result is shorter than the original
+        self.assertLess(len(result), len(russian_einstein_text))
+        # Verify it fits within the limit
+        self.assertLessEqual(len(result), 2000)
+        
+        # Verify key Russian scientific terms are preserved (using regex for inflected forms)
+        
+        key_russian_patterns = [
+            (r"теор\w* относит", "теория относительности"),
+            (r"квантов\w* механик", "квантовая механика"), 
+            (r"фотоэлектрическ\w* эффект", "фотоэлектрический эффект"),
+            (r"Нобелевск\w* преми", "Нобелевская премия")
+        ]
+        
+        for pattern, term_name in key_russian_patterns:
+            found = re.search(pattern, result)
+            self.assertTrue(found, f"Russian term '{term_name}' (pattern: {pattern}) should be preserved in summary")
+        
+        # Verify it's a meaningful summary, not just the start of the original
+        self.assertNotEqual(result, russian_einstein_text[:len(result)])
+    
+    async def test_multilingual_quotes_preservation(self):
+        """Test that foreign language quotes and technical terms are preserved in multilingual text."""
+        # Create a long multilingual text about Einstein with foreign quotes and technical terms
+        multilingual_einstein_text = """
+        Albert Einstein's revolutionary contributions to physics fundamentally changed our understanding of the universe. His work bridged classical and modern physics, establishing principles that continue to guide scientific research today. Born in Germany in 1879, Einstein's intellectual journey took him across Europe and eventually to the United States, where he spent his final years at Princeton.
+
+        The development of quantum mechanics involved collaboration with many brilliant scientists. Werner Heisenberg, one of the founding fathers of quantum mechanics, once remarked: "Die Unschärferelation ist fundamental für unser Verstehen der Quantenwelt" (The uncertainty principle is fundamental to our understanding of the quantum world). This principle, along with Einstein's work on the photoelectric effect, laid the groundwork for quantum theory.
+
+        Einstein's special theory of relativity, known in Japanese as 相対性理論 (sōtaisei riron), revolutionized our understanding of space and time. The theory established that the speed of light is constant for all observers, regardless of their motion. This concept, along with 量子力学 (ryōshi rikigaku, quantum mechanics), forms the foundation of modern physics.
+
+        The Russian physicist Lev Landau, who made significant contributions to theoretical physics, once observed: "Эйнштейн изменил наше понимание пространства и времени навсегда" (Einstein changed our understanding of space and time forever). Landau's work on phase transitions and condensed matter physics complemented Einstein's broader theoretical framework.
+
+        French mathematician Henri Poincaré, who made important contributions to the mathematical foundations of relativity, stated: "La relativité n'est qu'une convention, mais c'est une convention très commode" (Relativity is just a convention, but it is a very convenient convention). Poincaré's insights into the mathematical structure of spacetime helped establish the formal framework for Einstein's theories.
+
+        General relativity, Einstein's theory of gravitation, describes gravity not as a force but as the curvature of spacetime caused by mass and energy. This theory predicted the existence of black holes, gravitational waves, and the expansion of the universe. In Japanese physics terminology, 重力波 (jūryokuha, gravitational waves) were finally detected in 2015, confirming another of Einstein's predictions.
+
+        Einstein's work on Brownian motion and statistical mechanics provided crucial evidence for the atomic theory of matter. His theoretical analysis of the random motion of particles suspended in a fluid helped establish the reality of atoms and molecules, which was still debated at the beginning of the 20th century.
+
+        The famous mass-energy equivalence formula E=mc² demonstrated the fundamental relationship between mass and energy. This principle underlies nuclear physics and has profound implications for our understanding of stellar processes and nuclear reactions. The German physicist Max Planck noted: "Einsteins Entdeckung der Masse-Energie-Äquivalenz war revolutionär" (Einstein's discovery of mass-energy equivalence was revolutionary).
+
+        Einstein's cosmological investigations led to the understanding that the universe could be expanding or contracting. Although he initially resisted this idea by introducing the cosmological constant, he later acknowledged that a dynamic universe was a natural consequence of his theory. Modern cosmology, with concepts like 暗黒物質 (ankoku busshitsu, dark matter) and 暗黒エネルギー (ankoku enerugī, dark energy), continues to build upon Einstein's foundational work.
+        """
+        
+        # Test 1: Without language parameter - should preserve all multilingual content
+        result_no_lang = await self.summarizer.process_response(multilingual_einstein_text)
+        
+        # Verify the result is shorter than the original
+        self.assertLess(len(result_no_lang), len(multilingual_einstein_text))
+        # Verify it fits within the limit
+        self.assertLessEqual(len(result_no_lang), 2000)
+        
+        # Verify foreign language quotes and technical terms are preserved
+        foreign_terms = [
+            "Die Unschärferelation ist fundamental",  # German quote
+            "Эйнштейн изменил наше понимание",  # Russian quote
+            "La relativité n'est qu'une convention",  # French quote
+            "相対性理論",  # Japanese: relativity theory
+            "量子力学",   # Japanese: quantum mechanics
+            "重力波"      # Japanese: gravitational waves
+        ]
+        
+        preserved_terms = 0
+        for term in foreign_terms:
+            if term in result_no_lang:
+                preserved_terms += 1
+        
+        # At least half of the foreign terms should be preserved
+        self.assertGreaterEqual(preserved_terms, len(foreign_terms) // 2, 
+                               f"At least {len(foreign_terms) // 2} foreign terms should be preserved, but only {preserved_terms} were found")
+        
+        # Test 2: With English language parameter - should still preserve foreign quotes
+        result_english = await self.summarizer.process_response(multilingual_einstein_text, language="English")
+        
+        # Verify the result is shorter than the original
+        self.assertLess(len(result_english), len(multilingual_einstein_text))
+        # Verify it fits within the limit
+        self.assertLessEqual(len(result_english), 2000)
+        
+        # Verify some foreign language content is still preserved
+        key_foreign_quotes = [
+            "Die Unschärferelation",  # German scientific term
+            "Эйнштейн изменил",       # Russian quote fragment
+            "相対性理論"               # Japanese technical term
+        ]
+        
+        preserved_quotes = 0
+        for quote in key_foreign_quotes:
+            if quote in result_english:
+                preserved_quotes += 1
+        
+        # At least one foreign quote should be preserved
+        self.assertGreaterEqual(preserved_quotes, 1, 
+                               f"At least 1 foreign quote should be preserved when language=English, but {preserved_quotes} were found")
+        
+        # Both results should be meaningful summaries, not just truncation
+        self.assertNotEqual(result_no_lang, multilingual_einstein_text[:len(result_no_lang)])
+        self.assertNotEqual(result_english, multilingual_einstein_text[:len(result_english)])
 
 
 if __name__ == '__main__':

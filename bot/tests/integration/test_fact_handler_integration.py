@@ -14,9 +14,9 @@ from fact_handler import FactHandler
 from ai_router import AiRouter
 from gemma_client import GemmaClient
 from language_detector import LanguageDetector
-from tests.null_telemetry import NullTelemetry
-from tests.test_store import TestStore
-from tests.test_user_resolver import TestUserResolver
+from null_telemetry import NullTelemetry
+from test_store import TestStore
+from test_user_resolver import TestUserResolver
 
 load_dotenv()
 

@@ -7,7 +7,7 @@ from unittest.mock import Mock, AsyncMock, patch
 
 from attachment_processor import AttachmentProcessor, AttachmentData
 from ai_client import AIClient
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 
 class TestAttachmentProcessorUnit(unittest.IsolatedAsyncioTestCase):

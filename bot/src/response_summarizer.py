@@ -31,7 +31,7 @@ class ResponseSummarizer:
         )
 
     async def process_response(
-        self, original_response: str, max_length: int = 2000
+        self, original_response: str, max_length: int = 2000, language: str | None = None
     ) -> str:
         """
         Process a response, summarizing if too long, or truncating as fallback.
@@ -39,6 +39,7 @@ class ResponseSummarizer:
         Args:
             original_response: The original AI response
             max_length: Maximum allowed length (default: 2000 for Discord)
+            language: Target language for summarization (optional)
 
         Returns:
             str: The processed response (original, summarized, or truncated)
@@ -58,11 +59,13 @@ class ResponseSummarizer:
         ) as span:
             span.set_attribute("original_length", len(original_response))
             span.set_attribute("max_length", max_length)
+            if language:
+                span.set_attribute("target_language", language)
 
             try:
                 # Attempt summarization using gemma
                 summarized_response = await self._summarize_with_gemma(
-                    original_response, target_length
+                    original_response, target_length, language
                 )
 
                 if len(summarized_response) <= max_length:
@@ -88,7 +91,7 @@ class ResponseSummarizer:
             return truncated_response
 
     async def _summarize_with_gemma(
-        self, original_response: str, target_length: int
+        self, original_response: str, target_length: int, language: str | None = None
     ) -> str:
         """
         Summarize the response using gemma client.
@@ -96,6 +99,7 @@ class ResponseSummarizer:
         Args:
             original_response: The response to summarize
             target_length: Target length for the summary
+            language: Target language for summarization (optional)
 
         Returns:
             str: The summarized response
@@ -103,17 +107,22 @@ class ResponseSummarizer:
         Raises:
             Exception: If summarization fails
         """
-        prompt = f"""Summarize the following response to approximately {target_length} characters while preserving all key information, main points, the original tone, and the original language. 
+        # Create system prompt with instructions only
+        if language:
+            language_instruction = f"Summarize primarily in {language}, while preserving any foreign language content that is naturally part of the original context."
+        else:
+            language_instruction = "Maintain the same style and language as the content provided."
         
-The summary should be comprehensive and maintain the same style and language as the original response. Aim for close to {target_length} characters - use the full space available to provide a detailed summary. Do not add any meta-commentary about the summarization process.
+        prompt = f"""Summarize the following content to approximately {target_length} characters while preserving all key information, main points, and original tone. 
+        
+{language_instruction}
 
-Original response to summarize:
-{original_response}"""
+The summary should be comprehensive and use the full space available to provide a detailed summary. Aim for close to {target_length} characters. Do not add any meta-commentary about the summarization process."""
 
         logger.info("Attempting summarization with gemma")
 
         summarized = await self.gemma_client.generate_content(
-            message="Please summarize the response provided in the system prompt.",
+            message=original_response,
             prompt=prompt,
             temperature=self.summarization_temperature,
         )

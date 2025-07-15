@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, AsyncMock
 from country_resolver import CountryResolver
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 class TestCountryFlags(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

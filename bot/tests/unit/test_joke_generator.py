@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import AsyncMock, Mock
 from joke_generator import JokeGenerator
 from language_detector import LanguageDetector
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 
 class MockStore:

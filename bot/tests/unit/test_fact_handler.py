@@ -6,7 +6,7 @@ from fact_handler import FactHandler
 from gemma_client import GemmaClient
 from schemas import FactParams, MemoryUpdate, MemoryForget
 from store import Store
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 from user_resolver import UserResolver
 
 load_dotenv()

@@ -28,7 +28,7 @@ from pythonjsonlogger import jsonlogger
 logger = logging.getLogger(__name__)
 
 class Telemetry:
-    def __init__(self, service_name="urmom-bot", endpoint="192.168.0.2:4317"):
+    def __init__(self, service_name, endpoint):
         self.service_name = service_name
         self.endpoint = endpoint
         

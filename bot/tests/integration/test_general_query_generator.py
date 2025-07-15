@@ -19,7 +19,7 @@ from general_query_generator import GeneralQueryGenerator
 from grok_client import GrokClient
 from response_summarizer import ResponseSummarizer
 from schemas import GeneralParams
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 load_dotenv()
 

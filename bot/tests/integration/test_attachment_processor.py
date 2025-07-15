@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from attachment_processor import AttachmentProcessor
 from gemma_client import GemmaClient
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 load_dotenv()
 

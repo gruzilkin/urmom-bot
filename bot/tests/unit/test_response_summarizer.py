@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, Mock
 from response_summarizer import ResponseSummarizer
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 
 class TestResponseSummarizer(unittest.IsolatedAsyncioTestCase):

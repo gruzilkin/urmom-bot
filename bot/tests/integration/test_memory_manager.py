@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 import time
 
 from memory_manager import MemoryManager
-from tests.null_telemetry import NullTelemetry
-from tests.test_user_resolver import TestUserResolver
-from tests.test_store import TestStore
+from null_telemetry import NullTelemetry
+from test_user_resolver import TestUserResolver
+from test_store import TestStore
 
 # Load environment variables from .env file
 load_dotenv()

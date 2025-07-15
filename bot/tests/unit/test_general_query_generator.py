@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 from general_query_generator import GeneralQueryGenerator
 from schemas import GeneralParams
 from conversation_graph import ConversationMessage
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 
 class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
@@ -23,7 +23,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Mock response summarizer that returns what it receives (passthrough)
         self.mock_response_summarizer = Mock()
-        self.mock_response_summarizer.process_response = AsyncMock(side_effect=lambda x: x)
+        self.mock_response_summarizer.process_response = AsyncMock(side_effect=lambda x, **kwargs: x)
         
         # Mock store and user_resolver
         self.mock_store = Mock()

@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 from conversation_graph import ConversationGraphBuilder, MessageGraph, CachedHistoryFetcher
 from message_node import MessageNode
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 
 class BaseMessageGraphTest(unittest.IsolatedAsyncioTestCase):

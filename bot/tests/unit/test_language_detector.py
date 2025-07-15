@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock
 from language_detector import LanguageDetector
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 
 class TestLanguageDetector(unittest.IsolatedAsyncioTestCase):

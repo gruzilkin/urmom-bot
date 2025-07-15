@@ -10,7 +10,7 @@ import unittest
 from dotenv import load_dotenv
 from grok_client import GrokClient
 from schemas import YesNo
-from tests.null_telemetry import NullTelemetry
+from null_telemetry import NullTelemetry
 
 load_dotenv()
 
