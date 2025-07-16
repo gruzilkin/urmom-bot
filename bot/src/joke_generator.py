@@ -18,21 +18,36 @@ class JokeGenerator:
         self.telemetry = telemetry
         self.language_detector = language_detector
         self._joke_cache: Dict[int, bool] = {}  # message_id -> bool cache
-        self.base_prompt = """You are a chatbot that receives a message and you should generate a ur mom joke.
-        Response should be fully in the language of the user message which includes translating "your mom" or "ur mom" into the user's language. 
-        ur mom joke follows the pattern of replacing the subject or the object in a phrase with \"ur mom\" without adding much extra details.
+
+    async def generate_joke(self, content: str, language: str) -> str:
+        # Convert language code to language name
+        language_name = await self.language_detector.get_language_name(language)
+        
+        sample_jokes = await self.store.get_random_jokes(self.sample_count, language)
+        
+        # Format sample jokes as XML examples
+        examples_xml = ""
+        if sample_jokes:
+            examples_xml = "<examples>"
+            for message, joke in sample_jokes:
+                examples_xml += f"<example><message>{message}</message><joke>{joke}</joke></example>"
+            examples_xml += "</examples>"
+        
+        # Create the prompt using format string
+        prompt = f"""You are a chatbot that receives a message and you should generate a ur mom joke.
+        ur mom joke follows the pattern of replacing the subject or the object in a phrase with "ur mom" without adding much extra details.
         Ur mom joke should be around a single sentence so you can drop out irrelevant parts of the original message to keep the joke shorter.
         Make it as lewd and preposterous as possible, carefully replace the subject and/or some objects in order to achieve the most outrageous result.
         Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
-        """
-
-    async def generate_joke(self, content: str, language: str) -> str:
-        sample_jokes = await self.store.get_random_jokes(self.sample_count, language)
+        
+        Reply in {language_name}. Return only the joke, no meta commentary or explanation.
+        
+        {examples_xml}"""
+        
         async with self.telemetry.async_create_span("generate_joke"):
             response = await self.ai_client.generate_content(
                 message=content,
-                prompt=self.base_prompt,
-                samples=sample_jokes
+                prompt=prompt
             )
             return response
 
