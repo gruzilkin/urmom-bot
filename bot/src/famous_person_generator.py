@@ -160,7 +160,7 @@ class FamousPersonGenerator:
             complete_response = f"**{person.title()} would say:**\n\n{response}"
             
             # Process complete response (summarize if too long, or truncate as fallback)
-            processed_response = await self.response_summarizer.process_response(complete_response, language=params.language_name)
+            processed_response = await self.response_summarizer.process_response(complete_response, language=language_name)
             
             return processed_response
     
