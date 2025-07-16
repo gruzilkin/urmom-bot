@@ -107,7 +107,7 @@ class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
         Влияние Эйнштейна на современную физику невозможно переоценить. Его работы заложили основы для квантовой теории поля, теории струн и современной космологии. Принцип относительности и квантовая механика стали двумя столпами современной физики, хотя попытки их объединения в единую теорию квантовой гравитации продолжаются и по сей день.
         """
         
-        result = await self.summarizer.process_response(russian_einstein_text, language="Russian")
+        result = await self.summarizer.process_response(russian_einstein_text)
         
         # Verify the result is shorter than the original
         self.assertLess(len(result), len(russian_einstein_text))
@@ -153,13 +153,13 @@ class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
         Einstein's cosmological investigations led to the understanding that the universe could be expanding or contracting. Although he initially resisted this idea by introducing the cosmological constant, he later acknowledged that a dynamic universe was a natural consequence of his theory. Modern cosmology, with concepts like 暗黒物質 (ankoku busshitsu, dark matter) and 暗黒エネルギー (ankoku enerugī, dark energy), continues to build upon Einstein's foundational work.
         """
         
-        # Test 1: Without language parameter - should preserve all multilingual content
-        result_no_lang = await self.summarizer.process_response(multilingual_einstein_text)
+        # Test: Should preserve all multilingual content
+        result = await self.summarizer.process_response(multilingual_einstein_text)
         
         # Verify the result is shorter than the original
-        self.assertLess(len(result_no_lang), len(multilingual_einstein_text))
+        self.assertLess(len(result), len(multilingual_einstein_text))
         # Verify it fits within the limit
-        self.assertLessEqual(len(result_no_lang), 2000)
+        self.assertLessEqual(len(result), 2000)
         
         # Verify foreign language quotes and technical terms are preserved
         foreign_terms = [
@@ -173,40 +173,15 @@ class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
         
         preserved_terms = 0
         for term in foreign_terms:
-            if term in result_no_lang:
+            if term in result:
                 preserved_terms += 1
         
         # At least half of the foreign terms should be preserved
         self.assertGreaterEqual(preserved_terms, len(foreign_terms) // 2, 
                                f"At least {len(foreign_terms) // 2} foreign terms should be preserved, but only {preserved_terms} were found")
         
-        # Test 2: With English language parameter - should still preserve foreign quotes
-        result_english = await self.summarizer.process_response(multilingual_einstein_text, language="English")
-        
-        # Verify the result is shorter than the original
-        self.assertLess(len(result_english), len(multilingual_einstein_text))
-        # Verify it fits within the limit
-        self.assertLessEqual(len(result_english), 2000)
-        
-        # Verify some foreign language content is still preserved
-        key_foreign_quotes = [
-            "Die Unschärferelation",  # German scientific term
-            "Эйнштейн изменил",       # Russian quote fragment
-            "相対性理論"               # Japanese technical term
-        ]
-        
-        preserved_quotes = 0
-        for quote in key_foreign_quotes:
-            if quote in result_english:
-                preserved_quotes += 1
-        
-        # At least one foreign quote should be preserved
-        self.assertGreaterEqual(preserved_quotes, 1, 
-                               f"At least 1 foreign quote should be preserved when language=English, but {preserved_quotes} were found")
-        
-        # Both results should be meaningful summaries, not just truncation
-        self.assertNotEqual(result_no_lang, multilingual_einstein_text[:len(result_no_lang)])
-        self.assertNotEqual(result_english, multilingual_einstein_text[:len(result_english)])
+        # Result should be meaningful summary, not just truncation
+        self.assertNotEqual(result, multilingual_einstein_text[:len(result)])
 
 
 if __name__ == '__main__':

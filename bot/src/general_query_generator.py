@@ -222,6 +222,6 @@ Memory Usage:
                 return None
             
             # Process response (summarize if too long, or truncate as fallback)
-            processed_response = await self.response_summarizer.process_response(response, language=params.language_name)
+            processed_response = await self.response_summarizer.process_response(response)
             
             return processed_response
