@@ -33,7 +33,8 @@ CREATE TABLE chat_history (
     message_id BIGINT NOT NULL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     message_text TEXT NOT NULL,
-    timestamp TIMESTAMP NOT NULL
+    timestamp TIMESTAMP NOT NULL,
+    reply_to_id BIGINT NULL
 );
 
 CREATE INDEX idx_chat_history_guild_timestamp ON chat_history (guild_id, timestamp);

@@ -16,6 +16,7 @@ class ChatMessage:
     user_id: int
     message_text: str
     timestamp: datetime
+    reply_to_id: int | None = None
 
 @dataclass
 class GuildConfig:
@@ -307,7 +308,7 @@ class Store:
                     
                     await cur.execute(
                         """
-                        SELECT guild_id, channel_id, message_id, user_id, message_text, timestamp
+                        SELECT guild_id, channel_id, message_id, user_id, message_text, timestamp, reply_to_id
                         FROM chat_history
                         WHERE guild_id = %s AND timestamp >= %s AND timestamp < %s
                         ORDER BY timestamp ASC
@@ -323,7 +324,7 @@ class Store:
                 span.record_exception(e)
                 return []
 
-    async def add_chat_message(self, guild_id: int, channel_id: int, message_id: int, user_id: int, message_text: str, timestamp: datetime) -> None:
+    async def add_chat_message(self, guild_id: int, channel_id: int, message_id: int, user_id: int, message_text: str, timestamp: datetime, reply_to_id: int | None = None) -> None:
         """Adds a chat message to the chat_history table."""
         async with self._telemetry.async_create_span("add_chat_message") as span:
             span.set_attribute("guild_id", guild_id)
@@ -332,19 +333,21 @@ class Store:
             span.set_attribute("user_id", user_id)
             span.set_attribute("message_length", len(message_text))
             span.set_attribute("timestamp", timestamp.isoformat())
+            if reply_to_id:
+                span.set_attribute("reply_to_id", reply_to_id)
             
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
                     await cur.execute(
                         """
-                        INSERT INTO chat_history (guild_id, channel_id, message_id, user_id, message_text, timestamp)
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        INSERT INTO chat_history (guild_id, channel_id, message_id, user_id, message_text, timestamp, reply_to_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (message_id) DO UPDATE SET
                             message_text = EXCLUDED.message_text,
                             timestamp = EXCLUDED.timestamp
                         """,
-                        (guild_id, channel_id, message_id, user_id, message_text, timestamp)
+                        (guild_id, channel_id, message_id, user_id, message_text, timestamp, reply_to_id)
                     )
                     await self.conn.commit()
             except Exception as e:

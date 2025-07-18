@@ -188,7 +188,7 @@ class TestStore(Store):
         return self._user_facts.get(user_id)
     
     async def add_chat_message(self, guild_id: int, channel_id: int, message_id: int, 
-                             user_id: int, message_text: str, timestamp: datetime) -> None:
+                             user_id: int, message_text: str, timestamp: datetime, reply_to_id: int | None = None) -> None:
         """Add a chat message to the store."""
         message = ChatMessage(
             guild_id=guild_id,
@@ -196,7 +196,8 @@ class TestStore(Store):
             message_id=message_id,
             user_id=user_id,
             message_text=message_text,
-            timestamp=timestamp
+            timestamp=timestamp,
+            reply_to_id=reply_to_id
         )
         self._messages.append(message)
     

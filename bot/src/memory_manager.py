@@ -338,6 +338,8 @@ class MemoryManager:
                 author_name = await self._user_resolver.get_display_name(guild_id, msg.user_id)
                 content_with_names = await self._user_resolver.replace_user_mentions_with_names(msg.message_text, guild_id)
                 message_block = f"""<message>
+<id>{msg.message_id}</id>
+{f"<reply_to>{msg.reply_to_id}</reply_to>" if msg.reply_to_id else ""}
 <timestamp>{msg.timestamp}</timestamp>
 <author_id>{msg.user_id}</author_id>
 <author>{author_name}</author>
@@ -408,4 +410,4 @@ class MemoryManager:
             return merged_context
 
     async def ingest_message(self, guild_id: int, message: MessageNode) -> None:
-        await self._store.add_chat_message(guild_id, message.channel_id, message.id, message.author_id, message.content, message.created_at)
+        await self._store.add_chat_message(guild_id, message.channel_id, message.id, message.author_id, message.content, message.created_at, message.reference_id)

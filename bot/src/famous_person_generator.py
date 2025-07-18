@@ -123,12 +123,20 @@ class FamousPersonGenerator:
             
             conversation = await conversation_fetcher()
             
-            conversation_lines = []
+            message_blocks = []
             for msg in conversation:
                 author_name = await self.user_resolver.get_display_name(guild_id, msg.author_id)
                 content_with_names = await self.user_resolver.replace_user_mentions_with_names(msg.content, guild_id)
-                conversation_lines.append(f"{msg.timestamp} {author_name}: {content_with_names}")
-            conversation_text = "\n".join(conversation_lines)
+                
+                message_block = f"""<message>
+<id>{msg.message_id}</id>
+{f"<reply_to>{msg.reply_to_id}</reply_to>" if msg.reply_to_id else ""}
+<timestamp>{msg.timestamp}</timestamp>
+<author>{author_name}</author>
+<content>{content_with_names}</content>
+</message>"""
+                message_blocks.append(message_block)
+            conversation_text = "\n".join(message_blocks)
             
             prompt = f"""You are {person}. Generate a response as if you were {person}, 
             using their communication style, beliefs, values, and knowledge.
