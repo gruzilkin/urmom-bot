@@ -85,7 +85,7 @@ async def on_message(message: nextcord.Message):
         if message.author.bot:
             return
         
-        if f"<@{bot.user.id}>" not in message.content:
+        if not await should_reply(message):
             return
 
         # First check if this is a bot command
@@ -133,6 +133,26 @@ async def on_message_edit(before: nextcord.Message, after: nextcord.Message):
         # Caching in the materialization process handles efficiency.
         materialized_message = await discord_to_message_node(after)
         await container.memory_manager.ingest_message(after.guild.id, materialized_message)
+
+
+async def should_reply(message: nextcord.Message) -> bool:
+    """
+    Check if the bot should reply to this message.
+    Returns True if the message mentions the bot or is a reply to the bot.
+    """
+    # Check if bot is mentioned
+    if f"<@{bot.user.id}>" in message.content:
+        return True
+    
+    # Check if this is a reply to the bot
+    if message.reference and message.reference.message_id:
+        try:
+            referenced_message = await message.channel.fetch_message(message.reference.message_id)
+            return referenced_message.author.id == bot.user.id
+        except Exception as e:
+            logger.error(f"Error checking if message is reply to bot: {e}", exc_info=True)
+    
+    return False
 
 
 async def process_bot_commands(message: nextcord.Message) -> bool:
