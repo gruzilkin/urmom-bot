@@ -108,16 +108,19 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation_fetcher():
             return [
                 ConversationMessage(
+                    message_id=100001,
                     author_id=1000,
                     content="I love my pet dragon named Sparkles",
                     timestamp="2024-01-01 11:55:00",
                     mentioned_user_ids=[]
                 ),
                 ConversationMessage(
+                    message_id=100002,
                     author_id=2000,
                     content="That's so cool!",
                     timestamp="2024-01-01 11:58:00",
-                    mentioned_user_ids=[]
+                    mentioned_user_ids=[],
+                    reply_to_id=100001
                 )
             ]
         

@@ -161,6 +161,8 @@ class GeneralQueryGenerator:
                 content_with_names = await self.user_resolver.replace_user_mentions_with_names(msg.content, guild_id)
                 
                 message_block = f"""<message>
+<id>{msg.message_id}</id>
+{f"<reply_to>{msg.reply_to_id}</reply_to>" if msg.reply_to_id else ""}
 <timestamp>{msg.timestamp}</timestamp>
 <author>{author_name}</author>
 <content>{content_with_names}</content>

@@ -11,10 +11,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ConversationMessage:
     """Represents a message in chronological conversation format."""
+    message_id: int
     author_id: int
     content: str
     timestamp: str  # Pre-formatted LLM-friendly timestamp
     mentioned_user_ids: list[int]
+    reply_to_id: int | None = None
 
 
 class MessageGraph:
@@ -64,10 +66,12 @@ class MessageGraph:
             message_node = await discord_to_message_node_func(message)
             
             conversation_messages.append(ConversationMessage(
+                message_id=message_node.id,
                 author_id=message_node.author_id,
                 content=message_node.content,
                 timestamp=message_node.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                mentioned_user_ids=message_node.mentioned_user_ids
+                mentioned_user_ids=message_node.mentioned_user_ids,
+                reply_to_id=message_node.reference_id
             ))
         
         return conversation_messages

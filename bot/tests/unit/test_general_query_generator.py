@@ -63,6 +63,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
             msg = ConversationMessage(
+                message_id=12345,
                 author_id=123,
                 content="Test message", 
                 timestamp="2024-01-01 12:00:00",
@@ -89,6 +90,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
             return [ConversationMessage(
+                message_id=10001,
                 author_id=1000,
                 content="Let's get creative",
                 timestamp="2024-01-01 12:00:00",
@@ -114,6 +116,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
             msg = ConversationMessage(
+                message_id=12346,
                 author_id=123,
                 content="Test message", 
                 timestamp="2024-01-01 12:00:00",
@@ -142,6 +145,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         # Mock conversation fetcher
         async def mock_conversation_fetcher():
             msg = ConversationMessage(
+                message_id=12347,
                 author_id=123,
                 content="Test message", 
                 timestamp="2024-01-01 12:00:00",
