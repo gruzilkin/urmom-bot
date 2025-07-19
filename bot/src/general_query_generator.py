@@ -179,6 +179,7 @@ Guidelines:
 - If the question relates to something mentioned in the conversation, reference it appropriately
 - For complex topics, provide a brief summary with key points rather than detailed explanations
 - **Always respond in {params.language_name} unless the user specifically requests a different language or translation.**
+- Provide complete, self-contained responses without follow-up questions or engagement prompts. Do not add phrases that invite further conversation like 'What do you think?' or 'Should we explore this more?' End responses definitively.
 - Content Embeddings: Conversation history may contain embedded content in <embedding> tags:
   - <embedding type="image"> contains descriptions of images that users posted - treat these as if you saw the images yourself
   - <embedding type="article"> contains text from articles/links that users shared
