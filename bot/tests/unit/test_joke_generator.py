@@ -13,7 +13,7 @@ class MockStore:
     async def save(self, **kwargs):
         self.saved_jokes.append(kwargs)
         
-    async def get_random_jokes(self, count, language):
+    async def get_random_jokes(self, count):
         return [("test message", "test joke")]
 
 

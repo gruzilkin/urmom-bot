@@ -120,17 +120,16 @@ class Store:
             except Exception as e:
                 raise e
 
-    async def get_random_jokes(self, n: int, language: str) -> list[tuple[str, str]]:
+    async def get_random_jokes(self, n: int) -> list[tuple[str, str]]:
         """Get multiple random jokes in a single query"""
         async with self._telemetry.async_create_span("get_random_jokes") as span:
             span.set_attribute("requested_count", n)
-            span.set_attribute("language", language)
             span.set_attribute("weight_coef", self.weight_coef)
             
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
-                    params = [language, self.weight_coef, n]
+                    params = [self.weight_coef, n]
                     
                     await cur.execute(
                         """
@@ -138,7 +137,6 @@ class Store:
                         FROM jokes j
                         JOIN messages m1 ON j.source_message_id = m1.message_id
                         JOIN messages m2 ON j.joke_message_id = m2.message_id
-                        WHERE m1.language_code = %s
                         ORDER BY random() * power(%s, j.reaction_count) DESC
                         LIMIT %s
                         """,

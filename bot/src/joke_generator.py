@@ -23,7 +23,7 @@ class JokeGenerator:
         # Convert language code to language name
         language_name = await self.language_detector.get_language_name(language)
         
-        sample_jokes = await self.store.get_random_jokes(self.sample_count, language)
+        sample_jokes = await self.store.get_random_jokes(self.sample_count)
         
         # Format sample jokes as XML examples
         examples_xml = ""
