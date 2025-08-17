@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from ai_router import AiRouter
 from gemma_client import GemmaClient
+from gemini_client import GeminiClient
 from general_query_generator import GeneralQueryGenerator
 from famous_person_generator import FamousPersonGenerator
 from fact_handler import FactHandler
@@ -61,6 +62,17 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         # The language detector is a required dependency
         self.language_detector = LanguageDetector(ai_client=self.gemma_client, telemetry=self.telemetry)
 
+        # Create Gemini Flash as fallback client (for NOTSURE handling)
+        gemini_flash_model = os.getenv('GEMINI_FLASH_MODEL')
+        if not gemini_flash_model:
+            self.skipTest("Missing GEMINI_FLASH_MODEL environment variable.")
+            
+        self.gemini_flash_client = GeminiClient(
+            api_key=gemini_api_key,
+            model_name=gemini_flash_model,
+            telemetry=self.telemetry
+        )
+
         # The component under test
         self.router = AiRouter(
             ai_client=self.gemma_client,
@@ -68,7 +80,8 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             language_detector=self.language_detector,
             famous_generator=self.famous_generator,
             general_generator=self.general_generator,
-            fact_handler=self.fact_handler
+            fact_handler=self.fact_handler,
+            fallback_client=self.gemini_flash_client
         )
 
     async def test_route_request_with_perspective_shift(self):
@@ -139,6 +152,107 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(params.user_mention, "gruzilkin")
         self.assertIn("pizza", params.fact_content.lower())
         self.assertIn("like", params.fact_content.lower())
+
+    async def test_route_request_famous_person_news_not_impersonation(self):
+        user_message = "What did Trump say yesterday?"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert - should route to GENERAL for news search, not FAMOUS for impersonation
+        self.assertEqual(route, "GENERAL", "Questions about actual statements should route to GENERAL for news search")
+        self.assertIsNotNone(params)
+        # Should be a general query, not an impersonation request
+        self.assertIn("Trump", params.cleaned_query)
+
+    async def test_route_request_memory_verb_not_bot_memory(self):
+        user_message = "I can't remember where I put my keys"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert - should NOT route to FACT (bot memory), should be GENERAL or NONE
+        self.assertNotEqual(route, "FACT", "Personal memory statements should not trigger bot memory operations")
+        self.assertIn(route, ["GENERAL", "NONE"], "Personal statements should route to GENERAL or NONE")
+        
+        if route == "NONE":
+            self.assertIsNone(params)
+        else:
+            self.assertIsNotNone(params)
+
+    async def test_route_request_quote_lookup_not_impersonation(self):
+        user_message = "Einstein said something about imagination"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert - should route to GENERAL for quote lookup, not FAMOUS for impersonation
+        self.assertEqual(route, "GENERAL", "Quote lookup requests should route to GENERAL, not FAMOUS")
+        self.assertIsNotNone(params)
+        self.assertIn("Einstein", params.cleaned_query)
+
+    async def test_route_request_riddle_with_famous_names_not_impersonation(self):
+        user_message = "кто до Путина, если после Путина Агутин?"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert - should NOT route to FAMOUS (impersonation)
+        self.assertNotEqual(route, "FAMOUS", "Riddles mentioning famous people should not trigger impersonation")
+        self.assertIn(route, ["GENERAL", "NONE"], "Riddles should route to GENERAL (question) or NONE (wordplay)")
+        
+        if route == "NONE":
+            self.assertIsNone(params)
+        else:
+            self.assertIsNotNone(params)
+
+    async def test_route_request_wordplay_question_not_impersonation(self):
+        user_message = "у Дональда Трампа козырная фамилия?"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert - should route to GENERAL (name meaning question), not FAMOUS (impersonation)
+        self.assertEqual(route, "GENERAL", "Wordplay questions about names should route to GENERAL, not FAMOUS")
+        self.assertIsNotNone(params, "GENERAL route should have parameters")
+        self.assertIn("Трамп", params.cleaned_query, "Should preserve the name in the query")
+
+    async def test_route_request_statement_about_person_not_impersonation(self):
+        user_message = "Медвед бы так не сказал"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert - should NOT route to FAMOUS (impersonation)
+        self.assertNotEqual(route, "FAMOUS", "Statements about what someone would say should not trigger impersonation")
+        self.assertIn(route, ["NONE", "GENERAL"], "Should route to NONE (statement) or GENERAL (opinion)")
+        
+        if route == "NONE":
+            self.assertIsNone(params)
+        else:
+            self.assertIsNotNone(params)
+
+    async def test_route_request_praise_command_not_impersonation(self):
+        user_message = "спой осанну Медведу"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert - should route to GENERAL (bot action), not FAMOUS (impersonation)
+        self.assertEqual(route, "GENERAL", "Commands to praise someone should route to GENERAL, not FAMOUS")
+        self.assertIsNotNone(params, "GENERAL route should have parameters")
+        self.assertIn("осанну", params.cleaned_query, "Should preserve the praise request")
+
+    async def test_route_request_question_with_name_not_memory_operation(self):
+        user_message = "для чего Алексею нужна голова?"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert - should route to GENERAL (question), not FACT (memory operation)
+        self.assertEqual(route, "GENERAL", "Questions with names should route to GENERAL, not FACT")
+        self.assertIsNotNone(params, "GENERAL route should have parameters")
+        self.assertIn("Алексею", params.cleaned_query, "Should preserve the name in the query")
 
 
 if __name__ == '__main__':

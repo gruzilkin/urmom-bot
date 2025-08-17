@@ -130,7 +130,8 @@ class Container:
             self.language_detector,
             self.famous_person_generator,
             self.general_query_generator,
-            self.fact_handler
+            self.fact_handler,
+            self.gemini_flash
         )
 
         self.country_resolver = CountryResolver(self.gemma, self.telemetry)

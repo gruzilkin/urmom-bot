@@ -14,8 +14,10 @@ logger = logging.getLogger(__name__)
 class AiRouter:
     def __init__(self, ai_client: AIClient, telemetry: Telemetry, 
                  language_detector: LanguageDetector,
-                 famous_generator, general_generator, fact_handler):
+                 famous_generator, general_generator, fact_handler,
+                 fallback_client: AIClient):
         self.ai_client = ai_client
+        self.fallback_client = fallback_client
         self.telemetry = telemetry
         self.language_detector = language_detector
         self.famous_generator = famous_generator
@@ -32,18 +34,28 @@ class AiRouter:
 <system_instructions>
 Analyze the user message and decide how to route it. Choose exactly one route.
 
+**CRITICAL: ACCURACY IS THE TOP PRIORITY. DO NOT GUESS.**
+
 **IMPORTANT: The user message can be in ANY language (English, Russian, French, Japanese, etc.). 
 Route based on the SEMANTIC MEANING and INTENT of the message, not specific keywords or language.**
 
+**CONFIDENCE REQUIREMENTS:**
+- Only choose a specific route when you are ABSOLUTELY CERTAIN about the user's intent
+- If there is ANY doubt, ambiguity, or uncertainty - choose NOTSURE immediately
+- DO NOT make routing decisions based on keyword presence alone
+- ACCURACY over speed - being uncertain is better than being wrong
+- When in doubt, choose NOTSURE - this is strongly preferred over incorrect routing
+
 Instructions:
-1. Read the user message carefully, understanding its meaning regardless of language.
-2. Determine which route best matches the intent semantically.
-3. Consider that all route types can be expressed in any language:
+1. Read the user message carefully, understanding its semantic meaning regardless of language.
+2. Assess your confidence: Are you ABSOLUTELY CERTAIN about the intent?
+3. If not absolutely certain, choose NOTSURE immediately - this is the preferred choice.
+4. Consider that all route types can be expressed in any language:
    - Famous person requests: "What would X say?" / "Что бы сказал X?" / "¿Qué diría X?"
    - Memory operations: "Remember that..." / "Запомни что..." / "Recuerda que..."
    - General queries: "Explain..." / "Объясни..." / "Explica..."
-4. ALWAYS provide a brief (1-2 sentence) reason for your decision.
-5. Focus ONLY on route selection - parameter extraction happens later.
+5. ALWAYS provide a brief (1-2 sentence) reason for your decision.
+6. Focus ONLY on route selection - parameter extraction happens later.
 </system_instructions>
 
 <route_definitions>
@@ -69,6 +81,14 @@ NONE: For everything else
   - "I think BOT is getting smarter at answering questions."
   - "You should ask BOT about that."
   - "I like that new feature where you can mention BOT anywhere in the sentence."
+</route>
+
+<route route="NOTSURE">
+NOTSURE: When uncertain about routing decision
+- Message is ambiguous or could fit multiple categories
+- User intent is unclear or lacks sufficient context
+- You're unsure about the semantic meaning
+- May trigger fallback to more capable model for re-evaluation
 </route>
 </route_definitions>
 """
@@ -113,18 +133,34 @@ NONE: For everything else
             
             # Tier 1: Route selection
             route_prompt = self._build_route_selection_prompt()
-            route_message = f"{route_prompt}\n<user_input>{message}</user_input>"
             
             route_selection = await self.ai_client.generate_content(
-                message=route_message,
-                prompt="",
+                message=message,
+                prompt=route_prompt,
                 temperature=0.0,  # Deterministic route selection
                 response_schema=RouteSelection
             )
             
+            logger.info(f"Initial route selection: {route_selection.route}, Reason: {route_selection.reason}")
+            
+            # Handle NOTSURE with fallback to more capable model
+            if route_selection.route == "NOTSURE":
+                span.set_attribute("fallback_used", True)
+                logger.info("Route selection uncertain, using fallback model")
+                
+                route_selection = await self.fallback_client.generate_content(
+                    message=message,
+                    prompt=route_prompt,
+                    temperature=0.0,  # Deterministic route selection
+                    response_schema=RouteSelection
+                )
+                
+                logger.info(f"Fallback route selection: {route_selection.route}, Reason: {route_selection.reason}")
+            else:
+                span.set_attribute("fallback_used", False)
+            
             span.set_attribute("route", route_selection.route)
             span.set_attribute("reason", route_selection.reason)
-            logger.info(f"Route selection: {route_selection.route}, Reason: {route_selection.reason}")
             
             # Language detection (between route selection and parameter extraction)
             language_code = await self.language_detector.detect_language(message)

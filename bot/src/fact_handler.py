@@ -18,9 +18,11 @@ class FactHandler:
     def get_route_description(self) -> str:
         return """
         FACT: For imperative memory operations (remember/forget facts about users)
-        - Strictly for COMMANDS that instruct the bot to store or remove facts
-        - Must be imperative sentences (giving orders/instructions)
-        - Questions are NOT fact operations - route questions to GENERAL regardless of content
+        - ONLY for explicit COMMANDS instructing the bot to store or remove facts
+        - Must be imperative sentences (giving direct orders to the bot)
+        - Must explicitly command the bot to "remember" or "forget" something about a user
+        - WARNING: Simply using memory-related words is NOT enough for this route
+        - NOT for: personal statements, questions, conversations about memory in general
 
         Examples:
           * "Bot remember that gruzilkin is Sergey"
@@ -29,11 +31,14 @@ class FactHandler:
           * "remember <@987654321098765432> works at TechCorp"
           * "forget <@123456789012345678>'s birthday"
         
-        Non-examples (NOT a FACT request - these are GENERAL queries):
+        Non-examples (NOT FACT - route to GENERAL or NONE):
+        - "I can't remember where I put my keys" (personal statement)
+        - "Can people remember their childhood?" (general question)
         - "What do you remember about X?" (question about memory)
-        - "Does John like apples?"
-        - "What is X's name?"
-        - "What food does <@123456789012345678> like?"
+        - "Does John like apples?" (question about user facts)
+        - "What is X's name?" (question about user identity)
+        - "What food does <@123456789012345678> like?" (question about user preferences)
+        - "I remember when..." (personal memory)
         """
 
     

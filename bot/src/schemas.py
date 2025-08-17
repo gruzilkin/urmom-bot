@@ -59,7 +59,7 @@ class MemoryForget(BaseModel):
 
 class RouteSelection(BaseModel):
     """Schema for AI router route selection (first tier)."""
-    route: Literal["FAMOUS", "GENERAL", "FACT", "NONE"] = Field(description="Route decision")
+    route: Literal["FAMOUS", "GENERAL", "FACT", "NONE", "NOTSURE"] = Field(description="Route decision")
     reason: str = Field(description="Brief reason for choosing this route")
 
 

@@ -19,10 +19,14 @@ class FamousPersonGenerator:
     def get_route_description(self) -> str:
         return """
         FAMOUS: For celebrity/character impersonation and roleplay requests
-        - ONLY for hypothetical scenarios asking what someone WOULD say/do
+        - ONLY for explicit hypothetical scenarios asking what someone WOULD say/do
+        - Must have clear impersonation intent with words like "would", "if", "how would"
         - Examples: "What would Trump say about this?", "How would Darth Vader respond?", "What if Einstein explained this?"
-        - Key indicators: "would", "if", hypothetical phrasing
-        - NOT for factual questions about what someone actually said/did
+        - WARNING: Simply mentioning a famous person is NOT enough for this route
+        - NOT for: factual questions, riddles, wordplay, statements about people, commands about people
+        - NOT for: "What did X say?", "X said something", "X wouldn't say that", "praise X"
+        - NOT for: "Медвед бы так не сказал"
+        - NOT for: "спой осанну Медведу"
         """
 
     
