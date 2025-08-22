@@ -36,6 +36,11 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_memory_manager = Mock()
         self.mock_memory_manager.get_memories = AsyncMock(return_value={}) # Default to no memories (empty dict)
 
+        # Mock bot user for tests
+        self.mock_bot_user = Mock()
+        self.mock_bot_user.name = "urmom-bot"
+        self.mock_bot_user.id = 99999
+
         self.telemetry = NullTelemetry()
         self.generator = GeneralQueryGenerator(
             self.mock_gemini_flash, 
@@ -71,7 +76,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             )
             return [msg]
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user)
         
         self.assertEqual(result, "Quick answer!")
         self.mock_gemini_flash.generate_content.assert_called_once()
@@ -97,7 +102,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
                 mentioned_user_ids=[]
             )]
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user)
         
         self.assertEqual(result, "Creative response!")
         self.mock_grok.generate_content.assert_called_once()
@@ -124,7 +129,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             )
             return [msg]
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user)
         
         # Should return None when AI client returns None
         self.assertIsNone(result)
@@ -155,7 +160,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         
         # Exception should propagate instead of being caught
         with self.assertRaises(Exception) as context:
-            await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
+            await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user)
         
         self.assertEqual(str(context.exception), "API error")
         # Response summarizer should not be called due to exception

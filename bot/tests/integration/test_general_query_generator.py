@@ -90,6 +90,11 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.mock_user_resolver.get_display_name = AsyncMock(return_value="TestUser")
         self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda text, guild_id: text)
         
+        # Mock bot user for tests
+        self.mock_bot_user = Mock()
+        self.mock_bot_user.name = "urmom-bot"
+        self.mock_bot_user.id = 99999
+        
         self.generator = GeneralQueryGenerator(
             gemini_flash=self.gemini_client,
             grok=self.grok_client,
@@ -132,7 +137,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             language_name="English"
         )
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user)
         
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
@@ -155,7 +160,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             language_name="English"
         )
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user)
         
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
@@ -176,7 +181,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             language_name="English"
         )
         
-        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345)
+        result = await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user)
         
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)

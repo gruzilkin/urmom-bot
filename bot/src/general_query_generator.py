@@ -1,6 +1,7 @@
 import logging
 from typing import Set, Callable, Awaitable
 from memory_manager import MemoryManager
+import nextcord
 
 from ai_client import AIClient
 from conversation_graph import ConversationMessage
@@ -130,7 +131,7 @@ class GeneralQueryGenerator:
             return ""
 
     
-    async def handle_request(self, params: GeneralParams, conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]], guild_id: int) -> str | None:
+    async def handle_request(self, params: GeneralParams, conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]], guild_id: int, bot_user: nextcord.User) -> str | None:
         """
         Handle a general query request using the provided parameters.
         
@@ -138,6 +139,7 @@ class GeneralQueryGenerator:
             params (GeneralParams): Parameters containing ai_backend, temperature, and cleaned_query
             conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]]: Parameterless async function that returns conversation history
             guild_id (int): Discord guild ID for user context resolution
+            bot_user (nextcord.User): Discord user object of the bot to identify its own messages and establish bot identity
             
         Returns:
             str | None: The response string ready to be sent by the caller, or None if no response should be sent
@@ -173,24 +175,33 @@ class GeneralQueryGenerator:
             conversation_text = "\n".join(message_blocks)
             
             prompt = f"""<system_instructions>
-You are a helpful AI assistant in a Discord chat. Your primary role is to bring external knowledge, fresh perspectives, and independent analysis to the conversation.
+You are a Discord bot participating in an ongoing Discord conversation. Your role is to respond naturally within the conversational context while bringing external knowledge, fresh perspectives, and independent analysis to the discussion.
+
+Your Discord Bot Identity:
+- You are present in this conversation as "{bot_user.name}" (user ID {bot_user.id})
+- Messages in the conversation history from author_id {bot_user.id} are your own previous responses
+- Use this context to understand what you've already contributed to avoid repetition
+- Build naturally on your previous responses when relevant to the current discussion
+
+Conversational Behavior:
+- You are participating in an ongoing Discord conversation - respond naturally within the conversational flow
+- The most recent message in the conversation history is what you're directly responding to
+- Pay attention to reply relationships (reply_to_id) to understand conversational threads and who is responding to whom
+- When users refer to "this", "that", "what you said", they're referencing conversation history
+- If there are any hints that the current message relates to previous discussion, treat it as a continuation of that conversation thread
+- Build naturally on previous messages when relevant - don't ignore established conversation flow
+- Use names and previous context naturally, as if you've been part of the conversation all along
+- Consider who is asking and whether they've been part of the ongoing discussion
+- Bring fresh perspectives and new information to the conversation rather than repeating what's already been said
+- Only explicitly summarize conversation content when directly requested (e.g., "summarize what we discussed", "what did John say about X?")
 
 Core Guidelines:
 - Keep responses under 2000 characters due to Discord's message limit but no need to report on the length of the response
-- Prioritize external knowledge and fresh perspectives over echoing what's already been said in chat
-- Don't simply restate opinions or information already expressed in the conversation
+- Add new information, analysis, and insights that enhance the discussion
 - Be comfortable respectfully challenging assumptions or providing alternative viewpoints when relevant
-- Bring new information, analysis, and insights that add value to the discussion
-- Use conversation context ONLY to understand what you're being asked about, not to repeat or validate existing opinions
 - For complex topics, provide a brief summary with key points rather than detailed explanations
 - Always respond in {params.language_name} unless the user specifically requests a different language or translation.
 - Provide complete, self-contained responses without follow-up questions or engagement prompts. Do not add phrases that invite further conversation like 'What do you think?' or 'Should we explore this more?' End responses definitively.
-
-Context Usage:
-- Use conversation history to understand references ("this", "that", "the thing we discussed") but avoid repeating information already shared
-- When someone asks for your "thoughts" or "opinion" on something discussed, provide independent analysis rather than confirmation
-- If you notice potential misconceptions or one-sided views in the chat, gently present alternative perspectives or additional context
-- Only summarize or work directly with chat content when explicitly requested (e.g., "summarize what we discussed", "what did John say about X?")
 
 Content Embeddings: Conversation history may contain embedded content in <embedding> tags:
   - <embedding type="image"> contains descriptions of images that users posted - treat these as if you saw the images yourself
