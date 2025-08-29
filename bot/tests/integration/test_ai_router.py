@@ -254,6 +254,19 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(params, "GENERAL route should have parameters")
         self.assertIn("Алексею", params.cleaned_query, "Should preserve the name in the query")
 
+    async def test_route_request_song_writing_selects_claude(self):
+        """Test that song writing requests are routed to Claude backend."""
+        user_message = "BOT write a song about summer"
+
+        # Act
+        route, params = await self.router.route_request(user_message)
+
+        # Assert
+        self.assertEqual(route, "GENERAL", "Song requests should route to GENERAL")
+        self.assertIsNotNone(params, "GENERAL route should have parameters")
+        self.assertEqual(params.ai_backend, "claude", "Song requests should select Claude backend")
+        self.assertIn("song", params.cleaned_query.lower(), "Should preserve song request in query")
+
 
 if __name__ == '__main__':
     unittest.main()

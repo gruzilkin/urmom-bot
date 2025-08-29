@@ -65,8 +65,8 @@ class GeneralQueryGenerator:
         
         ai_backend selection:
         * gemini_flash: General questions, explanations, real-time news/current events
-        * grok: Creative tasks, uncensored content, wild requests
-        * claude: Coding help, technical explanations, detailed analysis, complex reasoning, fact-checking and verification questions
+        * grok: Uncensored content, wild requests, crazy talk
+        * claude: Coding and programming help, technical explanations, detailed analysis, complex reasoning, fact-checking and verification questions, song and poem writing
         * gemma: Do not select unless explicitly requested
         * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
         
