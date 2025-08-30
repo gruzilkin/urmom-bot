@@ -12,13 +12,13 @@
 
 **✅ MILESTONE 2 COMPLETE: Transient Memory System**
 - Chat history ingestion and storage
-- Daily summarization pipeline with 3-way merge architecture
+- Daily summarization pipeline with multi-day merge architecture
 - Context assembly and merging with MemoryManager
-- Dual caching strategy (TTL + LRU) with content-based hashing
+- Caching strategy (TTL + LRU) for daily summaries
 
 ## Overview
 
-The urmom-bot memory system is a sophisticated hierarchical AI-powered memory architecture that maintains both permanent factual knowledge and transient episodic memories about users. The system is designed to provide rich contextual awareness while maintaining efficiency through intelligent summarization and caching.
+The urmom-bot memory system is a sophisticated AI-powered memory architecture that maintains both permanent factual knowledge and transient episodic memories about users. The system provides rich contextual awareness by preserving detailed memories from the full week of user interactions.
 
 **Key Design Decisions:**
 - Uses Gemma AI client for all memory operations (free tier with generous limits)
@@ -34,17 +34,17 @@ The urmom-bot memory system is a sophisticated hierarchical AI-powered memory ar
 1. **Factual Memory**: Permanent knowledge explicitly provided via commands
 2. **Transient Memory**: Automatic extraction and summarization of chat interactions
 
-### Hierarchical AI Summarization
-- Raw chat history → Daily summaries (Gemma) → Historical summary (Gemma, days 2-7) → Final context (Gemma, 3-way merge)
-- **Strategy**: `merge(facts, current_day_summary, historical_summary)` for optimal caching
-- Current day (day 1) updated hourly, historical days (2-7) cached permanently
-- AI-powered merging at every level to resolve conflicts and maintain coherence
-- Bounded information growth through intelligent compression
+### Multi-Day AI Integration
+- Raw chat history → Daily summaries (Gemini) → Final context (Gemma, multi-day merge)
+- **Strategy**: `merge(facts, day_0, day_1, day_2, day_3, day_4, day_5, day_6)` with full week context
+- Current day (day 0) updated hourly, historical days (1-6) cached permanently
+- AI merging preserves specific events and conversations from all 7 days
+- Full week context maintains rich detail for personalized responses
 
 ### Cache Efficiency
-- **Dual Strategy**: TTL caching for current day, LRU caching for historical data
+- **Strategy**: TTL caching for current day, LRU caching for historical daily summaries
 - Current day summaries: 1-hour TTL with hour-bucket keys for intraday updates
-- Historical summaries: Permanent LRU cache with immutable date keys
+- Historical daily summaries: Permanent LRU cache with immutable date keys
 - Content-based hashing for final context merge to ensure cache correctness
 - Manual async cache management for async methods
 - On-demand calculation with extensive caching to avoid redundant work
@@ -93,9 +93,9 @@ class MemoryManager:
         """Store message in chat_history table"""
     
     async def get_memories(self, guild_id: int, user_ids: list[int]) -> dict[int, str | None]:
-        """Returns unified context for multiple users via concurrent 3-way merge with resilient fallback
+        """Returns unified context for multiple users via concurrent multi-day merge with resilient fallback
         
-        Combines: factual memory + current day summary + historical summary (days 2-7)
+        Combines: factual memory + 7 days of daily summaries (day 0 through day 6)
         Returns: Dictionary mapping user_id to unified context string or None if no memories exist
         
         Resilience guarantees:

@@ -140,8 +140,9 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         
         # Act - Two calls with identical content
         einstein_id = self.physicist_ids["Einstein"]
-        result1 = await self.memory_manager._merge_context(self.physics_guild_id, einstein_id, facts, current_day, historical)
-        result2 = await self.memory_manager._merge_context(self.physics_guild_id, einstein_id, facts, current_day, historical)
+        daily_summaries = {date(2025, 1, 1): current_day, date(2025, 1, 2): historical}
+        result1 = await self.memory_manager._merge_context(self.physics_guild_id, einstein_id, facts, daily_summaries)
+        result2 = await self.memory_manager._merge_context(self.physics_guild_id, einstein_id, facts, daily_summaries)
         
         # Assert
         expected_context = "Einstein is a revolutionary physicist who challenges classical physics with quantum and relativity theories"
@@ -164,8 +165,10 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         
         # Act - Two calls with evolving facts about Bohr's discoveries
         bohr_id = self.physicist_ids["Bohr"]
-        await self.memory_manager._merge_context(self.physics_guild_id, bohr_id, original_facts, current_day, historical)
-        await self.memory_manager._merge_context(self.physics_guild_id, bohr_id, updated_facts, current_day, historical)
+        daily_summaries_orig = {date(2025, 1, 1): current_day, date(2025, 1, 2): historical}
+        daily_summaries_upd = {date(2025, 1, 1): current_day, date(2025, 1, 2): historical}
+        await self.memory_manager._merge_context(self.physics_guild_id, bohr_id, original_facts, daily_summaries_orig)
+        await self.memory_manager._merge_context(self.physics_guild_id, bohr_id, updated_facts, daily_summaries_upd)
         
         # Assert
         self.assertEqual(self.mock_gemma_client.generate_content.call_count, 2)  # Two AI calls
@@ -451,35 +454,6 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         # But all 10 messages from TestStore for that date should be in the prompt
         self.assertEqual(prompt.count("<message>"), 10, "All 10 individual messages should be included")
 
-    async def test_historical_date_arithmetic(self):
-        """Test that historical date ranges are calculated correctly (days 2-7)."""
-        # Arrange - Create test daily summaries dict
-        daily_summaries = {
-            date(2025, 6, 30): f"Summary for {date(2025, 6, 30)}",  # Yesterday
-            date(2025, 6, 29): f"Summary for {date(2025, 6, 29)}",  # Day 3
-            date(2025, 6, 28): f"Summary for {date(2025, 6, 28)}",  # Day 4
-        }
-        
-        # Mock returns handled by TestUserResolver automatically
-        self.mock_gemma_client.generate_content = AsyncMock(return_value=MemoryContext(
-            context="Historical summary"
-        ))
-        
-        # Act
-        result = await self.memory_manager._create_week_summary(daily_summaries)
-        
-        # Assert
-        self.assertEqual(result, "Historical summary")
-        
-        # Verify the prompt contains the expected date range and summaries
-        call_args = self.mock_gemma_client.generate_content.call_args
-        prompt = call_args[1]['message']
-        
-        self.assertIn('<date_range>2025-06-28 to 2025-06-30</date_range>', prompt)
-        self.assertIn('<date>2025-06-30</date>', prompt)
-        self.assertIn('<date>2025-06-29</date>', prompt)
-        self.assertIn('<date>2025-06-28</date>', prompt)
-
     async def test_ingest_message_adds_to_store(self):
         """Test that ingest_message correctly adds a message to the store."""
         # Arrange
@@ -736,15 +710,17 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
             stored_today = await self.test_store.get_daily_summaries(self.physics_guild_id, today)
             self.assertEqual(stored_today, {})  # Should be empty
 
-    async def test_week_summary_cache_content_based_hashing(self):
-        """Test that historical summaries use content hashes as cache keys."""
+    async def test_context_merge_content_based_hashing(self):
+        """Test that context merge uses content hashes as cache keys."""
         # Arrange
         daily_summaries = {date(1905, 3, 5): "Summary A", date(1905, 3, 4): "Summary B"}
-        self.mock_gemma_client.generate_content.return_value = MemoryContext(context="Historical Summary")
+        facts = "Test facts"
+        user_id = self.physicist_ids["Einstein"]
+        self.mock_gemma_client.generate_content.return_value = MemoryContext(context="Merged Summary")
 
         # Act
-        await self.memory_manager._create_week_summary(daily_summaries)
-        await self.memory_manager._create_week_summary(daily_summaries)  # Call again with same content
+        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)
+        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)  # Same content
 
         # Assert
         self.mock_gemma_client.generate_content.assert_called_once()
@@ -791,37 +767,37 @@ class TestMemoryManagerSmartFallback(unittest.IsolatedAsyncioTestCase):
         user_id = self.physicist_ids["Einstein"]
 
         # Act
-        result = await self.memory_manager._create_user_memory(self.physics_guild_id, user_id, facts, None, None)
+        result = await self.memory_manager._create_user_memory(self.physics_guild_id, user_id, facts, {})
 
         # Assert
         self.assertEqual(result, facts)
         self.mock_gemma_client.generate_content.assert_not_called()
 
     async def test_merge_failure_cascading_fallback_priority(self):
-        """Test fallback hierarchy: facts -> current_day -> historical -> None."""
+        """Test fallback hierarchy: facts -> most recent daily summary -> None."""
         # Arrange
         user_id = self.physicist_ids["Einstein"]
         facts = "Facts are most important"
-        current_day = "Current day is second most important"
-        historical = "Historical is least important"
+        recent_summary = "Recent daily summary"
+        older_summary = "Older daily summary"
 
         self.mock_gemma_client.generate_content.side_effect = Exception("AI merge failed")
 
-        # Test case 1: All sources present, should fall back to facts
-        result1 = await self.memory_manager._create_user_memory(self.physics_guild_id, user_id, facts, current_day, historical)
+        # Test case 1: Facts present, should fall back to facts regardless of daily summaries
+        daily_summaries = {
+            date(2025, 1, 3): recent_summary,
+            date(2025, 1, 1): older_summary
+        }
+        result1 = await self.memory_manager._create_user_memory(self.physics_guild_id, user_id, facts, daily_summaries)
         self.assertEqual(result1, facts)
 
-        # Test case 2: No facts, should fall back to current_day
-        result2 = await self.memory_manager._create_user_memory(self.physics_guild_id, user_id, None, current_day, historical)
-        self.assertEqual(result2, current_day)
+        # Test case 2: No facts, should fall back to most recent daily summary
+        result2 = await self.memory_manager._create_user_memory(self.physics_guild_id, user_id, None, daily_summaries)
+        self.assertEqual(result2, recent_summary)  # Should pick the most recent date (2025-1-3)
 
-        # Test case 3: No facts or current_day, should fall back to historical
-        result3 = await self.memory_manager._create_user_memory(self.physics_guild_id, user_id, None, None, historical)
-        self.assertEqual(result3, historical)
-
-        # Test case 4: No sources, should return None
-        result4 = await self.memory_manager._create_user_memory(self.physics_guild_id, user_id, None, None, None)
-        self.assertIsNone(result4)
+        # Test case 3: No sources, should return None
+        result3 = await self.memory_manager._create_user_memory(self.physics_guild_id, user_id, None, {})
+        self.assertIsNone(result3)
 
 class TestMemoryManagerConcurrency(unittest.IsolatedAsyncioTestCase):
     """Test concurrent processing validation for MemoryManager."""

@@ -99,29 +99,30 @@ class TestMemoryManagerIntegration(unittest.IsolatedAsyncioTestCase):
         overlap = expected_physicists.intersection(actual_physicist_names)
         self.assertGreaterEqual(len(overlap), 3, f"Should include most key Monday physicists. Found: {actual_physicist_names}")
 
-    async def test_realistic_historical_summary_integration(self):
-        """Integration test: Generate historical summary spanning multiple days of real physics data."""
-        # Arrange - Get historical summary for Einstein spanning multiple days
-        # current_date = date(1905, 3, 6)  # Thursday - asking for history of Mon-Wed
+    async def test_realistic_multi_day_merge_integration(self):
+        """Integration test: Generate multi-day context merge spanning multiple days of real physics data."""
+        # Arrange - Get multi-day merge for Einstein spanning multiple days
+        einstein_id = self.physicist_ids["Einstein"]
+        facts = "Einstein is a theoretical physicist known for his work on relativity and quantum theory"
         
-        # Act - Let real AI process multiple days of Einstein's discussions
+        # Act - Let real AI process multiple days of Einstein's discussions via direct merge
         # Create test daily summaries for Einstein over multiple days
-        user_daily_summaries = {
+        daily_summaries = {
             date(1905, 3, 5): "Einstein discussed wave-particle duality and quantum mechanics",
             date(1905, 3, 4): "Einstein explored photoelectric effect implications", 
             date(1905, 3, 3): "Einstein proposed quantum energy packets theory"
         }
-        result = await self.memory_manager._create_week_summary(user_daily_summaries)
+        result = await self.memory_manager._merge_context(self.physics_guild_id, einstein_id, facts, daily_summaries)
         
-        # Assert - Verify real AI created coherent historical summary
-        self.assertIsNotNone(result, "Should generate historical summary for Einstein")
-        self.assertGreater(len(result), 50, "Historical summary should be substantial")
+        # Assert - Verify real AI created coherent multi-day context
+        self.assertIsNotNone(result, "Should generate multi-day context for Einstein")
+        self.assertGreater(len(result), 50, "Multi-day context should be substantial")
         
         result_lower = result.lower()
         # Einstein's consistent themes across Mon-Wed: quantum theory, relativity, determinism
         einstein_themes = ["einstein", "quantum", "relativity", "determinism", "physics", "theory"]
         themes_found = sum(1 for theme in einstein_themes if theme in result_lower)
-        self.assertGreaterEqual(themes_found, 3, f"Historical summary should reflect Einstein's themes. Got: {result}")
+        self.assertGreaterEqual(themes_found, 3, f"Multi-day context should reflect Einstein's themes. Got: {result}")
 
     async def test_complete_memory_integration_with_facts_merge(self):
         """Integration test: Complete get_memories workflow with facts + current day + historical + AI merge."""
