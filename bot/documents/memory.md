@@ -166,7 +166,7 @@ Daily Summarization (batch approach):
   * Important interactions and topics they discussed
   * Behavioral patterns they exhibited
   * Information revealed about them through messages from others
-- Output: Map of user_id to concise daily summary (~300 chars) in third person
+- Output: Map of user_id to daily summary in third person
 
 Context Merging (facts + weekly summaries):
 - Input: Factual memory blob + up to 7 daily summaries (days 0–6)
@@ -215,13 +215,6 @@ Cache keys use different strategies based on operation type:
 
 **Per-User Operations:**
 - **Final context**: `(guild_id, user_id, hash(facts), hash(all_summaries))` - content-based hashing for encapsulation
-
-### Memory Footprint Analysis
-- **Per user**: ~3.8KB (facts: 400 chars, day_0: 300, days_1–6: 300×6, final context: 800)
-- **5 users**: ~19KB total
-- **100 users**: ~380KB total
-- **Negligible memory usage** - can store entirely in-process
-- **Current day overhead**: Minimal due to 1-hour TTL and single active entry per guild/day
 
 ### Cache Benefits
 - **Stable keys**: Message ID boundaries don't change as time progresses
