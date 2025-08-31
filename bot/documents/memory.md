@@ -21,9 +21,9 @@
 The urmom-bot memory system is a sophisticated AI-powered memory architecture that maintains both permanent factual knowledge and transient episodic memories about users. The system provides rich contextual awareness by preserving detailed memories from the full week of user interactions.
 
 **Key Design Decisions:**
-- Uses Gemma AI client for all memory operations (free tier with generous limits)
+- Uses two AI clients: Gemini Flash for batch daily summaries; Gemma for context merging and fact operations (free tier used where possible)
 - Optimized for small-scale deployment (5-100 users)
-- `cachetools.LRUCache` instances for efficient async caching (not built-in `@lru_cache`)
+- `cachetools` caches for async-friendly TTL/LRU behavior (not built-in `@lru_cache`)
 - Discord user ID storage with nickname translation only for LLM calls
 - Clean MemoryManager interface hiding internal complexity
 - **Resilience-first approach**: System prioritizes reliability over completeness with graceful degradation
@@ -36,18 +36,19 @@ The urmom-bot memory system is a sophisticated AI-powered memory architecture th
 
 ### Multi-Day AI Integration
 - Raw chat history → Daily summaries (Gemini) → Final context (Gemma, multi-day merge)
-- **Strategy**: `merge(facts, day_0, day_1, day_2, day_3, day_4, day_5, day_6)` with full week context
-- Current day (day 0) updated hourly, historical days (1-6) cached permanently
+- **Strategy**: `merge(facts, day_0..day_6)` with full week context
+- Current day (day 0) updated approximately hourly via TTL cache
+- Historical days (1–6) persisted in database and cached in-process
 - AI merging preserves specific events and conversations from all 7 days
 - Full week context maintains rich detail for personalized responses
 
 ### Cache Efficiency
-- **Strategy**: TTL caching for current day, LRU caching for historical daily summaries
-- Current day summaries: 1-hour TTL with hour-bucket keys for intraday updates
-- Historical daily summaries: Permanent LRU cache with immutable date keys
+- **Strategy**: TTL caching for current day; DB-first storage + LRU read cache for historical daily summaries
+- Current day summaries: 1-hour TTL keyed by `(guild_id, date)`
+- Historical daily summaries: persisted in `daily_chat_summaries` and cached in-process in `Store`
 - Content-based hashing for final context merge to ensure cache correctness
 - Manual async cache management for async methods
-- On-demand calculation with extensive caching to avoid redundant work
+- On-demand calculation with caching to avoid redundant work
 
 ### Resilience & Best-Effort Design
 - **Graceful Degradation**: System continues functioning even when AI services are unavailable
@@ -58,29 +59,11 @@ The urmom-bot memory system is a sophisticated AI-powered memory architecture th
 
 ## Database Schema
 
-### User Facts Table ✅ IMPLEMENTED
-```sql
-CREATE TABLE user_facts (
-    guild_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    memory_blob TEXT NOT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (guild_id, user_id)
-);
-```
+To avoid duplication, the canonical SQL schema lives in `db/init.sql`.
 
-### Chat History Table ✅ IMPLEMENTED
-```sql
-CREATE TABLE chat_history (
-    guild_id BIGINT NOT NULL,
-    channel_id BIGINT NOT NULL,
-    message_id BIGINT NOT NULL PRIMARY KEY,
-    user_id BIGINT NOT NULL,
-    message_text TEXT NOT NULL,
-    timestamp TIMESTAMP NOT NULL,
-    INDEX idx_guild_user_timestamp (guild_id, user_id, timestamp)
-);
-```
+- User facts: stores one row per `(guild_id, user_id)` with the current memory blob and timestamp.
+- Chat history: stores raw messages per guild/channel with timestamps and optional reply linkage.
+- Daily chat summaries: stores per-user daily summaries per guild/date.
 
 ## MemoryManager Architecture ✅ IMPLEMENTED
 
@@ -115,16 +98,15 @@ class MemoryManager:
 - **Message Storage**: Automatic ingestion to `chat_history` table
 - **Concurrent Batch Processing**: Multiple users processed simultaneously with `asyncio.gather`
 - **Daily Summarization**: Gemini client for batch daily summaries across all users
-- **Historical Summary**: Gemma client for individual user reasoning over days 2-7 with behavioral focus
-- **3-Way Context Merging**: Gemma client intelligently combines facts + current day + historical
-- **Dual Caching Strategy**: TTLCache (1-hour) for current day, LRUCache for historical data
-- **Content-Based Hashing**: Cache keys use content hashes for both historical summaries and final context merge
+- **Context Merging**: Gemma client merges user facts with all available daily summaries (days 0–6)
+- **Caching**: TTLCache (1-hour) for current day; historical daily summaries persisted in DB with an LRU read-through cache in `Store`
+- **Content-Based Hashing**: Cache keys use content hashes for daily-summary input and final context merge
 - **Exception Handling**: Graceful degradation with concurrent exception handling
-- **Daily Summaries Batch Cache**: Separate caches for current day (TTL) and historical days (LRU)
+- **Daily Summaries Caching**: Current day in-process TTL; historical days DB + in-process LRU cache
 
 ### AI Client Strategy (Cost-Optimized)
-- **Batch Daily Summaries (Gemini Flash)**: Multi-user daily summary generation using superior analysis capabilities
-- **Historical Summaries & Context Merging (Gemma - Free)**: Individual operations using cost-efficient free tier
+- **Batch Daily Summaries (Gemini Flash)**: Multi-user daily summary generation per guild/date
+- **Context Merging (Gemma - Free)**: Per-user merge of facts + daily summaries
 - **Optimization**: Reduces API calls from N per day to 1 per day per guild for daily summaries
 
 ## AI Operations
@@ -161,15 +143,23 @@ Memory Merging Strategy:
 Message Formatting:
 - Convert stored messages with user IDs to readable format using XML structure
 - Replace user mentions with current display names for LLM processing
-- Format with structured XML: <message><timestamp/><author_id/><author/><content/></message>
-- Target user identification: Include both nickname and user_id in prompts for precise identification
+- Format with structured XML including ids and reply relationships:
+  <message>
+    <id/>
+    <reply_to/?>
+    <timestamp/>
+    <author_id/>
+    <author/>
+    <content/>
+  </message>
+- Target user identification: Include both display name and user_id in prompts for precise identification
 
 Daily Summarization (batch approach):
 - Input: All messages from a specific date and list of all active users
 - Process: Single Gemini API call analyzes entire day and generates summaries for all users
 - Batch Cache: One cache entry per (guild_id, date) contains map of all user summaries
-- Current day cache: Current day uses 1-hour TTL with hour buckets (guild_id, "date-HH")
-- Historical day cache: Historical days use permanent LRU with date keys (guild_id, date)
+- Current day cache: 1-hour TTL keyed by (guild_id, date)
+- Historical day storage: Persisted in daily_chat_summaries with an LRU read-through cache in Store
 - Prompt focus areas:
   * Notable events or experiences mentioned by each user
   * Each user's mood and emotional state
@@ -178,25 +168,13 @@ Daily Summarization (batch approach):
   * Information revealed about them through messages from others
 - Output: Map of user_id to concise daily summary (~300 chars) in third person
 
-Historical Summary (days 2-7):
-- Input: 6 days of daily summaries (yesterday and 5 days before that, relative to current date)
-- Process: Create behavioral summary from historical daily summaries with actual date ranges
-- Cache: Use (guild_id, user_id, historical_end_date) as cache key with permanent LRU
-- Updates: Only when day transitions (current day becomes historical)
-- Prompt focus areas:
-  * Recurring patterns and themes from recent history
-  * Overall mood trends over the period
-  * Significant events or behavioral changes
-  * Personality insights from consistent behaviors
-- Output: Coherent historical narrative (~500 chars) focusing on behavioral observations
-
-Context Merging (3-way merge):
-- Input: Factual memory blob + current day summary + historical summary
-- Process: Intelligently merge three sources using structured XML prompts
-- Cache: Content-based hashing: (guild_id, user_id, hash(facts), hash(current), hash(historical))
+Context Merging (facts + weekly summaries):
+- Input: Factual memory blob + up to 7 daily summaries (days 0–6)
+- Process: Merge all sources using structured XML prompts
+- Cache: Content-based hashing: (guild_id, user_id, hash(facts), hash(all_summaries))
 - Merge strategy:
   * Prioritize factual information for accuracy
-  * Balance current observations with historical patterns
+  * Balance recent observations with patterns across the week
   * Resolve conflicts intelligently, favoring factual data
   * Provide unified context for personalized conversation
 - Output: Single unified context string for AI conversation processing
@@ -206,17 +184,14 @@ Context Merging (3-way merge):
 
 ### Context Assembly Pipeline
 1. **Concurrent Daily Summary Fetching**:
-   - Fetch all daily summaries for all requested dates simultaneously using `asyncio.gather`
-   - Current day and historical days processed concurrently
+   - Fetch daily summaries for dates day_0..day_6 simultaneously using `asyncio.gather`
+   - Current day (TTL-backed) and historical days (DB-backed) processed concurrently
    - Exception handling ensures partial results don't block the entire operation
-2. **Batch Historical Summary Generation**:
-   - Generate historical summaries for all requested users concurrently
-   - Uses content-based hashing for efficient caching
-3. **Concurrent Context Merging**:
+2. **Concurrent Context Merging**:
    - Retrieve user facts from `user_facts` table for all users
-   - Merge facts + current day + historical summaries for all users simultaneously
+   - Merge facts + all available daily summaries for all users simultaneously
    - Content-based caching ensures optimal efficiency
-4. **Result Assembly**: Return dictionary mapping user_id to final context
+3. **Result Assembly**: Return dictionary mapping user_id to final context
 
 ### Memory Operations Integration
 - **AI Router Integration**: Memory operations (remember/forget) integrated into AI routing
@@ -226,7 +201,8 @@ Context Merging (3-way merge):
 ## Cache Strategy
 
 ### Storage Approach
-- **LRU Cache Decorators**: Automatic caching with configurable max sizes
+- **Current day TTL cache**: In-process TTL cache in MemoryManager keyed by (guild_id, date)
+- **Historical summaries DB**: Persisted in daily_chat_summaries with in-process LRU read cache in Store
 - **Absolute Date Keys**: Immutable cache keys based on calendar dates
 - **Sliding Windows**: Efficient temporal queries using date arithmetic
 
@@ -235,18 +211,17 @@ Cache keys use different strategies based on operation type:
 
 **Batch Operations (all users per guild):**
 - **Current day summaries**: `(guild_id, date)` - 1-hour TTL, stores `dict[user_id, summary]`
-- **Historical daily summaries**: `(guild_id, date)` - permanent LRU, stores `dict[user_id, summary]`
+- **Historical daily summaries**: `(guild_id, date)` - persisted in DB; Store maintains an LRU cache of `dict[user_id, summary]`
 
 **Per-User Operations:**
-- **Historical summary**: `hash(daily_summaries_content)` - content-based hashing for robustness
-- **Final context**: `(guild_id, user_id, hash(facts), hash(current_day), hash(historical))` - content-based hashing for encapsulation
+- **Final context**: `(guild_id, user_id, hash(facts), hash(all_summaries))` - content-based hashing for encapsulation
 
 ### Memory Footprint Analysis
-- **Per user**: ~6.5KB (facts: 400 chars, current day: 300 chars, historical: 500 chars, daily cache: 300×6, context: 800 chars)
-- **5 users**: 32KB total
-- **100 users**: 650KB total
+- **Per user**: ~3.8KB (facts: 400 chars, day_0: 300, days_1–6: 300×6, final context: 800)
+- **5 users**: ~19KB total
+- **100 users**: ~380KB total
 - **Negligible memory usage** - can store entirely in-process
-- **Current day overhead**: Minimal due to 1-hour TTL and single active bucket
+- **Current day overhead**: Minimal due to 1-hour TTL and single active entry per guild/day
 
 ### Cache Benefits
 - **Stable keys**: Message ID boundaries don't change as time progresses
@@ -266,9 +241,9 @@ Bot what do you know about @user
 
 ### Automated Processing ✅ IMPLEMENTED
 - **Chat History Ingestion**: All messages automatically stored in `chat_history` table
-- **User ID Translation**: IDs converted to readable nicks only for LLM processing
+- **User ID Translation**: IDs converted to display names only for LLM processing
 - **On-Demand Calculation**: Summaries and context generated when requested via MemoryManager
-- **Dual Caching Strategy**: TTL caching for current day, LRU caching for historical data using `cachetools`
+- **Caching Strategy**: TTL caching for current day (MemoryManager), DB + LRU caching for historical data (Store)
 - **Context Injection**: Memory context automatically included in AI responses via GeneralQueryGenerator
 
 ## Implementation Examples
@@ -281,9 +256,9 @@ Day 1 Messages:
 
 Daily Summary: "User experiencing work stress, using exercise as coping mechanism"
 
-Day 2-7 Messages: [Similar pattern of stress + gym usage]
+Days 1–6 Messages: [Similar pattern of stress + gym usage]
 
-Historical Summary (Days 2-7): "User has consistent pattern of managing work stress through regular exercise, shows resilience and healthy coping strategies"
+Weekly Pattern: "Consistent pattern of managing work stress through regular exercise, showing resilience and healthy coping strategies"
 
 Current Day Summary: "User mentioned new project starting, seems excited but slightly anxious about timeline"
 
@@ -307,27 +282,21 @@ user_context = get_user_context(guild_id, user_nick)
 ### Efficiency Optimizations
 - **Concurrent Processing**: Multiple users processed simultaneously with `asyncio.gather`
 - **Batch Operations**: Single API call generates daily summaries for all users
-- **Content-Based Caching**: Historical summaries use content hashes for robust cache invalidation
-- **LRU Caching**: Automatic cache management with size limits
-- **Dual Cache Strategy**: TTL for current day, LRU for historical data
+- **Content-Based Caching**: Final context uses content hashes for cache correctness
+- **LRU Caching**: Automatic cache management with size limits (Store-level read cache)
+- **TTL + DB**: TTL for current day, persisted historical data with in-process LRU cache
 - **Message Retention**: Use 7-day window for summarization
 
 ### Scalability
 - **Target Scale**: Optimized for small deployments (5-100 users)
 - **On-Demand Processing**: No background jobs, everything calculated when needed
-- **Single AI Client**: Gemma provides free tier with generous limits for all memory operations
+- **AI Clients**: Gemini Flash (daily summaries) + Gemma (context merging and facts)
 - **Simple Architecture**: Minimal infrastructure requirements
-- **Data Retention**: Limited message history (1 week to 1 month) keeps storage bounded
+- **Data Retention**: Summarization uses a rolling 7-day window; database retention is currently unbounded unless externally managed
 
 ## Privacy and Safety
-
-### Data Protection
-- **Private Bot**: No consent needed - users are aware of functionality
-- **Data Retention**: Configurable retention periods for different memory types
-- **User ID Storage**: Discord user IDs in database, nicknames only for LLM calls
 
 ### Content Processing
 - **Direct Storage**: All message content stored without filtering
 - **Temperature 0**: AI operations use deterministic responses
 - **Conflict Resolution**: Handle contradictory information through AI merging
-
