@@ -163,6 +163,8 @@ class MemoryManager:
             return merged
         except Exception as e:
             logger.error(f"Failed to merge context for user {user_id} in guild {guild_id}: {e}", exc_info=True)
+            # Record merge failure once
+            self._telemetry.metrics.memory_merges.add(1, {"guild_id": str(guild_id), "cache_outcome": "miss", "outcome": "error"})
             # Fallback hierarchy: facts first, then most recent daily summary
             if facts:
                 return facts
@@ -188,14 +190,16 @@ class MemoryManager:
                 # Check cache first
                 if cache_key in self._current_day_batch_cache:
                     span.set_attribute("cache_hit", True)
-                    return self._current_day_batch_cache[cache_key]
+                    result = self._current_day_batch_cache[cache_key]
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit"})
+                    return result
                 
                 span.set_attribute("cache_hit", False)
                 
                 # Generate batch summaries and cache the result
                 batch_summaries = await self._create_daily_summaries(guild_id, for_date)
                 self._current_day_batch_cache[cache_key] = batch_summaries
-                
+                self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "miss"})
                 return batch_summaries
             else:
                 # Historical day: Database-first approach (caching handled by Store)
@@ -205,6 +209,7 @@ class MemoryManager:
                 if not has_messages:
                     span.set_attribute("has_messages", False)
                     empty_dict: dict[int, str] = {}
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit"})
                     return empty_dict
                 
                 span.set_attribute("has_messages", True)
@@ -212,6 +217,7 @@ class MemoryManager:
                 # Check database for existing summaries (Store handles caching)
                 db_summaries = await self._store.get_daily_summaries(guild_id, for_date)
                 if db_summaries:
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit"})
                     return db_summaries
                 
                 # Messages exist but no summaries = needs processing
@@ -219,7 +225,7 @@ class MemoryManager:
                 
                 # Save to database (Store handles caching)
                 await self._store.save_daily_summaries(guild_id, for_date, batch_summaries)
-                
+                self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "miss"})
                 return batch_summaries
 
 
@@ -235,6 +241,7 @@ class MemoryManager:
                 return empty_dict
             
             span.set_attribute("message_count", len(messages))
+            self._telemetry.metrics.daily_summary_messages.record(len(messages), {"guild_id": str(guild_id)})
             
             # Get all unique user IDs from messages
             active_user_ids = list(set(msg.user_id for msg in messages))
@@ -295,6 +302,7 @@ class MemoryManager:
             
             if cache_key in self._context_cache:
                 span.set_attribute("cache_hit", True)
+                self._telemetry.metrics.memory_merges.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
                 return self._context_cache[cache_key]
             
             span.set_attribute("cache_hit", False)
@@ -325,6 +333,7 @@ class MemoryManager:
                 temperature=0
             )
             merged_context = response.context
+            self._telemetry.metrics.memory_merges.add(1, {"guild_id": str(guild_id), "cache_outcome": "miss", "outcome": "success"})
                 
             self._context_cache[cache_key] = merged_context
             return merged_context

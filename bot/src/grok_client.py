@@ -32,7 +32,6 @@ class GrokClient(AIClient):
         attributes = {
             "service": "GROK",
             "model": self.model_name,
-            "method": method_name
         }
         
         # Add any additional attributes passed in
@@ -68,28 +67,48 @@ class GrokClient(AIClient):
             actual_temperature = temperature if temperature is not None else self.temperature
             
             # Use structured output if schema is provided
+            timer = self.telemetry.metrics.timer()
             if response_schema:
                 logger.info(f"Structured output enabled with schema: {response_schema.__name__}")
-                completion = self.model.beta.chat.completions.parse(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=actual_temperature,
-                    response_format=response_schema
-                )
+                try:
+                    completion = self.model.beta.chat.completions.parse(
+                        model=self.model_name,
+                        messages=messages,
+                        temperature=actual_temperature,
+                        response_format=response_schema
+                    )
+                    attrs = {"service": "GROK", "model": self.model_name, "outcome": "success"}
+                    self.telemetry.metrics.llm_latency.record(timer(), attrs)
+                    self.telemetry.metrics.llm_requests.add(1, attrs)
+                except Exception as e:
+                    attrs = {"service": "GROK", "model": self.model_name, "outcome": "error", "error_type": type(e).__name__}
+                    self.telemetry.metrics.llm_latency.record(timer(), attrs)
+                    self.telemetry.metrics.llm_requests.add(1, attrs)
+                    raise
                 
                 logger.info(f"Grok completion: {completion}")
                 self._track_completion_metrics(completion, method_name="generate_content")
                 
                 parsed_result = completion.choices[0].message.parsed
                 if parsed_result is None:
+                    self.telemetry.metrics.structured_output_failures.add(1, {"service": "GROK", "model": self.model_name})
                     raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {completion.choices[0].message.content}")
                 return parsed_result
             else:
-                completion = self.model.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=actual_temperature
-                )
+                try:
+                    completion = self.model.chat.completions.create(
+                        model=self.model_name,
+                        messages=messages,
+                        temperature=actual_temperature
+                    )
+                    attrs = {"service": "GROK", "model": self.model_name, "outcome": "success"}
+                    self.telemetry.metrics.llm_latency.record(timer(), attrs)
+                    self.telemetry.metrics.llm_requests.add(1, attrs)
+                except Exception as e:
+                    attrs = {"service": "GROK", "model": self.model_name, "outcome": "error", "error_type": type(e).__name__}
+                    self.telemetry.metrics.llm_latency.record(timer(), attrs)
+                    self.telemetry.metrics.llm_requests.add(1, attrs)
+                    raise
 
                 logger.info(f"Grok completion: {completion}")
                 self._track_completion_metrics(completion, method_name="generate_content")

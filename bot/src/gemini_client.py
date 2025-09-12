@@ -42,7 +42,6 @@ class GeminiClient(AIClient):
             attributes = {
                 "service": "GEMINI",
                 "model": self.model_name,
-                "method": method_name
             }
             
             # Add any additional attributes passed in
@@ -93,11 +92,22 @@ class GeminiClient(AIClient):
             else:
                 logger.info("Grounding disabled")
 
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=config
-            )
+            timer = self.telemetry.metrics.timer()
+            try:
+                response = await self.client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=config
+                )
+                # Record latency and request count
+                attrs = {"service": "GEMINI", "model": self.model_name, "outcome": "success"}
+                self.telemetry.metrics.llm_latency.record(timer(), attrs)
+                self.telemetry.metrics.llm_requests.add(1, attrs)
+            except Exception as e:
+                attrs = {"service": "GEMINI", "model": self.model_name, "outcome": "error", "error_type": type(e).__name__}
+                self.telemetry.metrics.llm_latency.record(timer(), attrs)
+                self.telemetry.metrics.llm_requests.add(1, attrs)
+                raise
 
             logger.info(response)
             self._track_completion_metrics(response, method_name="generate_content")
@@ -105,6 +115,8 @@ class GeminiClient(AIClient):
             # Return parsed object if schema was provided, otherwise return text
             if response_schema:
                 if response.parsed is None:
+                    # Count structured output failures
+                    self.telemetry.metrics.structured_output_failures.add(1, {"service": "GEMINI", "model": self.model_name})
                     raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {response.text}")
                 return response.parsed
             else:

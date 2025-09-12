@@ -115,14 +115,12 @@ NOTSURE: When uncertain about routing decision
         async with self.telemetry.async_create_span("extract_parameters") as span:
             span.set_attribute("route", route)
             span.set_attribute("message", message)
-            
             params = await self.ai_client.generate_content(
                 message=message,
                 prompt=extraction_prompt,
                 temperature=0.0,  # Deterministic parameter extraction
                 response_schema=param_schema
             )
-                
             logger.info(f"Extracted parameters for {route}: {params}")
             return params
     
@@ -144,7 +142,9 @@ NOTSURE: When uncertain about routing decision
             logger.info(f"Initial route selection: {route_selection.route}, Reason: {route_selection.reason}")
             
             # Handle NOTSURE with fallback to more capable model
+            fallback_used = False
             if route_selection.route == "NOTSURE":
+                fallback_used = True
                 span.set_attribute("fallback_used", True)
                 logger.info("Route selection uncertain, using fallback model")
                 
@@ -161,7 +161,7 @@ NOTSURE: When uncertain about routing decision
             
             span.set_attribute("route", route_selection.route)
             span.set_attribute("reason", route_selection.reason)
-            
+
             # Language detection (between route selection and parameter extraction)
             language_code = await self.language_detector.detect_language(message)
             language_name = await self.language_detector.get_language_name(language_code)
@@ -170,7 +170,25 @@ NOTSURE: When uncertain about routing decision
             logger.info(f"Detected language: {language_code} ({language_name})")
             
             # Tier 2: Parameter extraction (if needed)
-            params = await self._extract_parameters(route_selection.route, message)
+            try:
+                params = await self._extract_parameters(route_selection.route, message)
+            except Exception:
+                # Record routing attempt with error outcome
+                self.telemetry.metrics.route_selections_counter.add(1, {
+                    "route": route_selection.route,
+                    "fallback_used": fallback_used,
+                    "outcome": "error",
+                    "language_code": language_code
+                })
+                raise
+
+            # Count route selection success
+            self.telemetry.metrics.route_selections_counter.add(1, {
+                "route": route_selection.route,
+                "fallback_used": fallback_used,
+                "outcome": "success",
+                "language_code": language_code
+            })
             
             # Add language information to the extracted parameters
             if params:
