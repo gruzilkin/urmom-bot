@@ -187,7 +187,7 @@ class Telemetry:
         )
 
         llm_latency = meter.create_histogram(
-            name="llm_latency_ms",
+            name="llm_latency",
             description="LLM request latency in milliseconds",
             unit="ms",
         )
@@ -200,7 +200,7 @@ class Telemetry:
 
         # Bot/joke flow metrics
         message_latency = meter.create_histogram(
-            name="bot_message_latency_ms",
+            name="bot_message_latency",
             description="Latency from message handling start to reply",
             unit="ms",
         )
@@ -221,7 +221,7 @@ class Telemetry:
 
         # DB metrics
         db_latency = meter.create_histogram(
-            name="db_query_latency_ms",
+            name="db_query_latency",
             description="Database operation latency",
             unit="ms",
         )
@@ -256,7 +256,7 @@ class Telemetry:
 
 
         attachment_analysis_latency = meter.create_histogram(
-            name="attachment_analysis_latency_ms",
+            name="attachment_analysis_latency",
             description="Attachment analysis latency",
             unit="ms",
         )
