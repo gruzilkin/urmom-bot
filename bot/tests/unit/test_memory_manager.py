@@ -220,9 +220,8 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         self.mock_store.get_user_facts = AsyncMock(return_value=None)
         
         with patch.object(self.memory_manager, '_daily_summary', return_value={}):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=None):
-                # Act
-                result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Einstein"])
+            # Act
+            result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Einstein"])
         
         # Assert
         self.assertIsNone(result)
@@ -234,9 +233,8 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         self.mock_store.get_user_facts = AsyncMock(return_value=facts)
         
         with patch.object(self.memory_manager, '_daily_summary', return_value={}):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=None):
-                # Act
-                result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Einstein"])
+            # Act
+            result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Einstein"])
         
         # Assert
         self.assertEqual(result, facts)
@@ -247,10 +245,9 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         current_summary = "Planck defended wave theory while questioning Einstein's quantum hypothesis about energy packets"
         self.mock_store.get_user_facts = AsyncMock(return_value=None)
         
-        with patch.object(self.memory_manager, '_daily_summary', side_effect=lambda guild_id, date: {self.physicist_ids["Planck"]: current_summary}):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=None):
-                # Act
-                result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Planck"])
+        with patch.object(self.memory_manager, '_daily_summary', side_effect=lambda guild_id, date: {self.physicist_ids["Planck"]: current_summary} if date == datetime.now(timezone.utc).date() else {}):
+            # Act
+            result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Planck"])
         
         # Assert
         self.assertEqual(result, current_summary)
@@ -261,10 +258,15 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         historical_summary = "User has been consistently active"
         self.mock_store.get_user_facts = AsyncMock(return_value=None)
         
-        with patch.object(self.memory_manager, '_daily_summary', return_value={}):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=historical_summary):
-                # Act
-                result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Bohr"])
+        # Mock to return exactly one daily summary (for yesterday only)
+        def daily_summary_side_effect(guild_id, date):
+            if date == datetime.now(timezone.utc).date() - timedelta(days=1):
+                return {self.physicist_ids["Bohr"]: historical_summary}
+            return {}
+        
+        with patch.object(self.memory_manager, '_daily_summary', side_effect=daily_summary_side_effect):
+            # Act
+            result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Bohr"])
         
         # Assert
         self.assertEqual(result, historical_summary)
@@ -279,15 +281,23 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         
         self.mock_store.get_user_facts = AsyncMock(return_value=facts)
         
-        with patch.object(self.memory_manager, '_daily_summary', side_effect=lambda guild_id, date: {self.physicist_ids["Thomson"]: current_summary}):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=historical_summary):
-                with patch.object(self.memory_manager, '_merge_context', return_value=merged_result) as mock_merge:
-                    # Act
-                    result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Thomson"])
+        with patch.object(self.memory_manager, '_daily_summary', side_effect=lambda guild_id, date: {self.physicist_ids["Thomson"]: current_summary} if date == datetime.now(timezone.utc).date() else {self.physicist_ids["Thomson"]: historical_summary}):
+            with patch.object(self.memory_manager, '_merge_context', return_value=merged_result) as mock_merge:
+                # Act
+                result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Thomson"])
         
         # Assert
         self.assertEqual(result, merged_result)
-        mock_merge.assert_called_once_with(self.physics_guild_id, self.physicist_ids["Thomson"], facts, current_summary, historical_summary)
+        # Verify merge was called with facts and a dict of daily summaries
+        self.assertEqual(len(mock_merge.call_args_list), 1)
+        call_args = mock_merge.call_args_list[0]
+        self.assertEqual(call_args[0][0], self.physics_guild_id)  # guild_id
+        self.assertEqual(call_args[0][1], self.physicist_ids["Thomson"])  # user_id
+        self.assertEqual(call_args[0][2], facts)  # facts
+        daily_summaries = call_args[0][3]  # daily_summaries dict
+        self.assertIsInstance(daily_summaries, dict)
+        self.assertIn(datetime.now(timezone.utc).date(), daily_summaries)
+        self.assertEqual(daily_summaries[datetime.now(timezone.utc).date()], current_summary)
 
     async def test_merge_failure_falls_back_to_facts(self):
         """Test that get_memories falls back to facts when AI merge fails."""
@@ -298,11 +308,10 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         
         self.mock_store.get_user_facts = AsyncMock(return_value=facts)
         
-        with patch.object(self.memory_manager, '_daily_summary', side_effect=lambda guild_id, date: {self.physicist_ids["Rutherford"]: current_summary}):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=historical_summary):
-                with patch.object(self.memory_manager, '_merge_context', side_effect=Exception("AI service unavailable")):
-                    # Act
-                    result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Rutherford"])
+        with patch.object(self.memory_manager, '_daily_summary', side_effect=lambda guild_id, date: {self.physicist_ids["Rutherford"]: current_summary} if date == datetime.now(timezone.utc).date() else {self.physicist_ids["Rutherford"]: historical_summary}):
+            with patch.object(self.memory_manager, '_merge_context', side_effect=Exception("AI service unavailable")):
+                # Act
+                result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Rutherford"])
         
         # Assert
         self.assertEqual(result, facts)
@@ -315,13 +324,13 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         
         self.mock_store.get_user_facts = AsyncMock(return_value=None)
         
-        with patch.object(self.memory_manager, '_daily_summary', side_effect=lambda guild_id, date: {self.physicist_ids["Schrödinger"]: current_summary}):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=historical_summary):
-                with patch.object(self.memory_manager, '_merge_context', side_effect=Exception("AI service unavailable")):
-                    # Act
-                    result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Schrödinger"])
+        with patch.object(self.memory_manager, '_daily_summary', side_effect=lambda guild_id, date: {self.physicist_ids["Schrödinger"]: current_summary} if date == datetime.now(timezone.utc).date() else {self.physicist_ids["Schrödinger"]: historical_summary}):
+            with patch.object(self.memory_manager, '_merge_context', side_effect=Exception("AI service unavailable")):
+                # Act
+                result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Schrödinger"])
         
         # Assert
+        # When merge fails, fallback goes to most recent daily summary (which should be current day)
         self.assertEqual(result, current_summary)
 
     async def test_merge_failure_falls_back_to_historical_when_no_facts_or_current(self):
@@ -331,11 +340,10 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         
         self.mock_store.get_user_facts = AsyncMock(return_value=None)
         
-        with patch.object(self.memory_manager, '_daily_summary', return_value={}):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=historical_summary):
-                with patch.object(self.memory_manager, '_merge_context', side_effect=Exception("AI service unavailable")):
-                    # Act
-                    result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Heisenberg"])
+        with patch.object(self.memory_manager, '_daily_summary', side_effect=lambda guild_id, date: {} if date == datetime.now(timezone.utc).date() else {self.physicist_ids["Heisenberg"]: historical_summary}):
+            with patch.object(self.memory_manager, '_merge_context', side_effect=Exception("AI service unavailable")):
+                # Act
+                result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Heisenberg"])
         
         # Assert
         self.assertEqual(result, historical_summary)
@@ -347,7 +355,6 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         
         # Mock daily summary to return empty for fallback
         with patch.object(self.memory_manager, '_daily_summary', return_value={}):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=None):
                 # Act & Assert - Store failure should propagate exception
                 with self.assertRaises(Exception) as context:
                     await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Born"])
@@ -361,7 +368,6 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
         self.mock_store.get_user_facts = AsyncMock(return_value=facts)
         
         with patch.object(self.memory_manager, '_daily_summary', side_effect=Exception("AI service error")):
-            with patch.object(self.memory_manager, '_create_week_summary', return_value=None):
                 # Act
                 result = await self.memory_manager.get_memory(self.physics_guild_id, self.physicist_ids["Curie"])
         
@@ -519,11 +525,9 @@ class TestMemoryManagerBatchProcessing(unittest.IsolatedAsyncioTestCase):
         
         # Mock the internal methods to simulate data for these users
         with patch.object(self.memory_manager, '_fetch_all_daily_summaries', new_callable=AsyncMock) as mock_fetch_daily, \
-             patch.object(self.memory_manager, '_create_historical_summaries_for_users', new_callable=AsyncMock) as mock_create_historical, \
              patch.object(self.memory_manager, '_create_combined_memories', new_callable=AsyncMock) as mock_create_combined:
 
             mock_fetch_daily.return_value = {}  # Assume no daily summaries for simplicity
-            mock_create_historical.return_value = {uid: f"Historical summary for {uid}" for uid in user_ids}
             mock_create_combined.return_value = {uid: f"Combined memory for {uid}" for uid in user_ids}
 
             # Act
@@ -591,37 +595,43 @@ class TestMemoryManagerExceptionIsolation(unittest.IsolatedAsyncioTestCase):
             if failing_date in results:
                 self.assertEqual(results[failing_date], {})
 
-    async def test_historical_summary_failure_isolated_per_user(self):
-        """Test that one user's historical summary failure doesn't affect other users."""
+    async def test_merge_failure_isolated_per_user(self):
+        """Test that one user's merge failure doesn't affect other users."""
         # Arrange
         einstein_id = self.physicist_ids["Einstein"]
-        bohr_id = self.physicist_ids["Bohr"]  # Bohr's summary will fail
+        bohr_id = self.physicist_ids["Bohr"]  # Bohr's merge will fail
         planck_id = self.physicist_ids["Planck"]
         user_ids = [einstein_id, bohr_id, planck_id]
 
-        async def week_summary_side_effect(daily_summaries):
-            # Simulate Bohr failing (empty daily summaries for Bohr)
-            if not daily_summaries:
-                raise ValueError("Failed to generate historical summary")
-            return "Historical summary"
+        # Mock facts
+        self.mock_store.get_user_facts = AsyncMock(side_effect=lambda guild_id, user_id: 
+            f"Facts for {user_id}" if user_id != bohr_id else "Bohr facts")
 
-        with patch.object(self.memory_manager, '_create_week_summary', side_effect=week_summary_side_effect):
-            # Act - Provide historical dates (method skips first item which is "today")
-            daily_summaries_by_date = {
-                self.today: {},  # This gets skipped as "today"
-                self.today - timedelta(days=1): {einstein_id: "Yesterday summary", planck_id: "Yesterday summary"},
-                self.today - timedelta(days=2): {einstein_id: "Day before summary", planck_id: "Day before summary"}
-                # Note: Bohr is missing from historical dates, so will get empty daily_summaries and fail
-            }
-            results = await self.memory_manager._create_historical_summaries_for_users(user_ids, daily_summaries_by_date)
+        # Mock merge context to fail for Bohr only
+        async def merge_context_side_effect(guild_id, user_id, facts, daily_summaries):
+            if user_id == bohr_id:
+                raise ValueError("AI merge failed for Bohr")
+            return f"Merged context for {user_id}"
+
+        # Create daily summaries for all users
+        daily_summaries_by_date = {
+            self.today: {einstein_id: "Einstein today", planck_id: "Planck today"},
+            self.today - timedelta(days=1): {einstein_id: "Einstein yesterday", bohr_id: "Bohr yesterday", planck_id: "Planck yesterday"},
+        }
+
+        with patch.object(self.memory_manager, '_merge_context', side_effect=merge_context_side_effect):
+            # Act
+            results = await self.memory_manager._create_combined_memories(
+                self.physics_guild_id, user_ids, daily_summaries_by_date
+            )
 
             # Assert
             self.assertIn(einstein_id, results)
-            self.assertEqual(results[einstein_id], "Historical summary")
+            self.assertEqual(results[einstein_id], f"Merged context for {einstein_id}")
             self.assertIn(planck_id, results)
-            self.assertEqual(results[planck_id], "Historical summary")
+            self.assertEqual(results[planck_id], f"Merged context for {planck_id}")
             self.assertIn(bohr_id, results)
-            self.assertIsNone(results[bohr_id])  # Should be None due to failure
+            self.assertEqual(results[bohr_id], "Bohr facts")  # Falls back to facts on merge failure
 
     async def test_context_merge_failure_isolated_per_user(self):
         """Test that merge failures are handled independently per user."""
@@ -631,7 +641,7 @@ class TestMemoryManagerExceptionIsolation(unittest.IsolatedAsyncioTestCase):
         planck_id = self.physicist_ids["Planck"]
 
         # Mock successful merge for Einstein and Planck, failure for Bohr
-        async def merge_context_side_effect(guild_id, user_id, facts, current_day, historical):
+        async def merge_context_side_effect(guild_id, user_id, facts, daily_summaries):
             if user_id == bohr_id:
                 raise ValueError("AI merge failed for Bohr")
             return f"Merged context for {user_id}"
@@ -639,13 +649,13 @@ class TestMemoryManagerExceptionIsolation(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.memory_manager, '_merge_context', side_effect=merge_context_side_effect):
             # Act - Test individual user memory creation to verify isolation
             einstein_result = await self.memory_manager._create_user_memory(
-                self.physics_guild_id, einstein_id, "Einstein facts", "Einstein current", "Einstein historical"
+                self.physics_guild_id, einstein_id, "Einstein facts", {self.today: "Einstein current"}
             )
             bohr_result = await self.memory_manager._create_user_memory(
-                self.physics_guild_id, bohr_id, "Bohr facts", "Bohr current", "Bohr historical"
+                self.physics_guild_id, bohr_id, "Bohr facts", {self.today: "Bohr current"}
             )
             planck_result = await self.memory_manager._create_user_memory(
-                self.physics_guild_id, planck_id, "Planck facts", "Planck current", "Planck historical"
+                self.physics_guild_id, planck_id, "Planck facts", {self.today: "Planck current"}
             )
 
             # Assert - Einstein and Planck succeed, Bohr falls back to facts
@@ -735,8 +745,9 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
         self.mock_gemma_client.generate_content.return_value = MemoryContext(context="Merged Context")
 
         # Act
-        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, current_day, historical)
-        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, current_day, historical)
+        daily_summaries = {datetime.now(timezone.utc).date(): current_day, datetime.now(timezone.utc).date() - timedelta(days=1): historical}
+        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)
+        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)
 
         # Assert
         self.mock_gemma_client.generate_content.assert_called_once()
@@ -840,24 +851,29 @@ class TestMemoryManagerConcurrency(unittest.IsolatedAsyncioTestCase):
             # If sequential, it would take at least 0.7s. Concurrent should be much faster.
             self.assertLess(end_time - start_time, 0.5)
 
-    async def test_create_historical_summaries_concurrent_processing(self):
-        """Test that multiple users' historical summaries are generated concurrently."""
+    async def test_create_combined_memories_concurrent_processing(self):
+        """Test that multiple users' memories are processed concurrently."""
         # Arrange
         user_ids = [self.physicist_ids["Einstein"], self.physicist_ids["Bohr"], self.physicist_ids["Planck"]]
-        daily_summaries = {self.all_dates[1]: {uid: "Summary" for uid in user_ids}}
+        daily_summaries_by_date = {self.all_dates[1]: {uid: "Summary" for uid in user_ids}}
 
-        async def slow_week_summary(*args, **kwargs):
+        # Mock facts for all users
+        self.test_store.get_user_facts = AsyncMock(side_effect=lambda guild_id, user_id: f"Facts for {user_id}")
+
+        async def slow_merge_context(*args, **kwargs):
             await asyncio.sleep(0.1)
-            return "Historical Summary"
+            return "Merged context"
 
-        with patch.object(self.memory_manager, '_create_week_summary', side_effect=slow_week_summary) as mock_week_summary:
+        with patch.object(self.memory_manager, '_merge_context', side_effect=slow_merge_context) as mock_merge:
             start_time = asyncio.get_event_loop().time()
             # Act
-            await self.memory_manager._create_historical_summaries_for_users(user_ids, daily_summaries)
+            await self.memory_manager._create_combined_memories(
+                self.physics_guild_id, user_ids, daily_summaries_by_date
+            )
             end_time = asyncio.get_event_loop().time()
 
             # Assert
-            self.assertEqual(mock_week_summary.call_count, len(user_ids))
+            self.assertEqual(mock_merge.call_count, len(user_ids))
             # If sequential, it would take at least 0.3s. Concurrent should be much faster.
             self.assertLess(end_time - start_time, 0.2)
 
@@ -889,7 +905,7 @@ class TestMemoryManagerDatabaseConcurrency(unittest.IsolatedAsyncioTestCase):
         # Arrange
         user_ids = [self.physicist_ids["Einstein"], self.physicist_ids["Bohr"], self.physicist_ids["Planck"]]
         
-        async def slow_create_user_memory(guild_id, user_id, facts, current_day, historical):
+        async def slow_create_user_memory(guild_id, user_id, facts, daily_summaries):
             await asyncio.sleep(0.1)  # Simulate AI processing time
             return f"Memory for {user_id}"
 
@@ -930,16 +946,10 @@ class TestMemoryManagerDatabaseConcurrency(unittest.IsolatedAsyncioTestCase):
         self.test_store.get_user_facts = AsyncMock(side_effect=facts_side_effect)
         
         with patch.object(self.memory_manager, '_fetch_all_daily_summaries', new_callable=AsyncMock) as mock_fetch_daily, \
-             patch.object(self.memory_manager, '_create_historical_summaries_for_users', new_callable=AsyncMock) as mock_create_historical, \
              patch.object(self.memory_manager, '_create_combined_memories', new_callable=AsyncMock) as mock_create_combined:
             
             # Mock the internal pipeline steps
             mock_fetch_daily.return_value = {date(1905, 3, 6): {self.physicist_ids["Bohr"]: "Bohr current day summary"}}
-            mock_create_historical.return_value = {
-                self.physicist_ids["Einstein"]: "Einstein historical",
-                self.physicist_ids["Bohr"]: None,  # Historical fails for Bohr
-                self.physicist_ids["Planck"]: "Planck historical"
-            }
             mock_create_combined.return_value = {
                 self.physicist_ids["Einstein"]: "Einstein facts",  # Falls back to facts
                 self.physicist_ids["Bohr"]: "Bohr current day summary",  # Falls back to current day
@@ -1010,9 +1020,10 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         self.mock_gemma_client.generate_content = AsyncMock(return_value=MemoryContext(context="Merged context"))
 
         # Act - Make multiple identical merge requests
-        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, current_day, historical)
-        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, current_day, historical)
-        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, current_day, historical)
+        daily_summaries = {datetime.now(timezone.utc).date(): current_day, datetime.now(timezone.utc).date() - timedelta(days=1): historical}
+        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)
+        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)
+        await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)
 
         # Assert - Should only make one AI call due to content-based caching
         self.mock_gemma_client.generate_content.assert_called_once()
@@ -1029,8 +1040,9 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         self.mock_gemma_client.generate_content = AsyncMock(return_value=MemoryContext(context="Merged context"))
 
         # Act - Make calls with different content
-        await self.memory_manager._merge_context(self.physics_guild_id, user_id, original_facts, current_day, historical)
-        await self.memory_manager._merge_context(self.physics_guild_id, user_id, updated_facts, current_day, historical)
+        daily_summaries = {datetime.now(timezone.utc).date(): current_day, datetime.now(timezone.utc).date() - timedelta(days=1): historical}
+        await self.memory_manager._merge_context(self.physics_guild_id, user_id, original_facts, daily_summaries)
+        await self.memory_manager._merge_context(self.physics_guild_id, user_id, updated_facts, daily_summaries)
 
         # Assert - Should make two AI calls since content changed
         self.assertEqual(self.mock_gemma_client.generate_content.call_count, 2)
