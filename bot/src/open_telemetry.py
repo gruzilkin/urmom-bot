@@ -190,6 +190,12 @@ class Telemetry:
             name="llm_latency",
             description="LLM request latency in milliseconds",
             unit="ms",
+            explicit_bucket_boundaries=[
+                100.0, 250.0, 500.0, 750.0,  # Sub-second (quick errors/cached responses)
+                1000.0, 2000.0, 5000.0,      # Quick replies (1-5 seconds)
+                10000.0, 15000.0, 30000.0,   # Medium responses (10-30 seconds)  
+                60000.0, 120000.0, 180000.0, 300000.0  # Long responses (1-5 minutes)
+            ],
         )
 
         structured_output_failures = meter.create_counter(
@@ -203,6 +209,12 @@ class Telemetry:
             name="bot_message_latency",
             description="Latency from message handling start to reply",
             unit="ms",
+            explicit_bucket_boundaries=[
+                1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 750.0,  # Fast non-LLM responses
+                1000.0, 2000.0, 5000.0,                                    # Quick LLM replies (1-5 seconds)
+                10000.0, 15000.0, 30000.0,                                 # Medium LLM responses (10-30 seconds)  
+                60000.0, 120000.0, 180000.0                                # Long LLM responses (1-3 minutes)
+            ],
         )
 
         jokes_generated = meter.create_counter(
@@ -259,6 +271,12 @@ class Telemetry:
             name="attachment_analysis_latency",
             description="Attachment analysis latency",
             unit="ms",
+            explicit_bucket_boundaries=[
+                100.0, 250.0, 500.0, 750.0,  # Sub-second (quick errors/cached responses)
+                1000.0, 2000.0, 5000.0,      # Quick replies (1-5 seconds)
+                10000.0, 15000.0, 30000.0,   # Medium responses (10-30 seconds)  
+                60000.0, 120000.0, 180000.0, 300000.0  # Long responses (1-5 minutes)
+            ],
         )
 
         # User resolution metric (success/error)
