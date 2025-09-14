@@ -190,7 +190,7 @@ class Telemetry:
             name="llm_latency",
             description="LLM request latency in milliseconds",
             unit="ms",
-            explicit_bucket_boundaries=[
+            explicit_bucket_boundaries_advisory=[
                 100.0, 250.0, 500.0, 750.0,  # Sub-second (quick errors/cached responses)
                 1000.0, 2000.0, 5000.0,      # Quick replies (1-5 seconds)
                 10000.0, 15000.0, 30000.0,   # Medium responses (10-30 seconds)  
@@ -209,7 +209,7 @@ class Telemetry:
             name="bot_message_latency",
             description="Latency from message handling start to reply",
             unit="ms",
-            explicit_bucket_boundaries=[
+            explicit_bucket_boundaries_advisory=[
                 1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 750.0,  # Fast non-LLM responses
                 1000.0, 2000.0, 5000.0,                                    # Quick LLM replies (1-5 seconds)
                 10000.0, 15000.0, 30000.0,                                 # Medium LLM responses (10-30 seconds)  
@@ -271,7 +271,7 @@ class Telemetry:
             name="attachment_analysis_latency",
             description="Attachment analysis latency",
             unit="ms",
-            explicit_bucket_boundaries=[
+            explicit_bucket_boundaries_advisory=[
                 100.0, 250.0, 500.0, 750.0,  # Sub-second (quick errors/cached responses)
                 1000.0, 2000.0, 5000.0,      # Quick replies (1-5 seconds)
                 10000.0, 15000.0, 30000.0,   # Medium responses (10-30 seconds)  
