@@ -12,7 +12,7 @@ class NullTelemetry:
             return SimpleNamespace(record=lambda *args, **kwargs: None)
 
         def _timer():
-            # Return callable that returns 0.0 ms when invoked
+            # Return callable that returns 0.0 seconds when invoked
             return lambda: 0.0
 
         self.metrics = SimpleNamespace(

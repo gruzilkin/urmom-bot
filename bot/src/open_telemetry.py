@@ -188,13 +188,13 @@ class Telemetry:
 
         llm_latency = meter.create_histogram(
             name="llm_latency",
-            description="LLM request latency in milliseconds",
-            unit="ms",
+            description="LLM request latency in seconds",
+            unit="s",
             explicit_bucket_boundaries_advisory=[
-                100.0, 250.0, 500.0, 750.0,  # Sub-second (quick errors/cached responses)
-                1000.0, 2000.0, 5000.0,      # Quick replies (1-5 seconds)
-                10000.0, 15000.0, 30000.0,   # Medium responses (10-30 seconds)  
-                60000.0, 120000.0, 180000.0, 300000.0  # Long responses (1-5 minutes)
+                0.1, 0.25, 0.5, 0.75,  # Sub-second (quick errors/cached responses)
+                1.0, 2.0, 5.0,         # Quick replies (1-5 seconds)
+                10.0, 15.0, 30.0,      # Medium responses (10-30 seconds)
+                60.0, 120.0, 180.0, 300.0  # Long responses (1-5 minutes)
             ],
         )
 
@@ -207,13 +207,13 @@ class Telemetry:
         # Bot/joke flow metrics
         message_latency = meter.create_histogram(
             name="bot_message_latency",
-            description="Latency from message handling start to reply",
-            unit="ms",
+            description="Latency from message handling start to reply (seconds)",
+            unit="s",
             explicit_bucket_boundaries_advisory=[
-                1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 750.0,  # Fast non-LLM responses
-                1000.0, 2000.0, 5000.0,                                    # Quick LLM replies (1-5 seconds)
-                10000.0, 15000.0, 30000.0,                                 # Medium LLM responses (10-30 seconds)  
-                60000.0, 120000.0, 180000.0                                # Long LLM responses (1-3 minutes)
+                0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 0.75,  # Fast non-LLM responses
+                1.0, 2.0, 5.0,                                          # Quick LLM replies (1-5 seconds)
+                10.0, 15.0, 30.0,                                       # Medium LLM responses (10-30 seconds)
+                60.0, 120.0, 180.0                                      # Long LLM responses (1-3 minutes)
             ],
         )
 
@@ -234,8 +234,8 @@ class Telemetry:
         # DB metrics
         db_latency = meter.create_histogram(
             name="db_query_latency",
-            description="Database operation latency",
-            unit="ms",
+            description="Database operation latency (seconds)",
+            unit="s",
         )
 
 
@@ -269,13 +269,13 @@ class Telemetry:
 
         attachment_analysis_latency = meter.create_histogram(
             name="attachment_analysis_latency",
-            description="Attachment analysis latency",
-            unit="ms",
+            description="Attachment analysis latency (seconds)",
+            unit="s",
             explicit_bucket_boundaries_advisory=[
-                100.0, 250.0, 500.0, 750.0,  # Sub-second (quick errors/cached responses)
-                1000.0, 2000.0, 5000.0,      # Quick replies (1-5 seconds)
-                10000.0, 15000.0, 30000.0,   # Medium responses (10-30 seconds)  
-                60000.0, 120000.0, 180000.0, 300000.0  # Long responses (1-5 minutes)
+                0.1, 0.25, 0.5, 0.75,  # Sub-second (quick errors/cached responses)
+                1.0, 2.0, 5.0,         # Quick replies (1-5 seconds)
+                10.0, 15.0, 30.0,      # Medium responses (10-30 seconds)
+                60.0, 120.0, 180.0, 300.0  # Long responses (1-5 minutes)
             ],
         )
 
@@ -286,12 +286,12 @@ class Telemetry:
             unit="1",
         )
         
-        # Readable elapsed-time helper
+        # Readable elapsed-time helper returning seconds
         def timer():
             t0 = time.monotonic()
-            def elapsed_ms():
-                return (time.monotonic() - t0) * 1000.0
-            return elapsed_ms
+            def elapsed_s():
+                return (time.monotonic() - t0)
+            return elapsed_s
 
         return SimpleNamespace(
             message_counter=message_counter,
