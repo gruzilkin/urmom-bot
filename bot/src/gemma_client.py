@@ -46,7 +46,6 @@ class GemmaClient(AIClient):
             attributes = {
                 "service": "GEMMA",
                 "model": self.model_name,
-                "method": method_name
             }
             
             # Add any additional attributes passed in
@@ -117,11 +116,21 @@ Schema: {response_schema.model_json_schema()}"""
             config = GenerateContentConfig(temperature=actual_temperature)
 
             # Generate content with multimodal support
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=content_parts,
-                config=config
-            )
+            timer = self.telemetry.metrics.timer()
+            try:
+                response = await self.client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=content_parts,
+                    config=config
+                )
+                attrs = {"service": "GEMMA", "model": self.model_name, "outcome": "success"}
+                self.telemetry.metrics.llm_latency.record(timer(), attrs)
+                self.telemetry.metrics.llm_requests.add(1, attrs)
+            except Exception as e:
+                attrs = {"service": "GEMMA", "model": self.model_name, "outcome": "error", "error_type": type(e).__name__}
+                self.telemetry.metrics.llm_latency.record(timer(), attrs)
+                self.telemetry.metrics.llm_requests.add(1, attrs)
+                raise
 
             logger.info(response)
             # Track metrics with multimodal indicator
@@ -148,6 +157,7 @@ Schema: {response_schema.model_json_schema()}"""
                     return parsed_result
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.error(f"Failed to parse structured response: {e}", exc_info=True)
+                    self.telemetry.metrics.structured_output_failures.add(1, {"service": "GEMMA", "model": self.model_name})
                     raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {response_text}")
             
             return response_text

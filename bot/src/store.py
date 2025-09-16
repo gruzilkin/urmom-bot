@@ -89,6 +89,7 @@ class Store:
             }
             logger.info(f"Store saving joke: {joke_data}")
             
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -119,6 +120,8 @@ class Store:
                     await self.conn.commit()
             except Exception as e:
                 raise e
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "save_joke"})
 
     async def get_random_jokes(self, n: int) -> list[tuple[str, str]]:
         """Get multiple random jokes in a single query"""
@@ -126,6 +129,7 @@ class Store:
             span.set_attribute("requested_count", n)
             span.set_attribute("weight_coef", self.weight_coef)
             
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -149,13 +153,17 @@ class Store:
                 logger.error(f"Error fetching random jokes: {e}", exc_info=True)
                 span.record_exception(e)
                 return []
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "get_random_jokes"})
 
     async def get_guild_config(self, guild_id: int) -> GuildConfig:
         async with self._telemetry.async_create_span("get_guild_config") as span:
             span.set_attribute("guild_id", guild_id)
-            
+            timer = self._telemetry.metrics.timer()
+            cache_outcome = "hit"
             if guild_id not in self._guild_configs:
                 span.set_attribute("cache_hit", False)
+                cache_outcome = "miss"
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
                     await cur.execute(
@@ -184,7 +192,10 @@ class Store:
             else:
                 span.set_attribute("cache_hit", True)
             
-            return self._guild_configs[guild_id]
+            try:
+                return self._guild_configs[guild_id]
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "get_guild_config", "guild_id": str(guild_id), "cache_outcome": cache_outcome})
 
     async def save_guild_config(self, config: GuildConfig) -> None:
         async with self._telemetry.async_create_span("save_guild_config") as span:
@@ -194,6 +205,7 @@ class Store:
             span.set_attribute("downvote_reaction_threshold", config.downvote_reaction_threshold)
             span.set_attribute("enable_country_jokes", config.enable_country_jokes)
             
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -216,6 +228,8 @@ class Store:
             except Exception as e:
                 span.record_exception(e)
                 raise e
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "save_guild_config", "guild_id": str(config.guild_id)})
 
     async def get_user_facts(self, guild_id: int, user_id: int) -> str | None:
         """Retrieve current memory blob for a user with LRU caching."""
@@ -226,8 +240,10 @@ class Store:
             cache_key = (guild_id, user_id)
             
             # Check cache first
+            cache_outcome = "miss"
             if cache_key in self._user_facts_cache:
                 span.set_attribute("cache_hit", True)
+                cache_outcome = "hit"
                 facts = self._user_facts_cache[cache_key]
                 span.set_attribute("has_facts", bool(facts))
                 if facts:
@@ -235,6 +251,7 @@ class Store:
                 return facts
             
             span.set_attribute("cache_hit", False)
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -255,6 +272,8 @@ class Store:
                 logger.error(f"Error retrieving user facts: {e}", exc_info=True)
                 span.record_exception(e)
                 return None
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "get_user_facts", "guild_id": str(guild_id), "cache_outcome": cache_outcome})
 
     async def save_user_facts(self, guild_id: int, user_id: int, memory_blob: str) -> None:
         """Save or update memory blob for a user and invalidate cache."""
@@ -263,6 +282,7 @@ class Store:
             span.set_attribute("user_id", user_id)
             span.set_attribute("facts_length", len(memory_blob))
             
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -289,6 +309,8 @@ class Store:
             except Exception as e:
                 logger.error(f"Error saving user facts: {e}", exc_info=True)
                 raise e
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "save_user_facts", "guild_id": str(guild_id)})
 
 
     async def get_chat_messages_for_date(self, guild_id: int, for_date: date) -> list[ChatMessage]:
@@ -297,6 +319,7 @@ class Store:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
             
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -321,6 +344,8 @@ class Store:
                 logger.error(f"Error retrieving chat messages for date: {e}", exc_info=True)
                 span.record_exception(e)
                 return []
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "get_chat_messages_for_date", "guild_id": str(guild_id)})
 
     async def add_chat_message(self, guild_id: int, channel_id: int, message_id: int, user_id: int, message_text: str, timestamp: datetime, reply_to_id: int | None = None) -> None:
         """Adds a chat message to the chat_history table."""
@@ -334,6 +359,7 @@ class Store:
             if reply_to_id:
                 span.set_attribute("reply_to_id", reply_to_id)
             
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -351,6 +377,8 @@ class Store:
             except Exception as e:
                 logger.error(f"Error adding chat message: {e}", exc_info=True)
                 raise e
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "add_chat_message", "guild_id": str(guild_id)})
 
 
     async def has_chat_messages_for_date(self, guild_id: int, for_date: date) -> bool:
@@ -359,6 +387,7 @@ class Store:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
             
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -382,6 +411,8 @@ class Store:
                 logger.error(f"Error checking chat messages for date: {e}", exc_info=True)
                 span.record_exception(e)
                 return False
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "has_chat_messages_for_date", "guild_id": str(guild_id)})
 
     async def get_daily_summaries(self, guild_id: int, for_date: date) -> dict[int, str]:
         """Get daily summaries for all users on a specific date with caching."""
@@ -392,14 +423,17 @@ class Store:
             cache_key = (guild_id, for_date)
             
             # Check cache first
+            cache_outcome = "miss"
             if cache_key in self._daily_summaries_cache:
                 span.set_attribute("cache_hit", True)
                 cached_result = self._daily_summaries_cache[cache_key]
                 span.set_attribute("summary_count", len(cached_result))
+                cache_outcome = "hit"
                 return cached_result
             
             span.set_attribute("cache_hit", False)
             
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -423,6 +457,8 @@ class Store:
                 logger.error(f"Error retrieving daily summaries: {e}", exc_info=True)
                 span.record_exception(e)
                 return {}
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "get_daily_summaries", "guild_id": str(guild_id), "cache_outcome": cache_outcome})
 
     async def save_daily_summaries(self, guild_id: int, for_date: date, summaries_dict: dict[int, str]) -> None:
         """Save daily summaries for multiple users on a specific date."""
@@ -435,6 +471,7 @@ class Store:
                 span.set_attribute("skipped", True)
                 return
             
+            timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
@@ -466,6 +503,8 @@ class Store:
             except Exception as e:
                 logger.error(f"Error saving daily summaries: {e}", exc_info=True)
                 raise e
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "save_daily_summaries", "guild_id": str(guild_id)})
 
     async def close(self) -> None:
         """Close the database connection."""

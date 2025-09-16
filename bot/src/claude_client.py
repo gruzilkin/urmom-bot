@@ -21,9 +21,10 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class ClaudeClient(AIClient):
-    def __init__(self, telemetry: Telemetry, model_name: str = "claude"):
-        self.model_name = model_name  # Kept for compatibility but not used
+    def __init__(self, telemetry: Telemetry, model_name: str = "claude_code"):
+        self.model_name = model_name
         self.telemetry = telemetry
+        self.service = "CLAUDE"
 
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None) -> str | T:
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT):
@@ -57,56 +58,60 @@ class ClaudeClient(AIClient):
             if enable_grounding:
                 logger.warning("Grounding not supported by Claude CLI")
             
-            try:
-                # Build Claude CLI command
-                claude_cmd = [
-                    "claude",
-                    "--print",
-                    "--output-format", "text",
-                    "--allowedTools", "WebSearch",
-                    "--disallowedTools", "Bash", "Edit", "Write", "Create", "Read"
-                ]
-                
-                logger.info(f"Running Claude CLI command: {' '.join(claude_cmd)}")
-                
-                # Run the Claude CLI command with input via stdin
-                process = await asyncio.create_subprocess_exec(
-                    *claude_cmd,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                
-                # Send the conversation through stdin
-                stdout, stderr = await process.communicate(input=full_conversation.encode('utf-8'))
-                
-                if process.returncode != 0:
-                    error_msg = stderr.decode().strip() if stderr else "Unknown error"
-                    logger.error(f"Claude CLI command failed with return code {process.returncode}: {error_msg}")
-                    raise RuntimeError(f"Claude CLI failed: {error_msg}")
-                
-                response_text = stdout.decode().strip()
-                logger.info(f"Claude CLI response: {response_text}")
-                
-                # Parse structured response if schema was provided
-                if response_schema:
-                    try:
-                        # Extract JSON from markdown block if present, otherwise use raw text
-                        json_str = response_text.strip()
-                        if "```json" in json_str:
-                            start = json_str.find("```json") + 7
-                            end = json_str.find("```", start)
-                            json_str = json_str[start:end].strip()
-                        
-                        response_data = json.loads(json_str)
-                        parsed_result = response_schema.model_validate(response_data)
-                        return parsed_result
-                    except (json.JSONDecodeError, ValueError) as e:
-                        logger.error(f"Failed to parse structured response: {e}")
-                        raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {response_text}")
-                
-                return response_text
-                
-            except Exception as e:
-                logger.error(f"Error in Claude CLI generate_content: {e}", exc_info=True)
-                raise
+            # Build Claude CLI command
+            claude_cmd = [
+                "claude",
+                "--print",
+                "--output-format", "text",
+                "--allowedTools", "WebSearch",
+                "--disallowedTools", "Bash", "Edit", "Write", "Create", "Read"
+            ]
+            
+            logger.info(f"Running Claude CLI command: {' '.join(claude_cmd)}")
+            
+            # Run the Claude CLI command with input via stdin
+            timer = self.telemetry.metrics.timer()
+            process = await asyncio.create_subprocess_exec(
+                *claude_cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            # Send the conversation through stdin
+            stdout, stderr = await process.communicate(input=full_conversation.encode('utf-8'))
+            
+            if process.returncode != 0:
+                error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                logger.error(f"Claude CLI command failed with return code {process.returncode}: {error_msg}")
+                attrs_err = {"service": self.service, "model": self.model_name, "outcome": "error", "error_type": "CLIError"}
+                self.telemetry.metrics.llm_latency.record(timer(), attrs_err)
+                self.telemetry.metrics.llm_requests.add(1, attrs_err)
+                raise RuntimeError(f"Claude CLI failed: {error_msg}")
+            
+            response_text = stdout.decode().strip()
+            logger.info(f"Claude CLI response: {response_text}")
+
+            attrs = {"service": self.service, "model": self.model_name, "outcome": "success"}
+            self.telemetry.metrics.llm_latency.record(timer(), attrs)
+            self.telemetry.metrics.llm_requests.add(1, attrs)
+            
+            # Parse structured response if schema was provided
+            if response_schema:
+                try:
+                    # Extract JSON from markdown block if present, otherwise use raw text
+                    json_str = response_text.strip()
+                    if "```json" in json_str:
+                        start = json_str.find("```json") + 7
+                        end = json_str.find("```", start)
+                        json_str = json_str[start:end].strip()
+                    
+                    response_data = json.loads(json_str)
+                    parsed_result = response_schema.model_validate(response_data)
+                    return parsed_result
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(f"Failed to parse structured response: {e}")
+                    self.telemetry.metrics.structured_output_failures.add(1, {"service": self.service, "model": self.model_name})
+                    raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {response_text}")
+            
+            return response_text

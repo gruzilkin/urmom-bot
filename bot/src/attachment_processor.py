@@ -158,13 +158,14 @@ class AttachmentProcessor:
             span.set_attribute("size", attachment_data.size)
 
             try:
+                timer = self.telemetry.metrics.timer()
                 description = await self.ai_client.generate_content(
                     message=self.IMAGE_ANALYSIS_MESSAGE,
                     prompt=self.IMAGE_ANALYSIS_PROMPT,
                     image_data=attachment_data.binary_data,
                     image_mime_type=attachment_data.mime_type,
                 )
-
+                self.telemetry.metrics.attachment_analysis_latency.record(timer(), {"type": "image"})
                 span.set_attribute("description_length", len(description))
                 logger.info(
                     f"Generated description for {attachment_data.filename}: {description}"
@@ -200,6 +201,7 @@ class AttachmentProcessor:
                 if cache_key in self._processed_attachment_cache:
                     descriptions.append(self._processed_attachment_cache[cache_key])
                     span.set_attribute("cache_hit", True)
+                    self.telemetry.metrics.attachment_process.add(1, {"type": "image", "outcome": "success", "cache_outcome": "hit"})
                     continue
 
                 span.set_attribute("cache_hit", False)
@@ -208,6 +210,7 @@ class AttachmentProcessor:
                     # Download attachment
                     attachment_data = await self._download_attachment(attachment)
                     if not attachment_data:
+                        self.telemetry.metrics.attachment_process.add(1, {"type": "image", "outcome": "skipped", "cache_outcome": "miss"})
                         continue
 
                     # Analyze image
@@ -219,6 +222,7 @@ class AttachmentProcessor:
                     )
                     descriptions.append(embedding_text)
                     self._processed_attachment_cache[cache_key] = embedding_text
+                    self.telemetry.metrics.attachment_process.add(1, {"type": "image", "outcome": "success", "cache_outcome": "miss"})
 
                 except Exception as e:
                     logger.error(
@@ -227,6 +231,7 @@ class AttachmentProcessor:
                     )
                     span.record_exception(e)
                     span.set_status(Status(StatusCode.ERROR))
+                    self.telemetry.metrics.attachment_process.add(1, {"type": "image", "outcome": "error", "cache_outcome": "miss", "error_type": type(e).__name__})
                     continue
 
             span.set_attribute("success_count", len(descriptions))
@@ -236,6 +241,8 @@ class AttachmentProcessor:
     def _extract_article(self, url: str) -> str:
         """Extract article content with LRU caching."""
         if url in self._article_cache:
+            # Cache hit for article extraction
+            self.telemetry.metrics.attachment_process.add(1, {"type": "article", "outcome": "success", "cache_outcome": "hit"})
             return self._article_cache[url]
 
         with self.telemetry.create_span("extract_article") as span:
@@ -244,6 +251,7 @@ class AttachmentProcessor:
                 article = self.goose.extract(url=url)
                 content = article.cleaned_text if article.cleaned_text else ""
                 span.set_attribute("content_length", len(content))
+                self.telemetry.metrics.attachment_process.add(1, {"type": "article", "outcome": "success", "cache_outcome": "miss"})
                 if content:
                     logger.info(
                         f"Extracted article content from {url}: {content[:500]}{'...' if len(content) > 500 else ''}"
@@ -256,6 +264,7 @@ class AttachmentProcessor:
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR))
                 logger.error(f"Error extracting article from {url}: {e}", exc_info=True)
+                self.telemetry.metrics.attachment_process.add(1, {"type": "article", "outcome": "error", "cache_outcome": "miss", "error_type": type(e).__name__})
                 return ""
 
     def _process_embeds(self, embeds: list[nextcord.Embed]) -> list[str]:

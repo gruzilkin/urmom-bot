@@ -2,6 +2,7 @@ import uuid
 import logging
 import sys
 from types import SimpleNamespace
+import time
 
 import nextcord
 # OpenTelemetry imports
@@ -169,13 +170,156 @@ class Telemetry:
             unit="tokens"
         )
         logger.info("Created counter: llm_total_tokens")
+
+        # Routing metrics
+        route_selections_counter = meter.create_counter(
+            name="route_selections_total",
+            description="Total number of route selections",
+            unit="1",
+        )
+
+
+        # LLM request metrics
+        llm_requests = meter.create_counter(
+            name="llm_requests_total",
+            description="Total LLM requests",
+            unit="1",
+        )
+
+        llm_latency = meter.create_histogram(
+            name="llm_latency",
+            description="LLM request latency in seconds",
+            unit="s",
+            explicit_bucket_boundaries_advisory=[
+                0.1, 0.25, 0.5, 0.75,  # Sub-second (quick errors/cached responses)
+                1.0, 2.0, 5.0,         # Quick replies (1-5 seconds)
+                10.0, 15.0, 30.0,      # Medium responses (10-30 seconds)
+                60.0, 120.0, 180.0, 300.0  # Long responses (1-5 minutes)
+            ],
+        )
+
+        structured_output_failures = meter.create_counter(
+            name="llm_structured_output_failures_total",
+            description="LLM structured output (schema) parse failures",
+            unit="1",
+        )
+
+        # Bot/joke flow metrics
+        message_latency = meter.create_histogram(
+            name="bot_message_latency",
+            description="Latency from message handling start to reply (seconds)",
+            unit="s",
+            explicit_bucket_boundaries_advisory=[
+                0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 0.75,  # Fast non-LLM responses
+                1.0, 2.0, 5.0,                                          # Quick LLM replies (1-5 seconds)
+                10.0, 15.0, 30.0,                                       # Medium LLM responses (10-30 seconds)
+                60.0, 120.0, 180.0                                      # Long LLM responses (1-3 minutes)
+            ],
+        )
+
+        jokes_generated = meter.create_counter(
+            name="jokes_generated_total",
+            description="Total jokes generated",
+            unit="1",
+        )
+
+        message_deletions = meter.create_counter(
+            name="message_deletions_total",
+            description="Total bot message deletions by reason",
+            unit="1",
+        )
+
+
+
+        # DB metrics
+        db_latency = meter.create_histogram(
+            name="db_query_latency",
+            description="Database operation latency (seconds)",
+            unit="s",
+            explicit_bucket_boundaries_advisory=[
+                0.001, 0.002, 0.003, 0.004, 0.005,
+                0.0075, 0.01, 0.015, 0.02, 0.03,
+                0.05, 0.075, 0.1, 0.15, 0.2,
+                0.3, 0.4, 0.5, 0.75, 1.0
+            ],
+        )
+
+
+
+        # Memory/daily summary metrics
+        daily_summary_jobs = meter.create_counter(
+            name="daily_summary_jobs_total",
+            description="Daily summary jobs by outcome",
+            unit="1",
+        )
+
+        daily_summary_messages = meter.create_histogram(
+            name="daily_summary_messages_per_job",
+            description="Number of messages processed per daily summary job",
+            unit="1",
+        )
+
+        memory_merges = meter.create_counter(
+            name="memory_merges_total",
+            description="Memory merge outcomes",
+            unit="1",
+        )
+
+        # Attachment processing metrics
+        attachment_process = meter.create_counter(
+            name="attachment_process_total",
+            description="Attachment processing results",
+            unit="1",
+        )
+
+
+        attachment_analysis_latency = meter.create_histogram(
+            name="attachment_analysis_latency",
+            description="Attachment analysis latency (seconds)",
+            unit="s",
+            explicit_bucket_boundaries_advisory=[
+                0.1, 0.25, 0.5, 0.75,  # Sub-second (quick errors/cached responses)
+                1.0, 2.0, 5.0,         # Quick replies (1-5 seconds)
+                10.0, 15.0, 30.0,      # Medium responses (10-30 seconds)
+                60.0, 120.0, 180.0, 300.0  # Long responses (1-5 minutes)
+            ],
+        )
+
+        # User resolution metric (success/error)
+        user_resolution = meter.create_counter(
+            name="user_resolution_total",
+            description="User resolution outcomes by method",
+            unit="1",
+        )
         
+        # Readable elapsed-time helper returning seconds
+        def timer():
+            t0 = time.monotonic()
+            def elapsed_s():
+                return (time.monotonic() - t0)
+            return elapsed_s
+
         return SimpleNamespace(
             message_counter=message_counter,
             reaction_counter=reaction_counter,
             prompt_tokens_counter=prompt_tokens_counter,
             completion_tokens_counter=completion_tokens_counter,
-            total_tokens_counter=total_tokens_counter
+            total_tokens_counter=total_tokens_counter,
+            route_selections_counter=route_selections_counter,
+            llm_requests=llm_requests,
+            llm_latency=llm_latency,
+            structured_output_failures=structured_output_failures,
+            message_latency=message_latency,
+            jokes_generated=jokes_generated,
+            message_deletions=message_deletions,
+            db_latency=db_latency,
+            attachment_process=attachment_process,
+            attachment_analysis_latency=attachment_analysis_latency,
+            daily_summary_jobs=daily_summary_jobs,
+            daily_summary_messages=daily_summary_messages,
+            memory_merges=memory_merges,
+            user_resolution=user_resolution,
+            timer=timer
         )
     
     def setup_tracing(self):
@@ -241,11 +385,11 @@ class Telemetry:
         """Increment the message counter and log the action"""
         try:
             channel_id = message.channel.id
-            guild_id = message.guild.id if message.guild else None
+            guild_id = message.guild.id
             
             attributes = {
                 "channel_id": str(channel_id),
-                "guild_id": str(guild_id) if guild_id else "dm"
+                "guild_id": str(guild_id)
             }
             self.metrics.message_counter.add(1, attributes)
         except Exception as e:
@@ -260,7 +404,7 @@ class Telemetry:
             
             attributes = {
                 "channel_id": str(channel_id),
-                "guild_id": str(guild_id) if guild_id else "dm",
+                "guild_id": str(guild_id),
                 "emoji": emoji_str
             }
             self.metrics.reaction_counter.add(1, attributes)

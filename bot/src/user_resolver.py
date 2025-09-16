@@ -39,6 +39,7 @@ class UserResolver:
             cache_key = (guild_id, user_id)
             if cache_key in self._display_name_cache:
                 span.set_attribute("cache_hit", True)
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
                 return self._display_name_cache[cache_key]
 
             span.set_attribute("cache_hit", False)
@@ -48,6 +49,7 @@ class UserResolver:
                 fallback = f"User(ID:{user_id})"
                 self._display_name_cache[cache_key] = fallback
                 span.set_status(Status(StatusCode.ERROR, "Bot client not initialized"))
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "error", "reason": "bot_uninitialized"})
                 return fallback
 
             guild = self._bot.get_guild(guild_id)
@@ -65,6 +67,7 @@ class UserResolver:
                 span.set_attribute("resolution_method", "guild_member_cache")
                 self._display_name_cache[cache_key] = display_name
                 span.set_attribute("display_name", display_name)
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
                 return display_name
 
             # Try fetching member from API
@@ -74,12 +77,14 @@ class UserResolver:
                 span.set_attribute("resolution_method", "guild_member_fetch")
                 self._display_name_cache[cache_key] = display_name
                 span.set_attribute("display_name", display_name)
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "cache_outcome": "miss", "outcome": "success"})
                 return display_name
             except nextcord.NotFound:
                 pass  # Continue to user resolution
             except nextcord.HTTPException as e:
                 logger.warning(f"HTTP error fetching member {user_id}: {e}")
                 span.record_exception(e)
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "error", "reason": "http_error"})
                 # Fall through to user resolution
 
             # Try getting user from cache
@@ -89,6 +94,7 @@ class UserResolver:
                 span.set_attribute("resolution_method", "user_cache")
                 self._display_name_cache[cache_key] = display_name
                 span.set_attribute("display_name", display_name)
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
                 return display_name
 
             # Try fetching user from API
@@ -98,12 +104,14 @@ class UserResolver:
                 span.set_attribute("resolution_method", "user_fetch")
                 self._display_name_cache[cache_key] = display_name
                 span.set_attribute("display_name", display_name)
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "cache_outcome": "miss", "outcome": "success"})
                 return display_name
             except nextcord.NotFound:
                 logger.warning(f"User {user_id} not found")
                 fallback = f"User(ID:{user_id})"
                 self._display_name_cache[cache_key] = fallback
                 span.set_status(Status(StatusCode.ERROR, f"User {user_id} not found"))
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "error", "reason": "user_not_found"})
                 return fallback
 
     async def resolve_user_id(self, guild_id: int, user_mention_or_name: str) -> Optional[int]:
@@ -117,6 +125,7 @@ class UserResolver:
                 span.set_attribute("cache_hit", True)
                 cached_result = self._user_id_cache[cache_key]
                 span.set_attribute("user_id", cached_result if cached_result is not None else "none")
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
                 return cached_result
 
             span.set_attribute("cache_hit", False)
@@ -125,6 +134,7 @@ class UserResolver:
                 logger.error("UserResolver has not been initialized with the bot client.")
                 self._user_id_cache[cache_key] = None
                 span.set_status(Status(StatusCode.ERROR, "Bot client not initialized"))
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "error", "reason": "bot_uninitialized"})
                 return None
 
             # Handle Discord mention format <@user_id> or <@!user_id>
@@ -134,6 +144,7 @@ class UserResolver:
                 self._user_id_cache[cache_key] = user_id
                 span.set_attribute("resolution_method", "discord_mention")
                 span.set_attribute("user_id", user_id)
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "success"})
                 return user_id
 
             # Handle raw user ID
@@ -142,6 +153,7 @@ class UserResolver:
                 self._user_id_cache[cache_key] = user_id
                 span.set_attribute("resolution_method", "raw_user_id")
                 span.set_attribute("user_id", user_id)
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "success"})
                 return user_id
 
             guild = self._bot.get_guild(guild_id)
@@ -157,6 +169,7 @@ class UserResolver:
                 self._user_id_cache[cache_key] = member.id
                 span.set_attribute("resolution_method", "member_named")
                 span.set_attribute("user_id", member.id)
+                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "success"})
                 return member.id
 
             # Fallback to searching cached members by name/nickname
@@ -166,6 +179,7 @@ class UserResolver:
                     self._user_id_cache[cache_key] = m.id
                     span.set_attribute("resolution_method", "member_search")
                     span.set_attribute("user_id", m.id)
+                    self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "success"})
                     return m.id
 
             # If not found in cache, we could make API calls but that's expensive
@@ -173,6 +187,7 @@ class UserResolver:
             logger.warning(f"Could not resolve '{user_mention_or_name}' to a user in guild {guild_id}")
             self._user_id_cache[cache_key] = None
             span.set_status(Status(StatusCode.ERROR, f"Could not resolve '{user_mention_or_name}' to a user"))
+            self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "error", "reason": "not_resolved"})
             return None
 
     async def replace_user_mentions_with_names(self, text: str, guild_id: int) -> str:

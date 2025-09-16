@@ -50,7 +50,7 @@ async def on_ready() -> None:
 @bot.event
 async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
     async with container.telemetry.async_create_span("on_raw_reaction_add", kind=SpanKind.CONSUMER) as span:
-        span.set_attribute("guild_id", str(payload.guild_id) if payload.guild_id else "dm")
+        span.set_attribute("guild_id", str(payload.guild_id))
         container.telemetry.increment_reaction_counter(payload)
         
         try:
@@ -74,8 +74,9 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
 
 @bot.event
 async def on_message(message: nextcord.Message):
+    timer = container.telemetry.metrics.timer()
     async with container.telemetry.async_create_span("on_message", kind=SpanKind.CONSUMER) as span:
-        span.set_attribute("guild_id", str(message.guild.id) if message.guild else "dm")
+        span.set_attribute("guild_id", str(message.guild.id))
         container.telemetry.increment_message_counter(message)
         
         # Ingest message into transient memory using materialized content
@@ -97,13 +98,14 @@ async def on_message(message: nextcord.Message):
         processed_message = message.content.replace(f"<@{bot.user.id}>", "BOT").strip()
         route, params = await container.ai_router.route_request(processed_message)
         
+        reply = None
         if route == "FAMOUS":
             conversation_fetcher = create_conversation_fetcher(message)
             
             response = await container.famous_person_generator.handle_request(
                 params, processed_message, conversation_fetcher, message.guild.id
             )
-            await message.reply(response)
+            reply = await message.reply(response)
         
         elif route == "GENERAL":
             conversation_fetcher = create_conversation_fetcher(message)
@@ -112,19 +114,23 @@ async def on_message(message: nextcord.Message):
                 params, conversation_fetcher, message.guild.id, bot.user
             )
             if response is not None:
-                await message.reply(response)
+                reply = await message.reply(response)
 
         elif route == "FACT" and params:
             response = await container.fact_handler.handle_request(
                 params, message.guild.id
             )
-            await message.reply(response)
+            reply = await message.reply(response)
+
+        # Record reply latency once if a reply was sent
+        if reply is not None:
+            container.telemetry.metrics.message_latency.record(timer(), {"route": route, "guild_id": str(message.guild.id)})
 
 
 @bot.event
 async def on_message_edit(before: nextcord.Message, after: nextcord.Message):
     async with container.telemetry.async_create_span("on_message_edit", kind=SpanKind.CONSUMER) as span:
-        span.set_attribute("guild_id", str(after.guild.id) if after.guild else "dm")
+        span.set_attribute("guild_id", str(after.guild.id))
         # Ignore edits from bots
         if after.author.bot:
             return
@@ -449,6 +455,7 @@ async def retract_joke(payload: nextcord.RawReactionActionEvent) -> None:
 
     if message.author.id == bot.user.id and await check_should_delete(message):
         await message.delete()
+        container.telemetry.metrics.message_deletions.add(1, {"reason": "downvotes", "guild_id": str(message.guild.id)})
 
 async def process_joke_request(payload: nextcord.RawReactionActionEvent, country: str | None = None) -> None:
     config = await container.store.get_guild_config(payload.guild_id)
@@ -469,6 +476,11 @@ async def process_joke_request(payload: nextcord.RawReactionActionEvent, country
     
     # Send direct reply
     reply_message = await message.reply(joke)
+    # Count jokes generated
+    attrs = {"language": language or "unknown", "guild_id": str(payload.guild_id)}
+    if country:
+        attrs["country"] = country
+    container.telemetry.metrics.jokes_generated.add(1, attrs)
     
     # Try to send to configured archive channel
     if config.archive_channel_id:
@@ -489,6 +501,7 @@ async def delete_message_later(message: nextcord.Message, delay_seconds: int) ->
     await asyncio.sleep(delay_seconds)
     try:
         await message.delete()
+        container.telemetry.metrics.message_deletions.add(1, {"reason": "timeout", "guild_id": str(message.guild.id)})
     except nextcord.errors.NotFound:
         # Message might have been deleted already
         pass
