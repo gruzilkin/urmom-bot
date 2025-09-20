@@ -104,9 +104,8 @@ class ResponseSummarizer:
             Exception: If summarization fails
         """
         # Create system prompt with instructions only
-        prompt = f"""Summarize the following content to approximately {target_length} characters while preserving all key information, main points, and original tone. Preserve the original language.
-
-The summary should be comprehensive and use the full space available to provide a detailed summary. Aim for close to {target_length} characters. Do not add any meta-commentary about the summarization process."""
+        prompt = f"""Summarize the following content so the response stays comfortably under {target_length} characters while preserving the most important points, conclusions, and original tone.
+        Minor or repetitive details can be omitted. Preserve the original language. Do not add any meta-commentary about the summarization process."""
 
         logger.info("Attempting summarization with gemma")
 
