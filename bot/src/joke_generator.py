@@ -3,6 +3,7 @@ from ai_client import AIClient
 from open_telemetry import Telemetry
 from store import Store
 from language_detector import LanguageDetector
+from schemas import YesNo
 from typing import Dict
 from opentelemetry.trace import SpanKind
 
@@ -69,30 +70,35 @@ class JokeGenerator:
         # Check cache first if message_id is provided
         if message_id is not None and message_id in self._joke_cache:
             return self._joke_cache[message_id]
-            
+
         async with self.telemetry.async_create_span("is_joke", kind=SpanKind.INTERNAL):
-            prompt = f"""Tell me if the response is a joke, a wordplay or a sarcastic remark to the original message, reply in English with only yes or no:
-original message: {original_message}
-response: {response_message}
-No? Think again carefully. The response might be a joke, wordplay, or sarcastic remark.
-Is it actually a joke? Reply only yes or no."""
-            
+            # Format messages in XML for clarity
+            message = f"""<messages>
+<original>{original_message}</original>
+<response>{response_message}</response>
+</messages>"""
+
+            prompt = """Determine if the response is clearly intended as a joke or humorous remark directed at the original message.
+
+Only answer YES if the response is obviously humorous, a clear joke, or deliberate wordplay. Regular conversation, even if slightly playful or witty, should be NO."""
+
             logger.info("Checking if message is a joke:")
             logger.info(f"Original: {original_message}")
             logger.info(f"Response: {response_message}")
 
             response = await self.ai_client.generate_content(
-                message=prompt,
-                prompt="You are a joke detection AI. Respond only with 'yes' or 'no'."
+                message=message,
+                prompt=prompt,
+                response_schema=YesNo
             )
-            
-            result = response.strip().lower().rstrip('.,!?') == "yes"
-            
+
+            result = response.answer == "YES"
+
             # Cache the result if message_id is provided
             if message_id is not None:
                 self._joke_cache[message_id] = result
-                
-            logger.info(f"AI response: {response}")
+
+            logger.info(f"AI response: {response.answer}")
             logger.info(f"Is joke: {result}")
             return result
 
