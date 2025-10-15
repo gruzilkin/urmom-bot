@@ -44,7 +44,9 @@ class GrokClient(AIClient):
             attributes=attributes
         )
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None) -> str | T:
+    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None, image_data: bytes | None = None, image_mime_type: str | None = None) -> str | T:
+        if image_data:
+            raise ValueError("GrokClient does not support image data.")
         async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT):
             messages = []
             if prompt:

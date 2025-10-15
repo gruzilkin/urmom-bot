@@ -6,6 +6,7 @@ Discord's 2000 character limit, with fallback to truncation if summarization fai
 """
 
 import logging
+
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from opentelemetry.trace import SpanKind
@@ -14,21 +15,19 @@ logger = logging.getLogger(__name__)
 
 
 class ResponseSummarizer:
-    """Handles summarization of long responses using gemma as a fallback."""
+    """Handles summarization of long responses."""
 
-    def __init__(self, gemma_client: AIClient, telemetry: Telemetry):
+    def __init__(self, ai_client: AIClient, telemetry: Telemetry):
         """
         Initialize the response summarizer.
 
         Args:
-            gemma_client: The gemma AI client for summarization
+            ai_client: AI client for summarization
             telemetry: Telemetry instance for tracking metrics
         """
-        self.gemma_client = gemma_client
+        self._ai_client = ai_client
         self.telemetry = telemetry
-        self.summarization_temperature = (
-            0.1  # Low temperature for focused summarization
-        )
+        self.summarization_temperature = 0.1
 
     async def process_response(
         self, original_response: str, max_length: int = 2000
@@ -60,8 +59,7 @@ class ResponseSummarizer:
             span.set_attribute("max_length", max_length)
 
             try:
-                # Attempt summarization using gemma
-                summarized_response = await self._summarize_with_gemma(
+                summarized_response = await self._summarize_with_llm(
                     original_response, target_length
                 )
 
@@ -87,11 +85,11 @@ class ResponseSummarizer:
             span.set_attribute("final_length", len(truncated_response))
             return truncated_response
 
-    async def _summarize_with_gemma(
+    async def _summarize_with_llm(
         self, original_response: str, target_length: int
     ) -> str:
         """
-        Summarize the response using gemma client.
+        Summarize the response using the configured AI client.
 
         Args:
             original_response: The response to summarize
@@ -107,9 +105,7 @@ class ResponseSummarizer:
         prompt = f"""Summarize the following content so the response stays comfortably under {target_length} characters while preserving the most important points, conclusions, and original tone.
         Minor or repetitive details can be omitted. Preserve the original language. Do not add any meta-commentary about the summarization process."""
 
-        logger.info("Attempting summarization with gemma")
-
-        summarized = await self.gemma_client.generate_content(
+        summarized = await self._ai_client.generate_content(
             message=original_response,
             prompt=prompt,
             temperature=self.summarization_temperature,
@@ -119,7 +115,7 @@ class ResponseSummarizer:
 
         # Check for empty or whitespace-only result to ensure fallback truncation
         if not result:
-            raise ValueError("Gemma returned empty summary")
+            raise ValueError("Summarizer returned empty summary")
 
         return result
 

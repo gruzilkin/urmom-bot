@@ -7,12 +7,15 @@ with deterministic keyword-based assertions to verify memory content and languag
 
 import os
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 from dotenv import load_dotenv
 
+from ai_client import AIClient
 from fact_handler import FactHandler
 from ai_router import AiRouter
+from famous_person_generator import FamousPersonGenerator
 from gemma_client import GemmaClient
+from general_query_generator import GeneralQueryGenerator
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
 from test_store import TestStore
@@ -56,9 +59,6 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         )
         
         # Create real instances for route descriptions but mock parameter extraction to prevent execution
-        from famous_person_generator import FamousPersonGenerator
-        from general_query_generator import GeneralQueryGenerator
-        
         # Real famous generator instance (with mocked dependencies since we only need route description)
         self.famous_generator = FamousPersonGenerator(
             ai_client=Mock(),
@@ -72,10 +72,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Real general generator instance (with mocked dependencies since we only need route description)
         self.general_generator = GeneralQueryGenerator(
-            gemini_flash=Mock(),
-            grok=Mock(),
-            claude=Mock(),
-            gemma=Mock(),
+            client_selector=lambda _: AsyncMock(spec=AIClient),
             response_summarizer=Mock(),
             telemetry=self.telemetry,
             store=Mock(),
