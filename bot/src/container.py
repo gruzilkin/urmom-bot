@@ -139,7 +139,7 @@ class Container:
         router_client = CompositeAIClient(
             [self.gemma_with_grok_fallback, self.gemini_flash],
             telemetry=self.telemetry,
-            is_bad_response=lambda r: r.route == "NOTSURE",
+            is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
 
         self.ai_router = AiRouter(
