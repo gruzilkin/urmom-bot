@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, List, Callable, Any
+from typing import Iterable, Callable, Any
 
 import backoff
 
@@ -43,16 +43,15 @@ class RetryAIClient(AIClient):
         self,
         message: str,
         prompt: str | None = None,
-        samples: List[tuple[str, str]] | None = None,
+        samples: list[tuple[str, str]] | None = None,
         enable_grounding: bool = False,
         response_schema=None,
         temperature: float | None = None,
         image_data: bytes | None = None,
         image_mime_type: str | None = None,
     ):
-        async with self._telemetry.async_create_span(
-            "retry_generate_content"
-        ):
+        async with self._telemetry.async_create_span("retry_generate_content"):
+
             async def _do_call():
                 return await self._delegate.generate_content(
                     message=message,
@@ -103,7 +102,7 @@ class CompositeAIClient(AIClient):
         self,
         message: str,
         prompt: str | None = None,
-        samples: List[tuple[str, str]] | None = None,
+        samples: list[tuple[str, str]] | None = None,
         enable_grounding: bool = False,
         response_schema=None,
         temperature: float | None = None,
