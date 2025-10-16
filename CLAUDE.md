@@ -9,15 +9,8 @@ urmom-bot is a Discord bot that generates AI-powered "ur mom" jokes, country-spe
 ## Development Setup
 
 ### Environment Setup
-1. Create virtual environment: `python -m venv .venv`
-2. Activate: `source .venv/bin/activate`
-3. Install dependencies: `pip install -r requirements.txt`
-4. Set up environment variables in `.env` file (see README.md)
-
-### Running the Bot
-- Local development: `cd bot && python app.py`
-- Production: `docker compose up -d`
-- View logs: `docker compose logs -f`
+1. Activate virtual environment: `source .venv/bin/activate`
+2. Install dependencies: `pip install -r requirements.txt`
 
 ## Testing
 
@@ -192,16 +185,6 @@ Refer to `bot/documents/` for detailed design documentation:
 - **Dependency Injection** (`di_refactor.md`):
   - When adding new services to the container
   - Understanding how components are wired together
-
-### AI Client Usage Patterns
-- **Prefer using wrapped clients** from `container.py` (e.g., `retrying_gemma`, `gemma_with_grok_fallback`) over bare clients
-- **CompositeAIClient** automatically tries fallback clients when:
-  - An exception occurs
-  - Response validation fails (via `is_bad_response` callback)
-- **RetryAIClient** supports two retry strategies:
-  - `max_time`: Retry for up to N seconds (good for rate limits)
-  - `max_tries`: Retry up to N attempts (good for transient failures)
-- **Client selection guidelines** - see `bot/documents/llm_fallback.md` for complete decision tree
 
 ### Code Quality Checks
 - **After making file changes**: Always run `ruff` to check files for linting issues and formatting
