@@ -11,3 +11,4 @@ goose3[all]
 cachetools
 pydantic-settings
 aiohttp
+backoff

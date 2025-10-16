@@ -16,19 +16,19 @@ from user_resolver import UserResolver
 from memory_manager import MemoryManager
 from language_detector import LanguageDetector
 from config import AppConfig
+from ai_client_wrappers import CompositeAIClient, RetryAIClient
+from ai_client import AIClient
+
 
 class Container:
     def __init__(self, config: AppConfig | None = None):
-        # Load configuration from environment or use provided config
         self.config = config or AppConfig()
-        
-        # Initialize Telemetry with configuration
+
         self.telemetry = Telemetry(
-            service_name=self.config.otel_service_name, 
-            endpoint=self.config.otel_exporter_otlp_endpoint
+            service_name=self.config.otel_service_name,
+            endpoint=self.config.otel_exporter_otlp_endpoint,
         )
 
-        # Initialize Store
         self.store = Store(
             telemetry=self.telemetry,
             host=self.config.postgres_host,
@@ -36,7 +36,7 @@ class Container:
             user=self.config.postgres_user,
             password=self.config.postgres_password,
             database=self.config.postgres_db,
-            weight_coef=self.config.sample_jokes_coef
+            weight_coef=self.config.sample_jokes_coef,
         )
 
         # Create specific AI clients for GeneralQueryGenerator (both required)
@@ -44,97 +44,137 @@ class Container:
             api_key=self.config.gemini_api_key,
             model_name=self.config.gemini_flash_model,
             telemetry=self.telemetry,
-            temperature=self.config.gemini_temperature
+            temperature=self.config.gemini_temperature,
         )
-        
+
         self.gemma = GemmaClient(
             api_key=self.config.gemini_api_key,
             model_name=self.config.gemini_gemma_model,
             telemetry=self.telemetry,
-            temperature=self.config.gemini_temperature
+            temperature=self.config.gemini_temperature,
         )
-        
+
         self.grok = GrokClient(
             api_key=self.config.grok_api_key,
             model_name=self.config.grok_model,
             telemetry=self.telemetry,
-            temperature=self.config.grok_temperature
-        )
-        
-        self.claude = ClaudeClient(
-            telemetry=self.telemetry
+            temperature=self.config.grok_temperature,
         )
 
+        self.claude = ClaudeClient(telemetry=self.telemetry)
 
-        # Create response summarizer for handling long responses
-        self.response_summarizer = ResponseSummarizer(self.gemma, self.telemetry)
+        # Apply retry policy for rate-limited gemma
+        self.retrying_gemma = RetryAIClient(
+            self.gemma, telemetry=self.telemetry, max_time=60, jitter=True
+        )
+        self.retrying_grok = RetryAIClient(
+            self.grok, telemetry=self.telemetry, max_tries=3
+        )
+
+        # Composite for components needing gemma → grok fallback
+        self.gemma_with_grok_fallback = CompositeAIClient(
+            [self.retrying_gemma, self.retrying_grok],
+            telemetry=self.telemetry,
+        )
+
+        self.response_summarizer = ResponseSummarizer(
+            CompositeAIClient(
+                [self.gemma, self.claude, self.grok], telemetry=self.telemetry
+            ),
+            self.telemetry,
+        )
 
         # Initialize language detector early since it's needed by multiple components
         self.language_detector = LanguageDetector(
-            ai_client=self.gemma,
-            telemetry=self.telemetry
+            ai_client=self.gemma_with_grok_fallback, telemetry=self.telemetry
         )
-        
-        # Initialize attachment processor for handling Discord attachments
+
         self.attachment_processor = AttachmentProcessor(
-            ai_client=self.gemma,
-            telemetry=self.telemetry,
-            max_file_size_mb=10
+            ai_client=self.retrying_gemma, telemetry=self.telemetry, max_file_size_mb=10
         )
 
         self.joke_generator = JokeGenerator(
-            self.grok, 
-            self.store, 
+            self.retrying_grok,
+            self.store,
             self.telemetry,
             self.language_detector,
-            sample_count=self.config.sample_jokes_count
+            sample_count=self.config.sample_jokes_count,
         )
 
         # UserResolver is initialized here but needs bot client to be set later
         self.user_resolver = UserResolver(self.telemetry)
 
         self.famous_person_generator = FamousPersonGenerator(
-            self.grok, self.response_summarizer, self.telemetry, self.user_resolver
+            self.retrying_grok,
+            self.response_summarizer,
+            self.telemetry,
+            self.user_resolver,
         )
-        
+
         self.fact_handler = FactHandler(
-            ai_client=self.gemma,  # Use Gemma for memory operations
+            ai_client=self.gemma_with_grok_fallback,
             store=self.store,
             telemetry=self.telemetry,
-            user_resolver=self.user_resolver
+            user_resolver=self.user_resolver,
         )
-        
+
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
             gemini_client=self.gemini_flash,
-            gemma_client=self.gemma,
-            user_resolver=self.user_resolver
+            gemma_client=self.retrying_gemma,
+            user_resolver=self.user_resolver,
         )
-        
+
         self.general_query_generator = GeneralQueryGenerator(
-            gemini_flash=self.gemini_flash, 
-            grok=self.grok,
-            claude=self.claude,
-            gemma=self.gemma,
+            client_selector=self._build_general_ai_client,
             response_summarizer=self.response_summarizer,
             telemetry=self.telemetry,
             store=self.store,
             user_resolver=self.user_resolver,
-            memory_manager=self.memory_manager
+            memory_manager=self.memory_manager,
         )
-        
+
+        # The router client will be a composite client that handles the NOTSURE fallback.
+        router_client = CompositeAIClient(
+            [self.retrying_gemma, self.retrying_grok],
+            telemetry=self.telemetry,
+            is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
+        )
+
         self.ai_router = AiRouter(
-            self.gemma,
+            router_client,
             self.telemetry,
             self.language_detector,
             self.famous_person_generator,
             self.general_query_generator,
             self.fact_handler,
-            self.gemini_flash
         )
 
-        self.country_resolver = CountryResolver(self.gemma, self.telemetry)
+        self.country_resolver = CountryResolver(
+            self.gemma_with_grok_fallback, self.telemetry
+        )
+
+    def _build_general_ai_client(self, preferred_backend: str) -> AIClient:
+        """Create a composite client matching the fallback rules for general queries."""
+        client_map: dict[str, AIClient] = {
+            "gemini_flash": self.gemini_flash,
+            "claude": self.claude,
+            "grok": self.retrying_grok,
+            "gemma": self.retrying_gemma,
+        }
+
+        if preferred_backend not in client_map:
+            raise ValueError(f"Unknown ai_backend: {preferred_backend}")
+
+        fallback_order = ["gemini_flash", "claude", "grok"]
+        ordered_labels = [preferred_backend] + [
+            label for label in fallback_order if label != preferred_backend
+        ]
+
+        chain = [client_map[label] for label in ordered_labels]
+
+        return CompositeAIClient(chain, telemetry=self.telemetry)
 
 
 # Create a single instance to be imported by other modules

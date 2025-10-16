@@ -1,43 +1,36 @@
 import logging
 from typing import Set, Callable, Awaitable
-from memory_manager import MemoryManager
+
 import nextcord
 
-from ai_client import AIClient
+from memory_manager import MemoryManager
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from schemas import GeneralParams
 from response_summarizer import ResponseSummarizer
 from store import Store
 from user_resolver import UserResolver
+from ai_client import AIClient
 
 logger = logging.getLogger(__name__)
 
 
 class GeneralQueryGenerator:
-    def __init__(self, gemini_flash: AIClient, grok: AIClient, claude: AIClient, gemma: AIClient, response_summarizer: ResponseSummarizer, telemetry: Telemetry, store: Store, user_resolver: UserResolver, memory_manager: MemoryManager):
-        self.gemini_flash = gemini_flash
-        self.grok = grok
-        self.claude = claude
-        self.gemma = gemma
+    def __init__(
+        self,
+        client_selector: Callable[[str], AIClient],
+        response_summarizer: ResponseSummarizer,
+        telemetry: Telemetry,
+        store: Store,
+        user_resolver: UserResolver,
+        memory_manager: MemoryManager,
+    ) -> None:
+        self._client_selector = client_selector
         self.response_summarizer = response_summarizer
         self.telemetry = telemetry
         self.store = store
         self.user_resolver = user_resolver
         self.memory_manager = memory_manager
-    
-    def _get_ai_client(self, ai_backend: str) -> AIClient:
-        """Select the appropriate AI client based on backend name."""
-        if ai_backend == "gemini_flash":
-            return self.gemini_flash
-        elif ai_backend == "grok":
-            return self.grok
-        elif ai_backend == "claude":
-            return self.claude
-        elif ai_backend == "gemma":
-            return self.gemma
-        else:
-            raise ValueError(f"Unknown ai_backend: {ai_backend}")
 
     def get_route_description(self) -> str:
         return """
@@ -130,7 +123,6 @@ class GeneralQueryGenerator:
                 return "\n".join(memory_blocks)
             return ""
 
-    
     async def handle_request(self, params: GeneralParams, conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]], guild_id: int, bot_user: nextcord.User) -> str | None:
         """
         Handle a general query request using the provided parameters.
@@ -147,7 +139,7 @@ class GeneralQueryGenerator:
         logger.info(f"Processing general request with params: {params}")
         
         # Select the appropriate AI client based on parameters
-        ai_client = self._get_ai_client(params.ai_backend)
+        ai_client = self._client_selector(params.ai_backend)
         
         async with self.telemetry.async_create_span("generate_general_response") as span:
             span.set_attribute("ai_backend", params.ai_backend)

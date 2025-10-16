@@ -14,10 +14,8 @@ logger = logging.getLogger(__name__)
 class AiRouter:
     def __init__(self, ai_client: AIClient, telemetry: Telemetry, 
                  language_detector: LanguageDetector,
-                 famous_generator, general_generator, fact_handler,
-                 fallback_client: AIClient):
+                 famous_generator, general_generator, fact_handler):
         self.ai_client = ai_client
-        self.fallback_client = fallback_client
         self.telemetry = telemetry
         self.language_detector = language_detector
         self.famous_generator = famous_generator
@@ -139,25 +137,7 @@ NOTSURE: When uncertain about routing decision
                 response_schema=RouteSelection
             )
             
-            logger.info(f"Initial route selection: {route_selection.route}, Reason: {route_selection.reason}")
-            
-            # Handle NOTSURE with fallback to more capable model
-            fallback_used = False
-            if route_selection.route == "NOTSURE":
-                fallback_used = True
-                span.set_attribute("fallback_used", True)
-                logger.info("Route selection uncertain, using fallback model")
-                
-                route_selection = await self.fallback_client.generate_content(
-                    message=message,
-                    prompt=route_prompt,
-                    temperature=0.0,  # Deterministic route selection
-                    response_schema=RouteSelection
-                )
-                
-                logger.info(f"Fallback route selection: {route_selection.route}, Reason: {route_selection.reason}")
-            else:
-                span.set_attribute("fallback_used", False)
+            logger.info(f"Final route selection: {route_selection.route}, Reason: {route_selection.reason}")
             
             span.set_attribute("route", route_selection.route)
             span.set_attribute("reason", route_selection.reason)
@@ -176,7 +156,6 @@ NOTSURE: When uncertain about routing decision
                 # Record routing attempt with error outcome
                 self.telemetry.metrics.route_selections_counter.add(1, {
                     "route": route_selection.route,
-                    "fallback_used": fallback_used,
                     "outcome": "error",
                     "language_code": language_code
                 })
@@ -185,7 +164,6 @@ NOTSURE: When uncertain about routing decision
             # Count route selection success
             self.telemetry.metrics.route_selections_counter.add(1, {
                 "route": route_selection.route,
-                "fallback_used": fallback_used,
                 "outcome": "success",
                 "language_code": language_code
             })

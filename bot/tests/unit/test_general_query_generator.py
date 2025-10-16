@@ -8,18 +8,25 @@ from null_telemetry import NullTelemetry
 
 class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        # Create four mock AI clients
+        # Create mock AI clients and map them by backend label
         self.mock_gemini_flash = Mock()
         self.mock_gemini_flash.generate_content = AsyncMock()
-        
+
         self.mock_grok = Mock()
         self.mock_grok.generate_content = AsyncMock()
-        
+
         self.mock_claude = Mock()
         self.mock_claude.generate_content = AsyncMock()
-        
+
         self.mock_gemma = Mock()
         self.mock_gemma.generate_content = AsyncMock()
+
+        self.client_map = {
+            "gemini_flash": self.mock_gemini_flash,
+            "grok": self.mock_grok,
+            "claude": self.mock_claude,
+            "gemma": self.mock_gemma,
+        }
         
         # Mock response summarizer that returns what it receives (passthrough)
         self.mock_response_summarizer = Mock()
@@ -42,16 +49,19 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_bot_user.id = 99999
 
         self.telemetry = NullTelemetry()
+        def selector(backend: str):
+            try:
+                return self.client_map[backend]
+            except KeyError as exc:
+                raise ValueError(f"Unknown ai_backend: {backend}") from exc
+
         self.generator = GeneralQueryGenerator(
-            self.mock_gemini_flash, 
-            self.mock_grok, 
-            self.mock_claude,
-            self.mock_gemma,
-            self.mock_response_summarizer,
-            self.telemetry,
-            self.mock_store,
-            self.mock_user_resolver,
-            self.mock_memory_manager
+            client_selector=selector,
+            response_summarizer=self.mock_response_summarizer,
+            telemetry=self.telemetry,
+            store=self.mock_store,
+            user_resolver=self.mock_user_resolver,
+            memory_manager=self.mock_memory_manager,
         )
 
 
@@ -166,15 +176,28 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         # Response summarizer should not be called due to exception
         self.mock_response_summarizer.process_response.assert_not_called()
 
-    def test_get_ai_client_selection(self):
-        """Test that _get_ai_client selects the correct client"""
-        self.assertEqual(self.generator._get_ai_client("gemini_flash"), self.mock_gemini_flash)
-        self.assertEqual(self.generator._get_ai_client("grok"), self.mock_grok)
-        self.assertEqual(self.generator._get_ai_client("claude"), self.mock_claude)
-        self.assertEqual(self.generator._get_ai_client("gemma"), self.mock_gemma)
-        
-        with self.assertRaises(ValueError):
-            self.generator._get_ai_client("invalid_backend")
+    async def test_client_selector_called_with_backend(self):
+        """Ensure the client selector is invoked with the requested backend."""
+        params = GeneralParams(
+            ai_backend="gemini_flash",
+            temperature=0.3,
+            cleaned_query="Test selector"
+        )
+
+        async def mock_conversation_fetcher():
+            return [ConversationMessage(
+                message_id=1,
+                author_id=2,
+                content="Hello",
+                timestamp="2024-01-01",
+                mentioned_user_ids=[]
+            )]
+
+        self.mock_gemini_flash.generate_content.return_value = "Hi"
+
+        await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=1, bot_user=self.mock_bot_user)
+
+        self.mock_gemini_flash.generate_content.assert_called_once()
 
 
 if __name__ == '__main__':

@@ -10,12 +10,14 @@ import unittest
 from unittest.mock import Mock, AsyncMock
 from dotenv import load_dotenv
 
+from ai_client import AIClient
+from ai_client_wrappers import CompositeAIClient
 from ai_router import AiRouter
-from gemma_client import GemmaClient
-from gemini_client import GeminiClient
-from general_query_generator import GeneralQueryGenerator
-from famous_person_generator import FamousPersonGenerator
 from fact_handler import FactHandler
+from famous_person_generator import FamousPersonGenerator
+from gemini_client import GeminiClient
+from gemma_client import GemmaClient
+from general_query_generator import GeneralQueryGenerator
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
 
@@ -29,59 +31,67 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         """Set up test dependencies."""
         self.telemetry = NullTelemetry()
 
-        # API Keys and Models
-        gemini_api_key = os.getenv('GEMINI_API_KEY')
-        gemma_model = os.getenv('GEMINI_GEMMA_MODEL')
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        gemma_model = os.getenv("GEMINI_GEMMA_MODEL")
+        flash_model = os.getenv("GEMINI_FLASH_MODEL")
 
-        if not all([gemini_api_key, gemma_model]):
-            self.skipTest("Missing GEMINI_API_KEY or GEMINI_GEMMA_MODEL environment variables.")
+        if not all([gemini_api_key, gemma_model, flash_model]):
+            self.skipTest(
+                "Missing GEMINI_API_KEY, GEMINI_GEMMA_MODEL, or GEMINI_FLASH_MODEL environment variables."
+            )
 
-        # The router only needs one real AI client to make its decision
-        self.gemma_client = GemmaClient(api_key=gemini_api_key, model_name=gemma_model, telemetry=self.telemetry)
+        self.gemma_client = GemmaClient(
+            api_key=gemini_api_key, model_name=gemma_model, telemetry=self.telemetry
+        )
+        self.flash_client = GeminiClient(
+            api_key=gemini_api_key, model_name=flash_model, telemetry=self.telemetry
+        )
+
+        # Create composite client with NOTSURE fallback, matching production setup
+        self.router_client = CompositeAIClient(
+            [self.gemma_client, self.flash_client],
+            telemetry=self.telemetry,
+            is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
+        )
 
         # Create mock dependencies for generators
         mock_user_resolver = Mock()
         mock_store = Mock()
-        
+
         # The generators are only used for their `get_route_description` method,
         # which doesn't use any internal dependencies. We can pass None for them.
-        self.famous_generator = FamousPersonGenerator(ai_client=None, response_summarizer=None, telemetry=self.telemetry, user_resolver=mock_user_resolver)
+        self.famous_generator = FamousPersonGenerator(
+            ai_client=None,
+            response_summarizer=None,
+            telemetry=self.telemetry,
+            user_resolver=mock_user_resolver,
+        )
         self.general_generator = GeneralQueryGenerator(
-            gemini_flash=None,
-            grok=None,
-            claude=None,
-            gemma=None,
+            client_selector=lambda _: AsyncMock(spec=AIClient),
             response_summarizer=None,
             telemetry=self.telemetry,
             store=mock_store,
             user_resolver=mock_user_resolver,
-            memory_manager=AsyncMock()
+            memory_manager=AsyncMock(),
         )
-        self.fact_handler = FactHandler(ai_client=None, store=None, telemetry=self.telemetry, user_resolver=mock_user_resolver)
-
-        # The language detector is a required dependency
-        self.language_detector = LanguageDetector(ai_client=self.gemma_client, telemetry=self.telemetry)
-
-        # Create Gemini Flash as fallback client (for NOTSURE handling)
-        gemini_flash_model = os.getenv('GEMINI_FLASH_MODEL')
-        if not gemini_flash_model:
-            self.skipTest("Missing GEMINI_FLASH_MODEL environment variable.")
-            
-        self.gemini_flash_client = GeminiClient(
-            api_key=gemini_api_key,
-            model_name=gemini_flash_model,
-            telemetry=self.telemetry
+        self.fact_handler = FactHandler(
+            ai_client=None,
+            store=None,
+            telemetry=self.telemetry,
+            user_resolver=mock_user_resolver,
         )
 
-        # The component under test
+        self.language_detector = LanguageDetector(
+            ai_client=self.gemma_client, telemetry=self.telemetry
+        )
+
         self.router = AiRouter(
-            ai_client=self.gemma_client,
+            ai_client=self.router_client,
             telemetry=self.telemetry,
             language_detector=self.language_detector,
             famous_generator=self.famous_generator,
             general_generator=self.general_generator,
             fact_handler=self.fact_handler,
-            fallback_client=self.gemini_flash_client
         )
 
     async def test_route_request_with_perspective_shift(self):
@@ -92,33 +102,39 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         user_message = "let's ask BOT to use grok and be creative to tell me a joke"
         expected_cleaned_query = "tell me a joke"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert
         self.assertEqual(route, "GENERAL")
         self.assertIsNotNone(params)
         self.assertEqual(params.ai_backend, "grok")
         self.assertEqual(params.cleaned_query.lower(), expected_cleaned_query.lower())
-        self.assertGreaterEqual(params.temperature, 0.7, "Temperature should be high for a 'creative' request")
+        self.assertGreaterEqual(
+            params.temperature,
+            0.7,
+            "Temperature should be high for a 'creative' request",
+        )
 
     async def test_route_request_with_direct_command(self):
         """
         Test that the router correctly handles a direct command to the bot,
         stripping out only the bot's name and routing hints.
         """
-        user_message = "BOT, ask claude to write a technical blog post, be very detailed"
+        user_message = (
+            "BOT, ask claude to write a technical blog post, be very detailed"
+        )
         expected_cleaned_query = "write a technical blog post"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert
         self.assertEqual(route, "GENERAL")
         self.assertIsNotNone(params)
         self.assertEqual(params.ai_backend, "claude")
         self.assertEqual(params.cleaned_query.lower(), expected_cleaned_query.lower())
-        self.assertLessEqual(params.temperature, 0.3, "Temperature should be low for a 'detailed' request")
+        self.assertLessEqual(
+            params.temperature,
+            0.3,
+            "Temperature should be low for a 'detailed' request",
+        )
 
     async def test_route_request_memory_remember(self):
         """
@@ -126,10 +142,8 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         """
         user_message = "Bot remember that <@1333878858138652682> works at TechCorp"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert
         self.assertEqual(route, "FACT")
         self.assertIsNotNone(params)
         self.assertEqual(params.operation, "remember")
@@ -142,10 +156,8 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         """
         user_message = "Bot forget that gruzilkin likes pizza"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert
         self.assertEqual(route, "FACT")
         self.assertIsNotNone(params)
         self.assertEqual(params.operation, "forget")
@@ -156,11 +168,13 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_route_request_famous_person_news_not_impersonation(self):
         user_message = "What did Trump say yesterday?"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert - should route to GENERAL for news search, not FAMOUS for impersonation
-        self.assertEqual(route, "GENERAL", "Questions about actual statements should route to GENERAL for news search")
+        self.assertEqual(
+            route,
+            "GENERAL",
+            "Questions about actual statements should route to GENERAL for news search",
+        )
         self.assertIsNotNone(params)
         # Should be a general query, not an impersonation request
         self.assertIn("Trump", params.cleaned_query)
@@ -168,13 +182,19 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_route_request_memory_verb_not_bot_memory(self):
         user_message = "I can't remember where I put my keys"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert - should NOT route to FACT (bot memory), should be GENERAL or NONE
-        self.assertNotEqual(route, "FACT", "Personal memory statements should not trigger bot memory operations")
-        self.assertIn(route, ["GENERAL", "NONE"], "Personal statements should route to GENERAL or NONE")
-        
+        self.assertNotEqual(
+            route,
+            "FACT",
+            "Personal memory statements should not trigger bot memory operations",
+        )
+        self.assertIn(
+            route,
+            ["GENERAL", "NONE"],
+            "Personal statements should route to GENERAL or NONE",
+        )
+
         if route == "NONE":
             self.assertIsNone(params)
         else:
@@ -183,24 +203,32 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_route_request_quote_lookup_not_impersonation(self):
         user_message = "Einstein said something about imagination"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert - should route to GENERAL for quote lookup, not FAMOUS for impersonation
-        self.assertEqual(route, "GENERAL", "Quote lookup requests should route to GENERAL, not FAMOUS")
+        self.assertEqual(
+            route,
+            "GENERAL",
+            "Quote lookup requests should route to GENERAL, not FAMOUS",
+        )
         self.assertIsNotNone(params)
         self.assertIn("Einstein", params.cleaned_query)
 
     async def test_route_request_riddle_with_famous_names_not_impersonation(self):
         user_message = "кто до Путина, если после Путина Агутин?"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert - should NOT route to FAMOUS (impersonation)
-        self.assertNotEqual(route, "FAMOUS", "Riddles mentioning famous people should not trigger impersonation")
-        self.assertIn(route, ["GENERAL", "NONE"], "Riddles should route to GENERAL (question) or NONE (wordplay)")
-        
+        self.assertNotEqual(
+            route,
+            "FAMOUS",
+            "Riddles mentioning famous people should not trigger impersonation",
+        )
+        self.assertIn(
+            route,
+            ["GENERAL", "NONE"],
+            "Riddles should route to GENERAL (question) or NONE (wordplay)",
+        )
+
         if route == "NONE":
             self.assertIsNone(params)
         else:
@@ -209,24 +237,34 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_route_request_wordplay_question_not_impersonation(self):
         user_message = "у Дональда Трампа козырная фамилия?"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert - should route to GENERAL (name meaning question), not FAMOUS (impersonation)
-        self.assertEqual(route, "GENERAL", "Wordplay questions about names should route to GENERAL, not FAMOUS")
+        self.assertEqual(
+            route,
+            "GENERAL",
+            "Wordplay questions about names should route to GENERAL, not FAMOUS",
+        )
         self.assertIsNotNone(params, "GENERAL route should have parameters")
-        self.assertIn("Трамп", params.cleaned_query, "Should preserve the name in the query")
+        self.assertIn(
+            "Трамп", params.cleaned_query, "Should preserve the name in the query"
+        )
 
     async def test_route_request_statement_about_person_not_impersonation(self):
         user_message = "Медвед бы так не сказал"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert - should NOT route to FAMOUS (impersonation)
-        self.assertNotEqual(route, "FAMOUS", "Statements about what someone would say should not trigger impersonation")
-        self.assertIn(route, ["NONE", "GENERAL"], "Should route to NONE (statement) or GENERAL (opinion)")
-        
+        self.assertNotEqual(
+            route,
+            "FAMOUS",
+            "Statements about what someone would say should not trigger impersonation",
+        )
+        self.assertIn(
+            route,
+            ["NONE", "GENERAL"],
+            "Should route to NONE (statement) or GENERAL (opinion)",
+        )
+
         if route == "NONE":
             self.assertIsNone(params)
         else:
@@ -235,38 +273,48 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_route_request_praise_command_not_impersonation(self):
         user_message = "спой осанну Медведу"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert - should route to GENERAL (bot action), not FAMOUS (impersonation)
-        self.assertEqual(route, "GENERAL", "Commands to praise someone should route to GENERAL, not FAMOUS")
+        self.assertEqual(
+            route,
+            "GENERAL",
+            "Commands to praise someone should route to GENERAL, not FAMOUS",
+        )
         self.assertIsNotNone(params, "GENERAL route should have parameters")
-        self.assertIn("осанну", params.cleaned_query, "Should preserve the praise request")
+        self.assertIn(
+            "осанну", params.cleaned_query, "Should preserve the praise request"
+        )
 
     async def test_route_request_question_with_name_not_memory_operation(self):
         user_message = "для чего Алексею нужна голова?"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert - should route to GENERAL (question), not FACT (memory operation)
-        self.assertEqual(route, "GENERAL", "Questions with names should route to GENERAL, not FACT")
+        self.assertEqual(
+            route, "GENERAL", "Questions with names should route to GENERAL, not FACT"
+        )
         self.assertIsNotNone(params, "GENERAL route should have parameters")
-        self.assertIn("Алексею", params.cleaned_query, "Should preserve the name in the query")
+        self.assertIn(
+            "Алексею", params.cleaned_query, "Should preserve the name in the query"
+        )
 
     async def test_route_request_song_writing_selects_claude(self):
         """Test that song writing requests are routed to Claude backend."""
         user_message = "BOT write a song about summer"
 
-        # Act
         route, params = await self.router.route_request(user_message)
 
-        # Assert
         self.assertEqual(route, "GENERAL", "Song requests should route to GENERAL")
         self.assertIsNotNone(params, "GENERAL route should have parameters")
-        self.assertEqual(params.ai_backend, "claude", "Song requests should select Claude backend")
-        self.assertIn("song", params.cleaned_query.lower(), "Should preserve song request in query")
+        self.assertEqual(
+            params.ai_backend, "claude", "Song requests should select Claude backend"
+        )
+        self.assertIn(
+            "song",
+            params.cleaned_query.lower(),
+            "Should preserve song request in query",
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

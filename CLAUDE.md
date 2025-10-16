@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## urmom-bot Project Information
 
-urmom-bot is a Discord bot that generates AI-powered "ur mom" jokes, country-specific humor, and impersonates famous people. The bot uses multiple AI providers (Gemini, Grok, Claude) and includes adaptive learning from user reactions.
+urmom-bot is a Discord bot that generates AI-powered "ur mom" jokes, country-specific humor, impersonates famous people, and maintains conversational memory about users. The bot uses multiple AI providers (Gemini Flash, Gemma, Grok, Claude) with automatic retry and fallback logic.
 
 ## Development Setup
 
@@ -37,7 +37,7 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 - Unit tests: `bot/tests/unit/`
 - Integration tests: `bot/tests/integration/`
 - Testing framework: `unittest.IsolatedAsyncioTestCase` for async code
-- **Telemetry Guidelines**: 
+- **Telemetry Guidelines**:
   - Use `NullTelemetry()` from `tests.null_telemetry` in tests for classes requiring telemetry
   - Telemetry is a required dependency - never None or optional
   - Don't add defensive checks like `if self.telemetry:` - assume it's always present
@@ -47,43 +47,50 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 
 ### Core Components
 - **app.py**: Main Discord bot entry point with event handlers
-- **container.py**: Dependency injection container for all services
-- **ai_router.py**: Routes user messages to appropriate AI handlers
-- **store.py**: PostgreSQL database interactions and guild configuration
-- **schemas.py**: Pydantic schemas for structured AI responses
+- **container.py**: Dependency injection container for all services (see `bot/documents/di_refactor.md`)
+- **ai_router.py**: Routes user messages to appropriate AI handlers (FAMOUS, GENERAL, FACT, NONE)
+- **store.py**: PostgreSQL database interactions and guild configuration with LRU caching
+- **schemas.py**: Pydantic schemas for structured AI responses (see `bot/documents/structured_output.md`)
 
 ### AI Clients
-- **gemini_client.py**: Google Gemini API integration
-- **grok_client.py**: xAI Grok API integration  
-- **claude_client.py**: Anthropic Claude API integration
 - **ai_client.py**: Abstract base class for AI providers
+- **gemini_client.py**: Google Gemini Flash (fast, general-purpose, grounding)
+- **gemma_client.py**: Google Gemma (structured output, language tasks)
+- **grok_client.py**: xAI Grok (creative tasks, jokes, celebrity impersonation)
+- **claude_client.py**: Anthropic Claude (fallback option)
+- **ai_client_wrappers.py**: `RetryAIClient` and `CompositeAIClient` for reliability
+  - **See `bot/documents/llm_fallback.md` for complete fallback strategy**
 
-### Generators
-- **joke_generator.py**: Core joke generation with adaptive learning
-- **famous_person_generator.py**: Celebrity impersonation responses
-- **general_query_generator.py**: General AI query handling
+### Generators & Handlers
+- **joke_generator.py**: Joke generation with adaptive learning
+- **famous_person_generator.py**: Celebrity impersonation
+- **general_query_generator.py**: General queries with memory context
+- **fact_handler.py**: "remember" and "forget" commands
 - **country_resolver.py**: Flag emoji to country mapping
+
+### Memory & Conversation
+- **memory_manager.py**: User memory system (facts + daily summaries)
+  - **See `bot/documents/memory.md` for complete memory architecture**
+- **conversation_graph.py**: Graph-based message threading and reply chain tracking
+  - **See `bot/documents/conversation_history.md` for algorithm details**
+- **message_node.py**: Message data structure with reply metadata
 
 ### Supporting Services
 - **open_telemetry.py**: Observability and metrics collection
-- **store.py**: Database operations and guild settings
-
-### Database Schema
-- **messages**: Stores Discord message content and language
-- **jokes**: Links source messages to joke responses with reaction counts
-- **guild_configs**: Per-server bot configuration
-
-### Message Flow
-1. Discord message → **app.py** event handler
-2. **ai_router.py** determines handling strategy (famous person, general query, etc.)
-3. Appropriate generator creates response using configured AI client
-4. Response sent to Discord with optional archiving/auto-deletion
+- **config.py**: Centralized configuration from environment variables
+- **language_detector.py**: AI-powered language detection
+  - **See `bot/documents/language_detection.md` for language handling architecture**
+- **user_resolver.py**: Resolves user IDs to display names, handles mentions
+- **attachment_processor.py**: Processes images and attachments for AI analysis
+- **response_summarizer.py**: Condenses long AI responses to fit Discord limits
 
 ## Project Structure
-- Main code: `bot/` directory
+- Main code: `bot/src/`
+- Tests: `bot/tests/`
+- Documentation: `bot/documents/` (detailed design docs)
 - Virtual environment: `.venv/`
 - Database: PostgreSQL with Docker setup
-- Use `PYTHONPATH=bot` to set Python path instead of `cd bot`
+- Use `PYTHONPATH=bot/src:bot/tests` to set Python path
 
 ## Code Style Guidelines
 
@@ -127,10 +134,10 @@ def process_data(items: Optional[List[str]]) -> Dict[str, Any]:  # Old syntax
   # Good - Descriptive error with operation context
   except ValueError as e:
       logger.error(f"Failed to parse user configuration: {e}", exc_info=True)
-  
+
   except APIException as e:
       logger.error(f"OpenAI API call failed during joke generation: {e}", exc_info=True)
-  
+
   # Avoid - Generic or missing error logging
   except Exception as e:
       logger.warning(f"Error: {e}")  # Wrong level, no context, no stack trace
@@ -144,12 +151,57 @@ def process_data(items: Optional[List[str]]) -> Dict[str, Any]:  # Old syntax
   ```python
   # Avoid - Different names for same concept across components
   span.set_attribute("confidence", score)           # In one component
-  span.set_attribute("detection_confidence", score) # In another component  
+  span.set_attribute("detection_confidence", score) # In another component
   span.set_attribute("lang_confidence", score)      # In third component
   ```
 - **When creating new attributes**, check existing codebase for similar concepts and reuse existing names
 
 ## Development Workflow
+
+### When to Read Detailed Documentation
+
+Refer to `bot/documents/` for detailed design documentation:
+
+- **Memory System** (`memory.md`):
+  - When working on user memory, daily summaries, or context merging
+  - Understanding caching strategy (TTL vs LRU vs database)
+  - Memory operations (remember/forget)
+  - Batch processing and concurrent operations
+
+- **LLM Fallback Strategy** (`llm_fallback.md`):
+  - When adding new AI-powered features
+  - Choosing which AI client to use for a specific task
+  - Understanding retry policies (max_time vs max_tries)
+  - Setting up CompositeAIClient with proper fallback chains
+
+- **Conversation History** (`conversation_history.md`):
+  - When working on message threading or reply chains
+  - Understanding the tik/tok graph exploration algorithm
+  - Lazy processing and message materialization
+  - Article extraction from embeds
+
+- **Language Detection** (`language_detection.md`):
+  - When adding multilingual support to new features
+  - Understanding language propagation through the request chain
+  - Handling translation requests and mixed-language scenarios
+
+- **Structured Output** (`structured_output.md`):
+  - When creating new Pydantic schemas for AI responses
+  - Understanding how structured output works across different AI providers
+
+- **Dependency Injection** (`di_refactor.md`):
+  - When adding new services to the container
+  - Understanding how components are wired together
+
+### AI Client Usage Patterns
+- **Prefer using wrapped clients** from `container.py` (e.g., `retrying_gemma`, `gemma_with_grok_fallback`) over bare clients
+- **CompositeAIClient** automatically tries fallback clients when:
+  - An exception occurs
+  - Response validation fails (via `is_bad_response` callback)
+- **RetryAIClient** supports two retry strategies:
+  - `max_time`: Retry for up to N seconds (good for rate limits)
+  - `max_tries`: Retry up to N attempts (good for transient failures)
+- **Client selection guidelines** - see `bot/documents/llm_fallback.md` for complete decision tree
 
 ### Code Quality Checks
 - **After making file changes**: Always run `ruff` to check files for linting issues and formatting
