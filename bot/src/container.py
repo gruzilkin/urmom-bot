@@ -70,7 +70,6 @@ class Container:
             telemetry=self.telemetry,
             base_url=self.config.ollama_base_url,
             temperature=self.config.ollama_temperature,
-            timeout=20.0,
         )
         self.ollama_gpt_oss = OllamaClient(
             api_key=self.config.ollama_api_key,
@@ -78,7 +77,6 @@ class Container:
             telemetry=self.telemetry,
             base_url=self.config.ollama_base_url,
             temperature=self.config.ollama_temperature,
-            timeout=20.0,
         )
         self.ollama_qwen_vl = OllamaClient(
             api_key=self.config.ollama_api_key,
@@ -86,7 +84,7 @@ class Container:
             telemetry=self.telemetry,
             base_url=self.config.ollama_base_url,
             temperature=0.0,
-            timeout=20.0,
+            timeout=60.0,
         )
 
         # Apply retry policy for rate-limited services (Gemma/Grok only)
