@@ -23,7 +23,17 @@ class AppConfig(BaseSettings):
     grok_api_key: str = Field(env="GROK_API_KEY")
     grok_model: str = Field(env="GROK_MODEL")
     grok_temperature: float = Field(default=0.7, env="GROK_TEMPERATURE")
-    
+
+    # Ollama configuration
+    ollama_api_key: str = Field(env="OLLAMA_API_KEY")
+    ollama_base_url: str = Field(default="https://ollama.com", env="OLLAMA_BASE_URL")
+    ollama_kimi_model: str = Field(default="kimi-k2:1t-cloud", env="OLLAMA_KIMI_MODEL")
+    ollama_deepseek_model: str = Field(default="deepseek-v3.1:671b-cloud", env="OLLAMA_DEEPSEEK_MODEL")
+    ollama_qwen_coder_model: str = Field(default="qwen3-coder:480b-cloud", env="OLLAMA_QWEN_CODER_MODEL")
+    ollama_qwen_vl_model: str = Field(default="qwen3-vl:235b-cloud", env="OLLAMA_QWEN_VL_MODEL")
+    ollama_gpt_oss_model: str = Field(default="gpt-oss:120b-cloud", env="OLLAMA_GPT_OSS_MODEL")
+    ollama_temperature: float = Field(default=0.1, env="OLLAMA_TEMPERATURE")
+
     # Discord configuration
     discord_token: str = Field(env="DISCORD_TOKEN")
     
@@ -67,7 +77,7 @@ class AppConfig(BaseSettings):
             raise ValueError("SAMPLE_JOKES_COEF must be positive")
         return v
     
-    @field_validator("gemini_temperature", "grok_temperature")
+    @field_validator("gemini_temperature", "grok_temperature", "ollama_temperature")
     @classmethod
     def validate_temperature(cls, v: float) -> float:
         """Validate temperature is within valid range."""

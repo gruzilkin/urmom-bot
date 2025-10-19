@@ -154,6 +154,23 @@ class TestCompositeAIClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "gamma")
         self.client_b.generate_content.assert_awaited_once_with(**payload)
 
+    async def test_fallback_on_bad_response_predicate(self) -> None:
+        """Composite should try the next client when the first response fails validation."""
+        composite = CompositeAIClient(
+            [self.client_a, self.client_b],
+            telemetry=self.telemetry,
+            is_bad_response=lambda resp: len(resp) > 10,
+        )
+
+        self.client_a.generate_content.return_value = "0123456789A"
+        self.client_b.generate_content.return_value = "fallback"
+
+        result = await composite.generate_content(message="check-length")
+
+        self.assertEqual(result, "fallback")
+        self.client_a.generate_content.assert_awaited_once()
+        self.client_b.generate_content.assert_awaited_once()
+
 
 if __name__ == "__main__":
     unittest.main()
