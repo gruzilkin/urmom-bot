@@ -111,7 +111,9 @@ class OllamaClient(AIClient):
             Generated text response or structured object if response_schema provided
         """
         async with self.telemetry.async_create_span(
-            "generate_content", kind=SpanKind.CLIENT
+            "generate_content",
+            kind=SpanKind.CLIENT,
+            attributes={"service": self.service, "model": self.model_name},
         ):
             # Build messages list
             messages = []
@@ -197,24 +199,22 @@ class OllamaClient(AIClient):
                 error_parts.append(f"\nOriginal error: {error}")
                 return "\n".join(error_parts)
 
+            base_attrs = {"service": self.service, "model": self.model_name}
+
             while True:
-                base_attrs = {
-                    "service": self.service,
-                    "model": self.model_name,
-                    "validation_retry": validation_retry,
-                }
+                loop_attrs = {**base_attrs, "validation_retry": validation_retry}
                 timer = self.telemetry.metrics.timer()
                 try:
                     async with self.telemetry.async_create_span(
-                        "ollama_chat", kind=SpanKind.CLIENT, attributes=base_attrs
+                        "ollama_chat", kind=SpanKind.CLIENT, attributes=loop_attrs
                     ):
                         response = await self.client.chat(**chat_params)
-                    attrs = {**base_attrs, "outcome": "success"}
+                    attrs = {**loop_attrs, "outcome": "success"}
                     self.telemetry.metrics.llm_latency.record(timer(), attrs)
                     self.telemetry.metrics.llm_requests.add(1, attrs)
                 except Exception as e:
                     attrs = {
-                        **base_attrs,
+                        **loop_attrs,
                         "outcome": "error",
                         "error_type": type(e).__name__,
                     }
@@ -228,7 +228,7 @@ class OllamaClient(AIClient):
                 self._track_completion_metrics(
                     response,
                     method_name="generate_content",
-                                        validation_retry=validation_retry,
+                    validation_retry=validation_retry,
                 )
 
                 messages.append(response["message"])

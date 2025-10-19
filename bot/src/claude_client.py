@@ -29,7 +29,13 @@ class ClaudeClient(AIClient):
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None, image_data: bytes | None = None, image_mime_type: str | None = None) -> str | T:
         if image_data:
             raise ValueError("ClaudeClient does not support image data.")
-        async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT):
+        base_attrs = {"service": self.service, "model": self.model_name}
+
+        async with self.telemetry.async_create_span(
+            "generate_content",
+            kind=SpanKind.CLIENT,
+            attributes=base_attrs,
+        ):
             samples = samples or []
             
             # Build conversation context
@@ -86,7 +92,7 @@ class ClaudeClient(AIClient):
             if process.returncode != 0:
                 error_msg = stderr.decode().strip() if stderr else "Unknown error"
                 logger.error(f"Claude CLI command failed with return code {process.returncode}: {error_msg}")
-                attrs_err = {"service": self.service, "model": self.model_name, "outcome": "error", "error_type": "CLIError"}
+                attrs_err = {**base_attrs, "outcome": "error", "error_type": "CLIError"}
                 self.telemetry.metrics.llm_latency.record(timer(), attrs_err)
                 self.telemetry.metrics.llm_requests.add(1, attrs_err)
                 raise RuntimeError(f"Claude CLI failed: {error_msg}")
@@ -94,7 +100,7 @@ class ClaudeClient(AIClient):
             response_text = stdout.decode().strip()
             logger.info(f"Claude CLI response: {response_text}")
 
-            attrs = {"service": self.service, "model": self.model_name, "outcome": "success"}
+            attrs = {**base_attrs, "outcome": "success"}
             self.telemetry.metrics.llm_latency.record(timer(), attrs)
             self.telemetry.metrics.llm_requests.add(1, attrs)
             

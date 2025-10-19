@@ -60,7 +60,13 @@ class GeminiClient(AIClient):
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None, image_data: bytes | None = None, image_mime_type: str | None = None) -> str | T:
         if image_data:
             raise ValueError("GeminiClient does not support image data.")
-        async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT):
+        base_attrs = {"service": "GEMINI", "model": self.model_name}
+
+        async with self.telemetry.async_create_span(
+            "generate_content",
+            kind=SpanKind.CLIENT,
+            attributes=base_attrs,
+        ):
             samples = samples or []
             contents = []
 
@@ -102,11 +108,15 @@ class GeminiClient(AIClient):
                     config=config
                 )
                 # Record latency and request count
-                attrs = {"service": "GEMINI", "model": self.model_name, "outcome": "success"}
+                attrs = {**base_attrs, "outcome": "success"}
                 self.telemetry.metrics.llm_latency.record(timer(), attrs)
                 self.telemetry.metrics.llm_requests.add(1, attrs)
             except Exception as e:
-                attrs = {"service": "GEMINI", "model": self.model_name, "outcome": "error", "error_type": type(e).__name__}
+                attrs = {
+                    **base_attrs,
+                    "outcome": "error",
+                    "error_type": type(e).__name__,
+                }
                 self.telemetry.metrics.llm_latency.record(timer(), attrs)
                 self.telemetry.metrics.llm_requests.add(1, attrs)
                 raise

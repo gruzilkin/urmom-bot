@@ -77,7 +77,13 @@ class GemmaClient(AIClient):
         Returns:
             Generated text response or structured object if response_schema provided
         """
-        async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT):
+        base_attrs = {"service": "GEMMA", "model": self.model_name}
+
+        async with self.telemetry.async_create_span(
+            "generate_content",
+            kind=SpanKind.CLIENT,
+            attributes=base_attrs,
+        ):
             # Log unsupported features
             if samples:
                 logger.warning("Samples/chat mode not supported by simplified Gemma client")
@@ -123,11 +129,15 @@ Schema: {response_schema.model_json_schema()}"""
                     contents=content_parts,
                     config=config
                 )
-                attrs = {"service": "GEMMA", "model": self.model_name, "outcome": "success"}
+                attrs = {**base_attrs, "outcome": "success"}
                 self.telemetry.metrics.llm_latency.record(timer(), attrs)
                 self.telemetry.metrics.llm_requests.add(1, attrs)
             except Exception as e:
-                attrs = {"service": "GEMMA", "model": self.model_name, "outcome": "error", "error_type": type(e).__name__}
+                attrs = {
+                    **base_attrs,
+                    "outcome": "error",
+                    "error_type": type(e).__name__,
+                }
                 self.telemetry.metrics.llm_latency.record(timer(), attrs)
                 self.telemetry.metrics.llm_requests.add(1, attrs)
                 raise

@@ -47,7 +47,13 @@ class GrokClient(AIClient):
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None, image_data: bytes | None = None, image_mime_type: str | None = None) -> str | T:
         if image_data:
             raise ValueError("GrokClient does not support image data.")
-        async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT):
+        base_attrs = {"service": "GROK", "model": self.model_name}
+
+        async with self.telemetry.async_create_span(
+            "generate_content",
+            kind=SpanKind.CLIENT,
+            attributes=base_attrs,
+        ):
             messages = []
             if prompt:
                 messages.append({"role": "system", "content": prompt})
@@ -79,11 +85,15 @@ class GrokClient(AIClient):
                         temperature=actual_temperature,
                         response_format=response_schema
                     )
-                    attrs = {"service": "GROK", "model": self.model_name, "outcome": "success"}
+                    attrs = {**base_attrs, "outcome": "success"}
                     self.telemetry.metrics.llm_latency.record(timer(), attrs)
                     self.telemetry.metrics.llm_requests.add(1, attrs)
                 except Exception as e:
-                    attrs = {"service": "GROK", "model": self.model_name, "outcome": "error", "error_type": type(e).__name__}
+                    attrs = {
+                        **base_attrs,
+                        "outcome": "error",
+                        "error_type": type(e).__name__,
+                    }
                     self.telemetry.metrics.llm_latency.record(timer(), attrs)
                     self.telemetry.metrics.llm_requests.add(1, attrs)
                     raise
@@ -93,7 +103,7 @@ class GrokClient(AIClient):
                 
                 parsed_result = completion.choices[0].message.parsed
                 if parsed_result is None:
-                    self.telemetry.metrics.structured_output_failures.add(1, {"service": "GROK", "model": self.model_name})
+                    self.telemetry.metrics.structured_output_failures.add(1, base_attrs)
                     raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {completion.choices[0].message.content}")
                 return parsed_result
             else:
@@ -103,11 +113,15 @@ class GrokClient(AIClient):
                         messages=messages,
                         temperature=actual_temperature
                     )
-                    attrs = {"service": "GROK", "model": self.model_name, "outcome": "success"}
+                    attrs = {**base_attrs, "outcome": "success"}
                     self.telemetry.metrics.llm_latency.record(timer(), attrs)
                     self.telemetry.metrics.llm_requests.add(1, attrs)
                 except Exception as e:
-                    attrs = {"service": "GROK", "model": self.model_name, "outcome": "error", "error_type": type(e).__name__}
+                    attrs = {
+                        **base_attrs,
+                        "outcome": "error",
+                        "error_type": type(e).__name__,
+                    }
                     self.telemetry.metrics.llm_latency.record(timer(), attrs)
                     self.telemetry.metrics.llm_requests.add(1, attrs)
                     raise
