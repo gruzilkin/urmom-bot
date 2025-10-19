@@ -411,19 +411,33 @@ class Telemetry:
         except Exception as e:
             logger.error(f"Error incrementing reaction counter: {e}", exc_info=True)
             
-    def track_token_usage(self, prompt_tokens: int, completion_tokens: int, total_tokens: int, attributes: dict = None):
-        """Track token usage from LLM API calls with custom attributes"""
+    def track_token_usage(
+        self,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+        attributes: dict | None = None,
+    ):
+        """Track token usage from LLM API calls with custom attributes."""
         try:
             if attributes is None:
                 attributes = {}
 
+            cleaned_attributes = {k: v for k, v in attributes.items() if v is not None}
 
-            attributes = {k: v for k, v in attributes.items() if v is not None}
+            if prompt_tokens is not None:
+                self.metrics.prompt_tokens_counter.add(prompt_tokens, cleaned_attributes)
+            if completion_tokens is not None:
+                self.metrics.completion_tokens_counter.add(completion_tokens, cleaned_attributes)
+            if total_tokens is not None:
+                self.metrics.total_tokens_counter.add(total_tokens, cleaned_attributes)
 
-            self.metrics.prompt_tokens_counter.add(prompt_tokens, attributes)
-            self.metrics.completion_tokens_counter.add(completion_tokens, attributes)
-            self.metrics.total_tokens_counter.add(total_tokens, attributes)
-            
-            logger.info(f"Token usage tracked - Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}, Attributes: {attributes}")
+            logger.info(
+                "Token usage tracked - Prompt: %s, Completion: %s, Total: %s, Attributes: %s",
+                prompt_tokens if prompt_tokens is not None else "n/a",
+                completion_tokens if completion_tokens is not None else "n/a",
+                total_tokens if total_tokens is not None else "n/a",
+                cleaned_attributes,
+            )
         except Exception as e:
             logger.error(f"Error tracking token usage: {e}", exc_info=True)
