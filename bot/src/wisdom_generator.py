@@ -140,9 +140,9 @@ Language:
             if response is None:
                 return None
 
-            logger.info(f"Generated wisdom: {response.wisdom}\nReason: {response.reason}")
+            logger.info(f"Generated wisdom: {response.answer}\nReason: {response.reason}")
             span.set_attribute("reason", response.reason)
 
-            processed_wisdom = await self._response_summarizer.process_response(response.wisdom)
+            processed_wisdom = await self._response_summarizer.process_response(response.answer)
 
             return processed_wisdom

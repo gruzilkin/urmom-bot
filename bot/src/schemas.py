@@ -119,7 +119,7 @@ class DailySummaries(BaseModel):
 class WisdomResponse(BaseModel):
     """Schema for wisdom generation response."""
 
-    wisdom: str = Field(description="The street-smart, humorous wisdom one-liner to deliver to the user")
+    answer: str = Field(description="The street-smart, humorous wisdom one-liner to deliver to the user")
     reason: str = Field(
         description="Explanation of the observation, style choice, and why this wisdom fits the conversation"
     )

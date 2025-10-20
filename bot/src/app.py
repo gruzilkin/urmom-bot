@@ -62,7 +62,7 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
             is_clown = emoji_str == "🤡"
             is_country = country is not None
             is_thumbs_down = emoji_str == "👎"
-            is_wisdom = emoji_str in ("🧔", "🧠")
+            is_wisdom = emoji_str in ("🧔", "🧠") or payload.emoji.id == 1180114631574962196
 
             if (is_clown or is_country) and message_key not in cache.processed_messages:
                 cache.processed_messages.add(message_key)
@@ -534,8 +534,7 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
 
     reply_message = await message.reply(wisdom)
 
-    emoji_name = "beard" if str(payload.emoji) == "🧔" else "brain"
-    container.telemetry.metrics.wisdom_generated.add(1, {"emoji": emoji_name, "guild_id": str(payload.guild_id)})
+    container.telemetry.metrics.wisdom_generated.add(1, {"guild_id": str(payload.guild_id)})
 
     if config.delete_jokes_after_minutes > 0:
         asyncio.create_task(delete_message_later(reply_message, config.delete_jokes_after_minutes * 60))
