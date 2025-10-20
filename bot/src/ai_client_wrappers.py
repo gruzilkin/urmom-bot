@@ -8,7 +8,7 @@ from typing import Iterable, Callable, Any
 
 import backoff
 
-from ai_client import AIClient
+from ai_client import AIClient, BlockedException
 from open_telemetry import Telemetry
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,7 @@ class RetryAIClient(AIClient):
                 "wait_gen": backoff.expo,
                 "exception": Exception,
                 "jitter": self._jitter,
+                "giveup": lambda e: isinstance(e, BlockedException),
             }
 
             if self._max_time is not None:

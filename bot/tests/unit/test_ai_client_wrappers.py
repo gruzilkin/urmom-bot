@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from ai_client import AIClient
+from ai_client import AIClient, BlockedException
 from ai_client_wrappers import CompositeAIClient, RetryAIClient
 from null_telemetry import NullTelemetry
 
@@ -67,9 +67,7 @@ class TestRetryAIClient(unittest.IsolatedAsyncioTestCase):
     async def test_max_time_parameter(self, mock_sleep: AsyncMock) -> None:
         mock_sleep.return_value = None
         self.delegate.generate_content = AsyncMock(return_value="ok")
-        client = RetryAIClient(
-            self.delegate, telemetry=self.telemetry, max_time=60, jitter=True
-        )
+        client = RetryAIClient(self.delegate, telemetry=self.telemetry, max_time=60, jitter=True)
 
         result = await client.generate_content(message="hello")
 
@@ -78,11 +76,22 @@ class TestRetryAIClient(unittest.IsolatedAsyncioTestCase):
 
     def test_both_max_time_and_max_tries_raises(self) -> None:
         with self.assertRaises(ValueError) as cm:
-            RetryAIClient(
-                self.delegate, telemetry=self.telemetry, max_time=60, max_tries=3
-            )
+            RetryAIClient(self.delegate, telemetry=self.telemetry, max_time=60, max_tries=3)
 
         self.assertIn("Cannot specify both", str(cm.exception))
+
+    async def test_blocked_exception_not_retried(self) -> None:
+        """Test that BlockedException is not retried (permanent failure)."""
+        blocked_error = BlockedException(reason="Content violates safety guidelines")
+        self.delegate.generate_content = AsyncMock(side_effect=blocked_error)
+        client = RetryAIClient(self.delegate, telemetry=self.telemetry, max_tries=5)
+
+        with self.assertRaises(BlockedException) as context:
+            await client.generate_content(message="blocked content")
+
+        # Should NOT retry - only called once
+        self.assertEqual(self.delegate.generate_content.await_count, 1)
+        self.assertIn("Content violates safety guidelines", str(context.exception.reason))
 
 
 class TestCompositeAIClient(unittest.IsolatedAsyncioTestCase):
@@ -95,9 +104,7 @@ class TestCompositeAIClient(unittest.IsolatedAsyncioTestCase):
 
     async def test_primary_success(self) -> None:
         self.client_a.generate_content.return_value = "alpha"
-        composite = CompositeAIClient(
-            [self.client_a, self.client_b], telemetry=self.telemetry
-        )
+        composite = CompositeAIClient([self.client_a, self.client_b], telemetry=self.telemetry)
 
         result = await composite.generate_content(message="hi")
 
@@ -108,9 +115,7 @@ class TestCompositeAIClient(unittest.IsolatedAsyncioTestCase):
     async def test_fallback_success(self) -> None:
         self.client_a.generate_content.side_effect = RuntimeError("boom")
         self.client_b.generate_content.return_value = "beta"
-        composite = CompositeAIClient(
-            [self.client_a, self.client_b], telemetry=self.telemetry
-        )
+        composite = CompositeAIClient([self.client_a, self.client_b], telemetry=self.telemetry)
 
         result = await composite.generate_content(message="hi")
 
@@ -121,9 +126,7 @@ class TestCompositeAIClient(unittest.IsolatedAsyncioTestCase):
     async def test_all_fail(self) -> None:
         self.client_a.generate_content.side_effect = ValueError("one")
         self.client_b.generate_content.side_effect = RuntimeError("two")
-        composite = CompositeAIClient(
-            [self.client_a, self.client_b], telemetry=self.telemetry
-        )
+        composite = CompositeAIClient([self.client_a, self.client_b], telemetry=self.telemetry)
 
         with self.assertRaisesRegex(RuntimeError, r"All fallback clients failed"):
             await composite.generate_content(message="hi")
@@ -145,9 +148,7 @@ class TestCompositeAIClient(unittest.IsolatedAsyncioTestCase):
 
         self.client_a.generate_content.side_effect = RuntimeError("boom")
         self.client_b.generate_content.return_value = "gamma"
-        composite = CompositeAIClient(
-            [self.client_a, self.client_b], telemetry=self.telemetry
-        )
+        composite = CompositeAIClient([self.client_a, self.client_b], telemetry=self.telemetry)
 
         result = await composite.generate_content(**payload)
 
@@ -176,9 +177,7 @@ class TestCompositeAIClient(unittest.IsolatedAsyncioTestCase):
         self.client_a.generate_content.side_effect = RuntimeError("boom")
         self.client_b.generate_content.return_value = "beta"
 
-        composite = CompositeAIClient(
-            [self.client_a, self.client_b], telemetry=self.telemetry, shuffle=False
-        )
+        composite = CompositeAIClient([self.client_a, self.client_b], telemetry=self.telemetry, shuffle=False)
 
         # Run multiple times to ensure order is consistent
         for _ in range(5):
@@ -193,9 +192,7 @@ class TestCompositeAIClient(unittest.IsolatedAsyncioTestCase):
         """With shuffle=True, clients should be randomized before trying."""
         self.client_a.generate_content.return_value = "alpha"
 
-        composite = CompositeAIClient(
-            [self.client_a, self.client_b], telemetry=self.telemetry, shuffle=True
-        )
+        composite = CompositeAIClient([self.client_a, self.client_b], telemetry=self.telemetry, shuffle=True)
 
         result = await composite.generate_content(message="hi")
 
