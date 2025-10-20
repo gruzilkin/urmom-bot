@@ -18,6 +18,7 @@ from language_detector import LanguageDetector
 from config import AppConfig
 from ai_client_wrappers import CompositeAIClient, RetryAIClient
 from ai_client import AIClient
+from ollama_client import OllamaClient
 
 
 class Container:
@@ -63,7 +64,30 @@ class Container:
 
         self.claude = ClaudeClient(telemetry=self.telemetry)
 
-        # Apply retry policy for rate-limited gemma
+        self.ollama_kimi = OllamaClient(
+            api_key=self.config.ollama_api_key,
+            model_name=self.config.ollama_kimi_model,
+            telemetry=self.telemetry,
+            base_url=self.config.ollama_base_url,
+            temperature=self.config.ollama_temperature,
+        )
+        self.ollama_gpt_oss = OllamaClient(
+            api_key=self.config.ollama_api_key,
+            model_name=self.config.ollama_gpt_oss_model,
+            telemetry=self.telemetry,
+            base_url=self.config.ollama_base_url,
+            temperature=self.config.ollama_temperature,
+        )
+        self.ollama_qwen_vl = OllamaClient(
+            api_key=self.config.ollama_api_key,
+            model_name=self.config.ollama_qwen_vl_model,
+            telemetry=self.telemetry,
+            base_url=self.config.ollama_base_url,
+            temperature=0.0,
+            timeout=60.0,
+        )
+
+        # Apply retry policy for rate-limited services (Gemma/Grok only)
         self.retrying_gemma = RetryAIClient(
             self.gemma, telemetry=self.telemetry, max_time=60, jitter=True
         )
@@ -77,27 +101,46 @@ class Container:
             telemetry=self.telemetry,
         )
 
+        self.kimi_with_gemma_fallback = CompositeAIClient(
+            [self.ollama_kimi, self.retrying_gemma],
+            telemetry=self.telemetry,
+        )
+
+        self.flash_with_kimi_fallback = CompositeAIClient(
+            [self.gemini_flash, self.ollama_kimi],
+            telemetry=self.telemetry,
+        )
+
+        self.qwen_with_gemma_fallback = CompositeAIClient(
+            [self.ollama_qwen_vl, self.retrying_gemma],
+            telemetry=self.telemetry,
+        )
+
         self.response_summarizer = ResponseSummarizer(
-            CompositeAIClient(
-                [self.gemma, self.claude, self.grok], telemetry=self.telemetry
-            ),
+            self.kimi_with_gemma_fallback,
             self.telemetry,
         )
 
         # Initialize language detector early since it's needed by multiple components
         self.language_detector = LanguageDetector(
-            ai_client=self.gemma_with_grok_fallback, telemetry=self.telemetry
+            ai_client=self.kimi_with_gemma_fallback, telemetry=self.telemetry
         )
 
         self.attachment_processor = AttachmentProcessor(
-            ai_client=self.retrying_gemma, telemetry=self.telemetry, max_file_size_mb=10
+            ai_client=self.qwen_with_gemma_fallback,
+            telemetry=self.telemetry,
+            max_file_size_mb=10,
         )
 
         self.joke_generator = JokeGenerator(
-            self.retrying_grok,
-            self.store,
-            self.telemetry,
-            self.language_detector,
+            joke_writer_client=self.retrying_grok,
+            joke_classifier_client=CompositeAIClient(
+                [self.ollama_kimi, self.retrying_grok],
+                telemetry=self.telemetry,
+            ),
+            store=self.store,
+            telemetry=self.telemetry,
+            language_detector=self.language_detector,
             sample_count=self.config.sample_jokes_count,
         )
 
@@ -111,8 +154,12 @@ class Container:
             self.user_resolver,
         )
 
+        fact_handler_client = CompositeAIClient(
+            [self.ollama_kimi, self.ollama_gpt_oss, self.retrying_gemma],
+            telemetry=self.telemetry,
+        )
         self.fact_handler = FactHandler(
-            ai_client=self.gemma_with_grok_fallback,
+            ai_client=fact_handler_client,
             store=self.store,
             telemetry=self.telemetry,
             user_resolver=self.user_resolver,
@@ -121,8 +168,8 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            gemini_client=self.gemini_flash,
-            gemma_client=self.retrying_gemma,
+            gemini_client=self.flash_with_kimi_fallback,
+            gemma_client=self.kimi_with_gemma_fallback,
             user_resolver=self.user_resolver,
         )
 
@@ -137,7 +184,7 @@ class Container:
 
         # The router client will be a composite client that handles the NOTSURE fallback.
         router_client = CompositeAIClient(
-            [self.retrying_gemma, self.retrying_grok],
+            [self.ollama_kimi, self.retrying_gemma, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )

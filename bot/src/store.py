@@ -467,6 +467,9 @@ class Store:
             span.set_attribute("for_date", str(for_date))
             span.set_attribute("summary_count", len(summaries_dict))
             
+            cache_key = (guild_id, for_date)
+            self._daily_summaries_cache[cache_key] = summaries_dict
+            
             if not summaries_dict:
                 span.set_attribute("skipped", True)
                 return
@@ -493,10 +496,6 @@ class Store:
                         insert_data
                     )
                     await self.conn.commit()
-                    
-                    # Update cache with new data
-                    cache_key = (guild_id, for_date)
-                    self._daily_summaries_cache[cache_key] = summaries_dict
                     
                     logger.info(f"Saved {len(summaries_dict)} daily summaries for guild {guild_id} on {for_date}")
                         

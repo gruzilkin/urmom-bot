@@ -12,3 +12,4 @@ cachetools
 pydantic-settings
 aiohttp
 backoff
+ollama>=0.4.0

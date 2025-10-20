@@ -1,57 +1,88 @@
 """
-Integration tests for ResponseSummarizer with real Gemma client.
+Integration tests for ResponseSummarizer across Gemma and Ollama Kimi.
 
-Tests the actual summarization behavior with the Gemma API to verify
-the integration works correctly in practice.
+Exercises the real summarization behaviour to ensure production clients
+produce reasonable summaries and respect multilingual content.
 """
 
 import os
 import re
 import unittest
+from dataclasses import dataclass
+
 from dotenv import load_dotenv
+
 from gemma_client import GemmaClient
+from ollama_client import OllamaClient
 from response_summarizer import ResponseSummarizer
 from null_telemetry import NullTelemetry
 
 load_dotenv()
 
 
+@dataclass(frozen=True)
+class SummarizerProfile:
+    """Describes an AI client used for response summarisation."""
+
+    name: str
+    client: object
+
+
 class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
-    """Integration tests for ResponseSummarizer with real Gemma client."""
-    
+    """Integration tests for ResponseSummarizer with production AI clients."""
+
     def setUp(self):
-        """Set up test dependencies."""
         self.telemetry = NullTelemetry()
-        
-        # Check for API key and model name
-        self.api_key = os.getenv('GEMINI_API_KEY')
-        self.model_name = os.getenv('GEMINI_GEMMA_MODEL')
-        
-        if not self.api_key:
-            self.skipTest("GEMINI_API_KEY environment variable not set")
-        if not self.model_name:
-            self.skipTest("GEMINI_GEMMA_MODEL environment variable not set")
-            
-        self.gemma_client = GemmaClient(
-            api_key=self.api_key,
-            model_name=self.model_name,
-            telemetry=self.telemetry,
-            temperature=0.1  # Fixed temperature for test stability
-        )
-        
-        self.summarizer = ResponseSummarizer(self.gemma_client, self.telemetry)
-    
+        self.profiles: list[SummarizerProfile] = []
+
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        gemma_model = os.getenv("GEMINI_GEMMA_MODEL")
+        if gemini_api_key and gemma_model:
+            gemma_client = GemmaClient(
+                api_key=gemini_api_key,
+                model_name=gemma_model,
+                telemetry=self.telemetry,
+                temperature=0.1,
+            )
+            self.profiles.append(
+                SummarizerProfile(name="gemma", client=gemma_client)
+            )
+
+        ollama_api_key = os.getenv("OLLAMA_API_KEY")
+        if ollama_api_key:
+            kimi_model = os.getenv("OLLAMA_KIMI_MODEL", "kimi-k2:1t-cloud")
+            kimi_client = OllamaClient(
+                api_key=ollama_api_key,
+                model_name=kimi_model,
+                telemetry=self.telemetry,
+                temperature=0.0,
+            )
+            self.profiles.append(
+                SummarizerProfile(name="ollama_kimi", client=kimi_client)
+            )
+
+        if not self.profiles:
+            self.skipTest(
+                "No response summariser AI clients configured (Gemma or Kimi required)."
+            )
+
+    def _build_summarizer(self, profile: SummarizerProfile) -> ResponseSummarizer:
+        return ResponseSummarizer(profile.client, self.telemetry)
+
     async def test_short_response_no_summarization(self):
         """Test that short responses pass through without API call."""
         short_response = "This is a short response that doesn't need summarization."
-        
-        result = await self.summarizer.process_response(short_response, max_length=2000)
-        
-        # Should return the original response unchanged
-        self.assertEqual(result, short_response)
-    
+
+        for profile in self.profiles:
+            with self.subTest(profile=profile.name):
+                summarizer = self._build_summarizer(profile)
+                result = await summarizer.process_response(
+                    short_response, max_length=2000
+                )
+                self.assertEqual(result, short_response)
+
     async def test_long_response_gets_summarized(self):
-        """Test that long responses are actually summarized by Gemma."""
+        """Test that long responses are summarised by each client."""
         # Create a realistic long response about software development practices (~5000 chars)
         long_response = """
         Software development has evolved dramatically over the past few decades, transforming from a largely individual pursuit to a highly collaborative, methodical discipline that powers virtually every aspect of modern life. The journey from early programming practices to today's sophisticated development methodologies represents one of the most significant technological advances of our time.
@@ -77,16 +108,19 @@ class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
         Despite all these changes, the fundamental principles of good software development remain constant: write clear, maintainable code; test thoroughly; collaborate effectively; and always keep the end user's needs at the center of the development process. These timeless principles provide stability in an ever-changing technological landscape.
         """
         
-        result = await self.summarizer.process_response(long_response, max_length=2000)
-        
-        # Verify the result is shorter than the original
-        self.assertLess(len(result), len(long_response))
-        # Verify it fits within the limit
-        self.assertLessEqual(len(result), 2000)
-        # Verify it contains key concepts from different parts of the text
-        self.assertTrue(any(term in result for term in ["software development", "programming", "agile", "development"]))
-        # Verify it's a meaningful summary, not just the start of the original
-        self.assertNotEqual(result, long_response[:len(result)])
+        for profile in self.profiles:
+            with self.subTest(profile=profile.name):
+                summarizer = self._build_summarizer(profile)
+                result = await summarizer.process_response(long_response, max_length=2000)
+                
+                # Verify the result is shorter than the original
+                self.assertLess(len(result), len(long_response))
+                # Verify it fits within the limit
+                self.assertLessEqual(len(result), 2000)
+                # Verify it contains key concepts from different parts of the text
+                self.assertTrue(any(term in result for term in ["software development", "programming", "agile", "development"]))
+                # Verify it's a meaningful summary, not just the start of the original
+                self.assertNotEqual(result, long_response[:len(result)])
     
     async def test_russian_language_preservation(self):
         """Test that Russian scientific terms are preserved when summarizing Russian text."""
@@ -107,28 +141,31 @@ class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
         Влияние Эйнштейна на современную физику невозможно переоценить. Его работы заложили основы для квантовой теории поля, теории струн и современной космологии. Принцип относительности и квантовая механика стали двумя столпами современной физики, хотя попытки их объединения в единую теорию квантовой гравитации продолжаются и по сей день.
         """
         
-        result = await self.summarizer.process_response(russian_einstein_text)
-        
-        # Verify the result is shorter than the original
-        self.assertLess(len(result), len(russian_einstein_text))
-        # Verify it fits within the limit
-        self.assertLessEqual(len(result), 2000)
-        
-        # Verify key Russian scientific terms are preserved (using regex for inflected forms)
-        
-        key_russian_patterns = [
-            (r"теор\w* относит", "теория относительности"),
-            (r"квантов\w* механик", "квантовая механика"), 
-            (r"фотоэлектрическ\w* эффект", "фотоэлектрический эффект"),
-            (r"Нобелевск\w* преми", "Нобелевская премия")
-        ]
-        
-        for pattern, term_name in key_russian_patterns:
-            found = re.search(pattern, result)
-            self.assertTrue(found, f"Russian term '{term_name}' (pattern: {pattern}) should be preserved in summary")
-        
-        # Verify it's a meaningful summary, not just the start of the original
-        self.assertNotEqual(result, russian_einstein_text[:len(result)])
+        for profile in self.profiles:
+            with self.subTest(profile=profile.name):
+                summarizer = self._build_summarizer(profile)
+                result = await summarizer.process_response(russian_einstein_text)
+                
+                # Verify the result is shorter than the original
+                self.assertLess(len(result), len(russian_einstein_text))
+                # Verify it fits within the limit
+                self.assertLessEqual(len(result), 2000)
+                
+                # Verify key Russian scientific terms are preserved (using regex for inflected forms)
+                
+                key_russian_patterns = [
+                    (r"теор\w* относит", "теория относительности"),
+                    (r"квантов\w* механик", "квантовая механика"), 
+                    (r"фотоэлектрическ\w* эффект", "фотоэлектрический эффект"),
+                    (r"Нобелевск\w* преми", "Нобелевская премия")
+                ]
+                
+                for pattern, term_name in key_russian_patterns:
+                    found = re.search(pattern, result)
+                    self.assertTrue(found, f"Russian term '{term_name}' (pattern: {pattern}) should be preserved in summary")
+                
+                # Verify it's a meaningful summary, not just the start of the original
+                self.assertNotEqual(result, russian_einstein_text[:len(result)])
     
     async def test_multilingual_quotes_preservation(self):
         """Test that foreign language quotes and technical terms are preserved in multilingual text."""
@@ -154,34 +191,34 @@ class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
         """
         
         # Test: Should preserve all multilingual content
-        result = await self.summarizer.process_response(multilingual_einstein_text)
-        
-        # Verify the result is shorter than the original
-        self.assertLess(len(result), len(multilingual_einstein_text))
-        # Verify it fits within the limit
-        self.assertLessEqual(len(result), 2000)
-        
-        # Verify foreign language quotes and technical terms are preserved
-        foreign_terms = [
-            "Die Unschärferelation ist fundamental",  # German quote
-            "Эйнштейн изменил наше понимание",  # Russian quote
-            "La relativité n'est qu'une convention",  # French quote
-            "相対性理論",  # Japanese: relativity theory
-            "量子力学",   # Japanese: quantum mechanics
-            "重力波"      # Japanese: gravitational waves
-        ]
-        
-        preserved_terms = 0
-        for term in foreign_terms:
-            if term in result:
-                preserved_terms += 1
-        
-        # At least half of the foreign terms should be preserved
-        self.assertGreaterEqual(preserved_terms, len(foreign_terms) // 2, 
-                               f"At least {len(foreign_terms) // 2} foreign terms should be preserved, but only {preserved_terms} were found")
-        
-        # Result should be meaningful summary, not just truncation
-        self.assertNotEqual(result, multilingual_einstein_text[:len(result)])
+        for profile in self.profiles:
+            with self.subTest(profile=profile.name):
+                summarizer = self._build_summarizer(profile)
+                result = await summarizer.process_response(multilingual_einstein_text)
+
+                self.assertLess(len(result), len(multilingual_einstein_text))
+                self.assertLessEqual(len(result), 2000)
+
+                foreign_terms = [
+                    "Die Unschärferelation ist fundamental",  # German quote
+                    "Эйнштейн изменил наше понимание",  # Russian quote
+                    "La relativité n'est qu'une convention",  # French quote
+                    "相対性理論",  # Japanese: relativity theory
+                    "量子力学",  # Japanese: quantum mechanics
+                    "重力波",  # Japanese: gravitational waves
+                ]
+
+                preserved_terms = sum(1 for term in foreign_terms if term in result)
+                self.assertGreaterEqual(
+                    preserved_terms,
+                    len(foreign_terms) // 2,
+                    f"At least {len(foreign_terms) // 2} foreign terms should be preserved, "
+                    f"but only {preserved_terms} were found",
+                )
+
+                self.assertNotEqual(
+                    result, multilingual_einstein_text[: len(result)]
+                )
 
 
 if __name__ == '__main__':

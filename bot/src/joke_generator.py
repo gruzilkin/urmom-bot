@@ -12,8 +12,17 @@ logger = logging.getLogger(__name__)
 
 
 class JokeGenerator:
-    def __init__(self, ai_client: AIClient, store: Store, telemetry: Telemetry, language_detector: LanguageDetector, sample_count: int = 10):
-        self.ai_client = ai_client
+    def __init__(
+        self,
+        joke_writer_client: AIClient,
+        joke_classifier_client: AIClient,
+        store: Store,
+        telemetry: Telemetry,
+        language_detector: LanguageDetector,
+        sample_count: int = 10,
+    ):
+        self._joke_writer_client = joke_writer_client
+        self._joke_classifier_client = joke_classifier_client
         self.store = store
         self.sample_count = sample_count
         self.telemetry = telemetry
@@ -47,7 +56,7 @@ class JokeGenerator:
         {examples_xml}"""
         
         async with self.telemetry.async_create_span("generate_joke"):
-            response = await self.ai_client.generate_content(
+            response = await self._joke_writer_client.generate_content(
                 message=content,
                 prompt=prompt
             )
@@ -59,7 +68,9 @@ class JokeGenerator:
                   Response should be fully in the language of the user message which includes translating the country name into the user's language. 
                   Apply stereotypes and cliches about the country."""
         async with self.telemetry.async_create_span("generate_country_joke"):
-            response = await self.ai_client.generate_content(message=message, prompt=prompt)
+            response = await self._joke_writer_client.generate_content(
+                message=message, prompt=prompt
+            )
             return response
 
     async def is_joke(self, original_message: str, response_message: str, message_id: int = None) -> bool:
@@ -86,7 +97,7 @@ Only answer YES if the response is obviously humorous, a clear joke, or delibera
             logger.info(f"Original: {original_message}")
             logger.info(f"Response: {response_message}")
 
-            response = await self.ai_client.generate_content(
+            response = await self._joke_classifier_client.generate_content(
                 message=message,
                 prompt=prompt,
                 response_schema=YesNo

@@ -5,14 +5,16 @@ This client can use GoogleSearchRetrieval to provide more accurate and up-to-dat
 by grounding responses with current web information, when supported by the model and API.
 """
 
+import logging
+from typing import List, Tuple, Type, TypeVar
+
 from google import genai
 from google.genai.types import Content, Part, GenerateContentConfig, GenerateContentResponse, Tool, GoogleSearch
-from ai_client import AIClient
-from typing import List, Tuple, Type, TypeVar
 from opentelemetry.trace import SpanKind
-from open_telemetry import Telemetry
 from pydantic import BaseModel
-import logging
+
+from ai_client import AIClient, BlockedException
+from open_telemetry import Telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +62,13 @@ class GeminiClient(AIClient):
     async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None, image_data: bytes | None = None, image_mime_type: str | None = None) -> str | T:
         if image_data:
             raise ValueError("GeminiClient does not support image data.")
-        async with self.telemetry.async_create_span("generate_content", kind=SpanKind.CLIENT):
+        base_attrs = {"service": "GEMINI", "model": self.model_name}
+
+        async with self.telemetry.async_create_span(
+            "generate_content",
+            kind=SpanKind.CLIENT,
+            attributes=base_attrs,
+        ):
             samples = samples or []
             contents = []
 
@@ -101,17 +109,29 @@ class GeminiClient(AIClient):
                     contents=contents,
                     config=config
                 )
-                # Record latency and request count
-                attrs = {"service": "GEMINI", "model": self.model_name, "outcome": "success"}
-                self.telemetry.metrics.llm_latency.record(timer(), attrs)
-                self.telemetry.metrics.llm_requests.add(1, attrs)
             except Exception as e:
-                attrs = {"service": "GEMINI", "model": self.model_name, "outcome": "error", "error_type": type(e).__name__}
+                attrs = {
+                    **base_attrs,
+                    "outcome": "error",
+                    "error_type": type(e).__name__,
+                }
                 self.telemetry.metrics.llm_latency.record(timer(), attrs)
                 self.telemetry.metrics.llm_requests.add(1, attrs)
                 raise
 
             logger.info(response)
+
+            block_reason = self._get_block_reason(response)
+            if block_reason:
+                attrs_blocked = {**base_attrs, "outcome": "blocked"}
+                self.telemetry.metrics.llm_latency.record(timer(), attrs_blocked)
+                self.telemetry.metrics.llm_requests.add(1, attrs_blocked)
+                raise BlockedException(reason=str(block_reason))
+
+            attrs_success = {**base_attrs, "outcome": "success"}
+            self.telemetry.metrics.llm_latency.record(timer(), attrs_success)
+            self.telemetry.metrics.llm_requests.add(1, attrs_success)
+
             self._track_completion_metrics(response, method_name="generate_content")
             
             # Return parsed object if schema was provided, otherwise return text
@@ -123,3 +143,10 @@ class GeminiClient(AIClient):
                 return response.parsed
             else:
                 return response.text
+
+    def _get_block_reason(self, response: GenerateContentResponse):
+        """Return the Gemini block reason if the response was rejected."""
+        prompt_feedback = getattr(response, "prompt_feedback", None)
+        if prompt_feedback is None:
+            return None
+        return getattr(prompt_feedback, "block_reason", None)
