@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 from wisdom_generator import WisdomGenerator
 from conversation_graph import ConversationMessage
 from null_telemetry import NullTelemetry
+from schemas import WisdomResponse
 
 
 class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
@@ -36,7 +37,10 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
 
     async def test_generate_wisdom_calls_ai_client(self) -> None:
         """Test that generate_wisdom calls AI client with correct parameters."""
-        self.ai_client.generate_content.return_value = "Thus spoke the sage."
+        self.ai_client.generate_content.return_value = WisdomResponse(
+            wisdom="Thus spoke the sage.",
+            reason="Referenced ancient wisdom traditions to add gravitas"
+        )
         
         async def mock_conversation():
             return []
@@ -52,11 +56,15 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         call_args = self.ai_client.generate_content.call_args
         self.assertEqual(call_args.kwargs["temperature"], 0.7)
         self.assertEqual(call_args.kwargs["message"], "Hello world")
+        self.assertEqual(call_args.kwargs["response_schema"], WisdomResponse)
         self.assertIn("prompt", call_args.kwargs)
 
     async def test_generate_wisdom_with_conversation_context(self) -> None:
         """Test that conversation context is included in the prompt."""
-        self.ai_client.generate_content.return_value = "Wisdom from context."
+        self.ai_client.generate_content.return_value = WisdomResponse(
+            wisdom="Wisdom from context.",
+            reason="Drew on the conversation thread about messaging"
+        )
         
         async def mock_conversation():
             return [
@@ -94,7 +102,10 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         """Test that language detection is called and used in prompt."""
         self.language_detector.detect_language.return_value = "ru"
         self.language_detector.get_language_name.return_value = "Russian"
-        self.ai_client.generate_content.return_value = "Мудрость"
+        self.ai_client.generate_content.return_value = WisdomResponse(
+            wisdom="Мудрость",
+            reason="Responded in Russian as detected"
+        )
         
         async def mock_conversation():
             return []
@@ -115,10 +126,13 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
 
     async def test_generate_wisdom_processes_response(self) -> None:
         """Test that response summarizer is called."""
-        long_response = "A" * 3000
+        long_wisdom = "A" * 3000
         summarized = "A" * 1000
         
-        self.ai_client.generate_content.return_value = long_response
+        self.ai_client.generate_content.return_value = WisdomResponse(
+            wisdom=long_wisdom,
+            reason="Generated very long wisdom for testing"
+        )
         self.response_summarizer.process_response = AsyncMock(return_value=summarized)
         
         async def mock_conversation():
@@ -131,11 +145,14 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         )
         
         self.assertEqual(result, summarized)
-        self.response_summarizer.process_response.assert_called_once_with(long_response)
+        self.response_summarizer.process_response.assert_called_once_with(long_wisdom)
 
     async def test_generate_wisdom_replaces_user_mentions(self) -> None:
         """Test that user mentions are replaced with display names."""
-        self.ai_client.generate_content.return_value = "Wisdom"
+        self.ai_client.generate_content.return_value = WisdomResponse(
+            wisdom="Wisdom",
+            reason="Simple wisdom response"
+        )
         
         async def mock_conversation():
             return [

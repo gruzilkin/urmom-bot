@@ -76,3 +76,14 @@ class UserSummary(BaseModel):
 class DailySummaries(BaseModel):
     """Schema for batch daily summary generation."""
     summaries: list[UserSummary] = Field(description="List of daily summaries for all active users")
+
+
+class WisdomResponse(BaseModel):
+    """Schema for wisdom generation response."""
+
+    wisdom: str = Field(
+        description="The philosophical wisdom response to deliver to the user"
+    )
+    reason: str = Field(
+        description="Explanation of the creative approach, references used, and why this wisdom fits the context"
+    )

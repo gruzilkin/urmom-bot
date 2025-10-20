@@ -9,6 +9,7 @@ from open_telemetry import Telemetry
 from language_detector import LanguageDetector
 from user_resolver import UserResolver
 from response_summarizer import ResponseSummarizer
+from schemas import WisdomResponse
 
 logger = logging.getLogger(__name__)
 
@@ -131,10 +132,19 @@ Language:
                 message=trigger_message_content,
                 prompt=prompt,
                 temperature=0.7,
+                response_schema=WisdomResponse,
             )
 
-            logger.info(f"Generated wisdom: {response}")
+            if response is None:
+                return None
 
-            processed_response = await self._response_summarizer.process_response(response)
+            logger.info(
+                f"Generated wisdom: {response.wisdom}\nReason: {response.reason}"
+            )
+            span.set_attribute("reason", response.reason)
 
-            return processed_response
+            processed_wisdom = await self._response_summarizer.process_response(
+                response.wisdom
+            )
+
+            return processed_wisdom
