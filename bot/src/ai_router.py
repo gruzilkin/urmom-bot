@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Union, Tuple
 from ai_client import AIClient
@@ -126,24 +127,25 @@ NOTSURE: When uncertain about routing decision
         """Route a message using 2-tier approach: route selection, language detection, then parameter extraction."""
         async with self.telemetry.async_create_span("route_request") as span:
             span.set_attribute("message", message)
-            
-            # Tier 1: Route selection
+
+            # Tier 1: Route selection and language detection (run in parallel)
             route_prompt = self._build_route_selection_prompt()
-            
-            route_selection = await self.ai_client.generate_content(
-                message=message,
-                prompt=route_prompt,
-                temperature=0.0,  # Deterministic route selection
-                response_schema=RouteSelection
+
+            route_selection, language_code = await asyncio.gather(
+                self.ai_client.generate_content(
+                    message=message,
+                    prompt=route_prompt,
+                    temperature=0.0,  # Deterministic route selection
+                    response_schema=RouteSelection
+                ),
+                self.language_detector.detect_language(message)
             )
-            
+
             logger.info(f"Final route selection: {route_selection.route}, Reason: {route_selection.reason}")
-            
+
             span.set_attribute("route", route_selection.route)
             span.set_attribute("reason", route_selection.reason)
 
-            # Language detection (between route selection and parameter extraction)
-            language_code = await self.language_detector.detect_language(message)
             language_name = await self.language_detector.get_language_name(language_code)
             span.set_attribute("language_code", language_code)
             span.set_attribute("language_name", language_name)
