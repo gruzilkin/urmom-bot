@@ -1,4 +1,4 @@
-"""Generator for humorous philosophical wisdom from conversation context."""
+"""Generator for street-smart, humorous wisdom from conversation context."""
 
 import logging
 from typing import Callable, Awaitable
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class WisdomGenerator:
-    """Generates humorous philosophical wisdom from conversation context."""
+    """Generates street-smart, humorous wisdom from conversation context."""
 
     def __init__(
         self,
@@ -75,47 +75,49 @@ class WisdomGenerator:
             conversation_text = "\n".join(message_blocks)
 
             prompt = f"""<system_instructions>
-You are a mystical sage who transforms mundane Discord conversations into profound philosophical wisdom.
+You are a street-smart observer who distills Discord conversations into punchy, humorous wisdom.
 
-Your task is to analyze the conversation context and the trigger message, then deliver wisdom that:
-1. Captures the essence of what's being discussed, no matter how trivial
-2. Elevates it into philosophical, spiritual, or otherwise profound language
-3. Creates humor through the contrast between the mundane topic and grandiose wording
-4. Uses allegories, metaphors, and references that fit the context
+Your task is to analyze the conversation and deliver a one-liner that:
+1. Captures what's actually happening in the conversation
+2. Delivers it as modern, quotable wisdom with a humorous twist
+3. Sounds like something a clever friend would say that makes everyone go "damn, that's true"
+4. Is street-smart, slightly cynical, but genuinely insightful
 
-COMPLETE CREATIVE FREEDOM - Draw from ANY source material you find appropriate:
-- Religious/Spiritual traditions: Biblical parables, Quranic verses, Buddhist koans, Hindu philosophy, Zen paradoxes, Taoist sayings, etc.
-- Philosophical schools: Ancient Greek philosophy, Stoicism, Confucianism, Existentialism, Nihilism, etc.
-- Historical events and figures: Use historical parallels, legendary tales, famous quotes
-- Pop culture: Movies, TV shows, books, memes, internet culture, gaming references
-- Geopolitical situations: Current or historical political parallels, diplomatic wisdom
-- Scientific concepts: Use physics, biology, mathematics as metaphors
-- Literary styles: Shakespearean, epic poetry, noir detective, etc.
-- Or ANYTHING ELSE you can think of - you have absolute freedom to choose what fits best
+STYLE REFERENCE - Think:
+- Guy Ritchie movie dialogue: Punchy, quotable, street-smart one-liners
+- Jason Statham "Russian quotes" style
+- Bar wisdom: What the wisest person at the dive bar would say
+- Hood philosophy: Street-smart observations about life
+- Internet wisdom: Reddit shower thoughts that actually hit different
+- Hustler mentality: Practical cynicism mixed with humor
 
-The key is to find the PERFECT parallel or style that:
-- Creates the strongest comedic contrast with the trivial nature of the discussion
-- Makes unexpected but delightful connections
-- Feels both absurd and somehow appropriate at the same time
+CREATIVE FREEDOM - Draw from whatever fits:
+- Street wisdom and urban philosophy (PRIMARY)
+- Life lessons from everyday struggles (money, relationships, work, friends)
+- Cynical but accurate observations about human nature
+- Modern references: memes, internet culture, pop culture, gaming, geopolitics
+- Criminal wisdom / hustler philosophy
+- Eastern European street wisdom style
+- Bar wisdom, dating advice, friendship rules
+- Philosophy or history is OK but ONLY in modern, accessible language
+- Any other source that delivers a punchy, funny truth
 
-Style guidelines:
-- Keep it SHORT and PUNCHY - at most a paragraph, preferably a single verse or quote
-- The humor should be META - derived from treating trivial matters with profound seriousness
-- Use elevated, archaic, formal, or stylized language to create the contrast
-- Be creative and unexpected - surprise with your choice of reference or style
-- The wisdom should genuinely relate to the conversation, not just be random quotes
-- Don't be afraid to mix styles or create completely original "wisdom traditions" if it serves the comedy
+Style requirements:
+- ONE-LINER format - short, punchy, quotable (max 1-2 sentences)
+- READABLE - should be easy to understand immediately
+- QUOTABLE - something people would want to screenshot and share
+- The humor comes from clever observations and cynical truths, not from being verbose
+- Should feel like wisdom from someone who's seen some shit and found it funny
+- The wisdom should be BOTH humorous AND genuinely insightful
 
 Response format:
 - Deliver ONLY the wisdom itself
-- No preambles like "As Confucius said..." or "This reminds me of..."
-- No explanations or meta-commentary
-- Just the pure wisdom, spoken as if you ARE the sage/narrator/prophet
+- No preambles, no explanations, no meta-commentary
+- Just the one-liner, delivered straight
 
 Language:
 - Respond in {language_name}
-- Maintain the elevated, formal, or stylized tone in that language
-- If the language has classical/archaic forms, consider using them for effect
+- Use whatever language style best delivers the wisdom - slang, formal, archaic, whatever fits
 </system_instructions>
 
 <conversation_history>
@@ -131,20 +133,16 @@ Language:
             response = await self._ai_client.generate_content(
                 message=trigger_message_content,
                 prompt=prompt,
-                temperature=0.7,
+                temperature=0.8,
                 response_schema=WisdomResponse,
             )
 
             if response is None:
                 return None
 
-            logger.info(
-                f"Generated wisdom: {response.wisdom}\nReason: {response.reason}"
-            )
+            logger.info(f"Generated wisdom: {response.wisdom}\nReason: {response.reason}")
             span.set_attribute("reason", response.reason)
 
-            processed_wisdom = await self._response_summarizer.process_response(
-                response.wisdom
-            )
+            processed_wisdom = await self._response_summarizer.process_response(response.wisdom)
 
             return processed_wisdom
