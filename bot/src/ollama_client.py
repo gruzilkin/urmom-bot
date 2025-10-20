@@ -5,16 +5,18 @@ Supports cloud models via api.ollama.com with native structured output,
 web search/grounding, and multimodal (vision) capabilities.
 """
 
+import base64
 import json
 import logging
 from typing import Any, List, Tuple, Type, TypeVar
 
 import httpx
 from ollama import AsyncClient
+from pydantic import BaseModel, ValidationError
+
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from opentelemetry.trace import SpanKind
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -145,8 +147,6 @@ class OllamaClient(AIClient):
             # Add images if provided (multimodal support)
             # Images must be base64-encoded and included in the message
             if image_data:
-                import base64
-
                 # Ollama expects images as base64-encoded strings
                 encoded_image = base64.b64encode(image_data).decode("utf-8")
                 user_message["images"] = [encoded_image]
@@ -179,7 +179,9 @@ class OllamaClient(AIClient):
                 )
 
             if enable_grounding:
-                logger.warning("Grounding requested but tool support is disabled for OllamaClient.")
+                logger.warning(
+                    "Grounding requested but tool support is disabled for OllamaClient."
+                )
 
             max_validation_retries = 2
             validation_retry = 0
@@ -235,7 +237,9 @@ class OllamaClient(AIClient):
 
                 if response_schema:
                     try:
-                        return self._parse_structured_response(response, response_schema)
+                        return self._parse_structured_response(
+                            response, response_schema
+                        )
                     except ValueError as error:
                         self.telemetry.metrics.structured_output_failures.add(
                             1,
@@ -312,8 +316,6 @@ class OllamaClient(AIClient):
             Validated Pydantic model instance
         """
         try:
-            import json
-
             content = response["message"]["content"]
 
             # Strip markdown code fences if present (some models like deepseek add them)
@@ -323,11 +325,10 @@ class OllamaClient(AIClient):
             response_data = json.loads(clean_content)
             parsed_result = response_schema.model_validate(response_data)
             return parsed_result
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValidationError, ValueError) as e:
             logger.error(f"Failed to parse structured response: {e}", exc_info=True)
             self.telemetry.metrics.structured_output_failures.add(
                 1, {"service": self.service, "model": self.model_name}
             )
-            raise ValueError(
-                f"Failed to parse response with schema {response_schema.__name__}: {content}"
-            )
+            # Preserve the original error message for retry feedback
+            raise ValueError(str(e)) from e

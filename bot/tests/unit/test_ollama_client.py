@@ -132,6 +132,47 @@ class TestOllamaClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(retry_messages[-2]["role"], "user")
         self.assertIn("Field 'answer' must be EXACTLY", retry_messages[-2]["content"])
 
+        # Print actual feedback message for manual inspection
+        print("\n" + "="*80)
+        print("FEEDBACK MESSAGE SENT TO AI MODEL (JSON decode error):")
+        print("="*80)
+        print(retry_messages[-2]["content"])
+        print("="*80)
+
+    async def test_validation_retry_with_pydantic_error(self) -> None:
+        """Test that Pydantic validation errors produce useful feedback."""
+        invalid_response = {
+            "message": {"role": "assistant", "content": '{"answer": "yes"}'},
+            "usage": {},
+        }
+        valid_response = {
+            "message": {"role": "assistant", "content": '{"answer": "YES"}'},
+            "usage": {},
+        }
+        self.mock_async_client.chat.side_effect = [
+            invalid_response,
+            valid_response,
+        ]
+
+        result = await self.client.generate_content(
+            message="Is Paris the capital?",
+            response_schema=YesNo,
+            temperature=0.0,
+        )
+
+        self.assertEqual(result.answer, "YES")
+        self.assertEqual(self.mock_async_client.chat.await_count, 2)
+        retry_messages = self.mock_async_client.chat.await_args_list[1].kwargs[
+            "messages"
+        ]
+
+        # Print actual feedback message for manual inspection
+        print("\n" + "="*80)
+        print("FEEDBACK MESSAGE SENT TO AI MODEL (Pydantic validation error):")
+        print("="*80)
+        print(retry_messages[-2]["content"])
+        print("="*80)
+
     def test_strip_markdown_code_fence(self) -> None:
         content = """```json
 {"answer": "YES"}
@@ -141,7 +182,5 @@ class TestOllamaClient(unittest.IsolatedAsyncioTestCase):
 
     def test_parse_structured_response_failure(self) -> None:
         response = {"message": {"content": "not json"}}
-        with self.assertRaisesRegex(
-            ValueError, "Failed to parse response with schema YesNo"
-        ):
+        with self.assertRaisesRegex(ValueError, "Expecting value"):
             self.client._parse_structured_response(response, YesNo)

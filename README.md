@@ -8,9 +8,11 @@ A Discord bot that responds with "ur mom" jokes when messages are reacted to wit
 - **Celebrity Impersonation**: Generates responses as famous people with their unique style and personality
 - **AI-Powered Jokes**: Creates "ur mom" jokes and culturally-themed humor based on reactions
 - **Multi-Language Support**: Works in any language (English, Russian, French, Japanese, etc.)
-- **Multiple AI Providers**: Uses different AI models for different tasks
+- **Multiple AI Providers**: Uses different AI models for different tasks with automatic fallback
   - Gemini Flash: General questions and information retrieval
+  - Gemma: Under-the-hood operations (routing, language detection, fact extraction)
   - Grok: Creative tasks, jokes, and celebrity impersonation
+  - Ollama Cloud: Assists Gemma with under-the-hood tasks (Kimi, GPT-OSS, Qwen3-VL)
 
 ## Adaptive Learning
 The bot features an adaptive learning system that improves its joke generation over time:
@@ -43,12 +45,16 @@ GEMINI_GEMMA_MODEL=gemma-3-27b-it        # Gemma model name
 # Grok Configuration (Required)
 GROK_API_KEY=your_grok_api_key            # Get from xAI platform
 GROK_MODEL=grok-3-mini                    # Grok model name
+
+# Ollama Cloud Configuration (Required)
+OLLAMA_API_KEY=your_ollama_api_key        # Get from Ollama Cloud
 ```
 
 ### Where to get the keys:
 - Discord token: [Discord Developer Portal](https://discord.com/developers/applications)
 - Gemini API key: [Google AI Studio](https://aistudio.google.com)
 - Grok API key: [xAI Platform](https://console.x.ai/)
+- Ollama API key: [Ollama Cloud](https://ollama.com) - Sign up and create an API key
 
 **Note**: All AI provider keys are required for full functionality.
 
