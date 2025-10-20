@@ -1,17 +1,12 @@
 import base64
 import unittest
-from typing import Literal
 from unittest.mock import AsyncMock, patch
 
 import httpx
-from pydantic import BaseModel
 
 from null_telemetry import NullTelemetry
 from ollama_client import OllamaClient
-
-
-class YesNoSchema(BaseModel):
-    answer: Literal["YES", "NO"]
+from schemas import YesNo
 
 
 class TestOllamaClientInitialization(unittest.TestCase):
@@ -100,13 +95,13 @@ class TestOllamaClient(unittest.IsolatedAsyncioTestCase):
         result = await self.client.generate_content(
             message="Is Paris the capital of France?",
             prompt="You are helpful.",
-            response_schema=YesNoSchema,
+            response_schema=YesNo,
         )
 
         self.assertEqual(result.answer, "YES")
         called_kwargs = self.mock_async_client.chat.await_args.kwargs
         self.assertIn("format", called_kwargs)
-        self.assertEqual(called_kwargs["format"], YesNoSchema.model_json_schema())
+        self.assertEqual(called_kwargs["format"], YesNo.model_json_schema())
 
     async def test_validation_retry_appends_error_message(self) -> None:
         invalid_response = {
@@ -124,17 +119,18 @@ class TestOllamaClient(unittest.IsolatedAsyncioTestCase):
 
         result = await self.client.generate_content(
             message="Question?",
-            response_schema=YesNoSchema,
+            response_schema=YesNo,
             temperature=0.0,
         )
 
         self.assertEqual(result.answer, "YES")
         self.assertEqual(self.mock_async_client.chat.await_count, 2)
-        retry_messages = self.mock_async_client.chat.await_args_list[1].kwargs["messages"]
+        retry_messages = self.mock_async_client.chat.await_args_list[1].kwargs[
+            "messages"
+        ]
         self.assertEqual(retry_messages[-3], invalid_response["message"])
         self.assertEqual(retry_messages[-2]["role"], "user")
         self.assertIn("Field 'answer' must be EXACTLY", retry_messages[-2]["content"])
-
 
     def test_strip_markdown_code_fence(self) -> None:
         content = """```json
@@ -146,6 +142,6 @@ class TestOllamaClient(unittest.IsolatedAsyncioTestCase):
     def test_parse_structured_response_failure(self) -> None:
         response = {"message": {"content": "not json"}}
         with self.assertRaisesRegex(
-            ValueError, "Failed to parse response with schema YesNoSchema"
+            ValueError, "Failed to parse response with schema YesNo"
         ):
-            self.client._parse_structured_response(response, YesNoSchema)
+            self.client._parse_structured_response(response, YesNo)
