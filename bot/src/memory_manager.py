@@ -178,26 +178,27 @@ class MemoryManager:
         async with self._telemetry.async_create_span("daily_summary") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
-            
+
+            outcome = "success"
+
             # Determine if this is current day or historical
             current_date = datetime.now(timezone.utc).date()
             is_current_day = for_date == current_date
-            
+
             if is_current_day:
                 # Current day: Use existing TTL cache behavior
                 cache_key = (guild_id, for_date)
-                
+
                 # Check cache first
                 if cache_key in self._current_day_batch_cache:
                     span.set_attribute("cache_hit", True)
                     result = self._current_day_batch_cache[cache_key]
-                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": outcome})
                     return result
-                
+
                 span.set_attribute("cache_hit", False)
-                
+
                 # Generate batch summaries and cache the result
-                outcome = "success"
                 try:
                     batch_summaries = await self._create_daily_summaries(guild_id, for_date)
                 except BlockedException as blocked:
@@ -225,25 +226,26 @@ class MemoryManager:
                 return batch_summaries
             else:
                 # Historical day: Database-first approach (caching handled by Store)
-                
+
                 # Check if any messages exist for this date
                 has_messages = await self._store.has_chat_messages_for_date(guild_id, for_date)
                 if not has_messages:
                     span.set_attribute("has_messages", False)
                     empty_dict: dict[int, str] = {}
-                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "outcome": outcome})
                     return empty_dict
-                
+
                 span.set_attribute("has_messages", True)
-                
+
                 # Check database for existing summaries (Store handles caching)
                 db_summaries = await self._store.get_daily_summaries(guild_id, for_date)
                 if db_summaries:
-                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
+                    span.set_attribute("cache_hit", True)
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": outcome})
                     return db_summaries
-                
+
+                span.set_attribute("cache_hit", False)
                 # Messages exist but no summaries = needs processing
-                outcome = "success"
                 try:
                     batch_summaries = await self._create_daily_summaries(guild_id, for_date)
                 except BlockedException as blocked:
