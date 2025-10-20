@@ -47,6 +47,8 @@ Free-tier AI services are inherently fragile, so every feature needs a clear fal
    Use qwen3-vl (fail fast, required for vision) ➝ gemma (60s retry with jitter).
 10. **Joke generator & famous person generator**
     Joke writing: grok with 3-attempt retry policy. Joke classification: kimi (fail fast) ➝ grok (3-attempt retry). Famous person generator continues to use grok with retry.
+11. **Wisdom generator**
+    Use shuffled composite: CompositeAIClient with shuffle=True containing [grok (3-attempt retry), kimi (fail fast)] to give both models equal opportunity rather than treating one as fallback.
 
 **Metrics**
 - Each underlying client already reports success and error counters, so the composite client does not emit additional metrics—surface the original exceptions to preserve that visibility.

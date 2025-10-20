@@ -171,6 +171,57 @@ class TestCompositeAIClient(unittest.IsolatedAsyncioTestCase):
         self.client_a.generate_content.assert_awaited_once()
         self.client_b.generate_content.assert_awaited_once()
 
+    async def test_shuffle_false_maintains_order(self) -> None:
+        """With shuffle=False, clients should always be tried in original order."""
+        self.client_a.generate_content.side_effect = RuntimeError("boom")
+        self.client_b.generate_content.return_value = "beta"
+
+        composite = CompositeAIClient(
+            [self.client_a, self.client_b], telemetry=self.telemetry, shuffle=False
+        )
+
+        # Run multiple times to ensure order is consistent
+        for _ in range(5):
+            result = await composite.generate_content(message="hi")
+            self.assertEqual(result, "beta")
+            # Client A should always be tried first
+            self.assertEqual(self.client_a.generate_content.await_count, _ + 1)
+            self.assertEqual(self.client_b.generate_content.await_count, _ + 1)
+
+    @patch("random.shuffle")
+    async def test_shuffle_true_randomizes_order(self, mock_shuffle: Mock) -> None:
+        """With shuffle=True, clients should be randomized before trying."""
+        self.client_a.generate_content.return_value = "alpha"
+
+        composite = CompositeAIClient(
+            [self.client_a, self.client_b], telemetry=self.telemetry, shuffle=True
+        )
+
+        result = await composite.generate_content(message="hi")
+
+        # Shuffle should have been called once
+        mock_shuffle.assert_called_once()
+        # Result should still be returned correctly
+        self.assertEqual(result, "alpha")
+
+    async def test_shuffle_doesnt_break_fallback(self) -> None:
+        """Shuffling should not break fallback logic."""
+        client_c = Mock(spec=AIClient)
+        client_c.generate_content = AsyncMock(side_effect=RuntimeError("boom"))
+
+        self.client_a.generate_content.side_effect = RuntimeError("boom")
+        self.client_b.generate_content.return_value = "success"
+
+        composite = CompositeAIClient(
+            [self.client_a, client_c, self.client_b],
+            telemetry=self.telemetry,
+            shuffle=True,
+        )
+
+        # Even with shuffling, one of the clients should succeed
+        result = await composite.generate_content(message="hi")
+        self.assertEqual(result, "success")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from typing import Iterable, Callable, Any
 
 import backoff
@@ -87,16 +88,16 @@ class CompositeAIClient(AIClient):
         clients: Iterable[AIClient],
         telemetry: Telemetry,
         is_bad_response: Callable[[Any], bool] | None = None,
+        shuffle: bool = False,
     ) -> None:
         clients_list = list(clients)
         if not clients_list:
-            raise ValueError(
-                "CompositeAIClient requires at least one underlying client"
-            )
+            raise ValueError("CompositeAIClient requires at least one underlying client")
 
         self._clients = tuple(clients_list)
         self._is_bad_response = is_bad_response or (lambda _: False)
         self._telemetry = telemetry
+        self._shuffle = shuffle
 
     async def generate_content(
         self,
@@ -111,8 +112,15 @@ class CompositeAIClient(AIClient):
     ):
         last_error: Exception | None = None
 
-        async with self._telemetry.async_create_span("composite_generate_content"):
-            for client in self._clients:
+        clients_to_try = list(self._clients)
+        if self._shuffle:
+            random.shuffle(clients_to_try)
+
+        async with self._telemetry.async_create_span("composite_generate_content") as span:
+            client_order = [client.__class__.__name__ for client in clients_to_try]
+            span.set_attribute("client_order", ",".join(client_order))
+
+            for client in clients_to_try:
                 client_label = client.__class__.__name__
                 try:
                     response = await client.generate_content(
@@ -134,9 +142,7 @@ class CompositeAIClient(AIClient):
 
                 except Exception as exc:
                     last_error = exc
-                    logger.warning(
-                        "LLM client %s failed: %s", client_label, exc, exc_info=True
-                    )
+                    logger.warning("LLM client %s failed: %s", client_label, exc, exc_info=True)
 
             raise RuntimeError("All fallback clients failed") from last_error
 

@@ -19,6 +19,7 @@ from config import AppConfig
 from ai_client_wrappers import CompositeAIClient, RetryAIClient
 from ai_client import AIClient
 from ollama_client import OllamaClient
+from wisdom_generator import WisdomGenerator
 
 
 class Container:
@@ -88,17 +89,20 @@ class Container:
         )
 
         # Apply retry policy for rate-limited services (Gemma/Grok only)
-        self.retrying_gemma = RetryAIClient(
-            self.gemma, telemetry=self.telemetry, max_time=60, jitter=True
-        )
-        self.retrying_grok = RetryAIClient(
-            self.grok, telemetry=self.telemetry, max_tries=3
-        )
+        self.retrying_gemma = RetryAIClient(self.gemma, telemetry=self.telemetry, max_time=60, jitter=True)
+        self.retrying_grok = RetryAIClient(self.grok, telemetry=self.telemetry, max_tries=3)
 
         # Composite for components needing gemma → grok fallback
         self.gemma_with_grok_fallback = CompositeAIClient(
             [self.retrying_gemma, self.retrying_grok],
             telemetry=self.telemetry,
+        )
+
+        # Shuffled composite for wisdom - gives both clients equal chance
+        self.shuffled_grok_kimi = CompositeAIClient(
+            [self.retrying_grok, self.ollama_kimi],
+            telemetry=self.telemetry,
+            shuffle=True,
         )
 
         self.kimi_with_gemma_fallback = CompositeAIClient(
@@ -122,9 +126,7 @@ class Container:
         )
 
         # Initialize language detector early since it's needed by multiple components
-        self.language_detector = LanguageDetector(
-            ai_client=self.kimi_with_gemma_fallback, telemetry=self.telemetry
-        )
+        self.language_detector = LanguageDetector(ai_client=self.kimi_with_gemma_fallback, telemetry=self.telemetry)
 
         self.attachment_processor = AttachmentProcessor(
             ai_client=self.qwen_with_gemma_fallback,
@@ -198,8 +200,14 @@ class Container:
             self.fact_handler,
         )
 
-        self.country_resolver = CountryResolver(
-            self.gemma_with_grok_fallback, self.telemetry
+        self.country_resolver = CountryResolver(self.gemma_with_grok_fallback, self.telemetry)
+
+        self.wisdom_generator = WisdomGenerator(
+            ai_client=self.shuffled_grok_kimi,
+            language_detector=self.language_detector,
+            user_resolver=self.user_resolver,
+            response_summarizer=self.response_summarizer,
+            telemetry=self.telemetry,
         )
 
     def _build_general_ai_client(self, preferred_backend: str) -> AIClient:
@@ -215,9 +223,7 @@ class Container:
             raise ValueError(f"Unknown ai_backend: {preferred_backend}")
 
         fallback_order = ["gemini_flash", "claude", "grok"]
-        ordered_labels = [preferred_backend] + [
-            label for label in fallback_order if label != preferred_backend
-        ]
+        ordered_labels = [preferred_backend] + [label for label in fallback_order if label != preferred_backend]
 
         chain = [client_map[label] for label in ordered_labels]
 
