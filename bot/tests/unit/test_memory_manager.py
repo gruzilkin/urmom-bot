@@ -4,7 +4,7 @@ from datetime import datetime, date, timezone, timedelta
 import asyncio
 
 from memory_manager import MemoryManager
-from ai_client import AIClient
+from ai_client import AIClient, BlockedException
 from message_node import MessageNode
 from schemas import MemoryContext, DailySummaries, UserSummary
 from store import Store
@@ -549,6 +549,24 @@ class TestMemoryManagerBatchProcessing(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {})
         self.mock_gemini_client.generate_content.assert_not_called()
         self.mock_gemma_client.generate_content.assert_not_called()
+
+    async def test_daily_summary_blocked_returns_empty(self):
+        """Daily summary should return empty dict when AI blocks the request."""
+        historical_date = date(1905, 3, 3)
+        blocked_reason = "PROHIBITED_CONTENT"
+
+        # Gemini client refuses to generate content
+        self.mock_gemini_client.generate_content = AsyncMock(
+            side_effect=BlockedException(reason=blocked_reason)
+        )
+
+        result = await self.memory_manager._daily_summary(self.physics_guild_id, historical_date)
+
+        self.assertEqual(result, {}, "Blocked summaries should return empty dict")
+        self.mock_gemini_client.generate_content.assert_awaited_once()
+        # Store should persist the empty result to avoid retries
+        stored = await self.test_store.get_daily_summaries(self.physics_guild_id, historical_date)
+        self.assertEqual(stored, {})
 
 class TestMemoryManagerExceptionIsolation(unittest.IsolatedAsyncioTestCase):
     """Test exception isolation and graceful degradation in concurrent processing."""

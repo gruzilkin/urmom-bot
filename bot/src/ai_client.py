@@ -1,6 +1,15 @@
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Type, TypeVar
+
 from pydantic import BaseModel
+
+
+class BlockedException(RuntimeError):
+    """Raised when an AI provider refuses to generate content."""
+
+    def __init__(self, *, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 T = TypeVar("T", bound=BaseModel)
 

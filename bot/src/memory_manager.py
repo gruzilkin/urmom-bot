@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, date, timezone
 
 from cachetools import LRUCache, TTLCache
 
-from ai_client import AIClient
+from ai_client import AIClient, BlockedException
 from message_node import MessageNode
 from open_telemetry import Telemetry
 from schemas import MemoryContext, DailySummaries
@@ -191,15 +191,37 @@ class MemoryManager:
                 if cache_key in self._current_day_batch_cache:
                     span.set_attribute("cache_hit", True)
                     result = self._current_day_batch_cache[cache_key]
-                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit"})
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
                     return result
                 
                 span.set_attribute("cache_hit", False)
                 
                 # Generate batch summaries and cache the result
-                batch_summaries = await self._create_daily_summaries(guild_id, for_date)
+                outcome = "success"
+                try:
+                    batch_summaries = await self._create_daily_summaries(guild_id, for_date)
+                except BlockedException as blocked:
+                    outcome = "blocked"
+                    span.record_exception(blocked)
+                    span.set_attribute("blocked_reason", blocked.reason)
+                    logger.warning(
+                        "Daily summary blocked for guild %s on %s (current day): %s",
+                        guild_id,
+                        for_date,
+                        blocked.reason,
+                    )
+                    batch_summaries = {}
+                self._telemetry.metrics.daily_summary_jobs.add(
+                    1,
+                    {
+                        "guild_id": str(guild_id),
+                        "cache_outcome": "miss",
+                        "outcome": outcome,
+                    },
+                )
+
+                # Cache result (success or blocked) and return
                 self._current_day_batch_cache[cache_key] = batch_summaries
-                self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "miss"})
                 return batch_summaries
             else:
                 # Historical day: Database-first approach (caching handled by Store)
@@ -209,7 +231,7 @@ class MemoryManager:
                 if not has_messages:
                     span.set_attribute("has_messages", False)
                     empty_dict: dict[int, str] = {}
-                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit"})
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
                     return empty_dict
                 
                 span.set_attribute("has_messages", True)
@@ -217,15 +239,35 @@ class MemoryManager:
                 # Check database for existing summaries (Store handles caching)
                 db_summaries = await self._store.get_daily_summaries(guild_id, for_date)
                 if db_summaries:
-                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit"})
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"})
                     return db_summaries
                 
                 # Messages exist but no summaries = needs processing
-                batch_summaries = await self._create_daily_summaries(guild_id, for_date)
-                
-                # Save to database (Store handles caching)
+                outcome = "success"
+                try:
+                    batch_summaries = await self._create_daily_summaries(guild_id, for_date)
+                except BlockedException as blocked:
+                    outcome = "blocked"
+                    span.record_exception(blocked)
+                    span.set_attribute("blocked_reason", blocked.reason)
+                    logger.warning(
+                        "Daily summary blocked for guild %s on %s: %s",
+                        guild_id,
+                        for_date,
+                        blocked.reason,
+                    )
+                    batch_summaries = {}
+
+                self._telemetry.metrics.daily_summary_jobs.add(
+                    1,
+                    {
+                        "guild_id": str(guild_id),
+                        "cache_outcome": "miss",
+                        "outcome": outcome,
+                    },
+                )
+
                 await self._store.save_daily_summaries(guild_id, for_date, batch_summaries)
-                self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "cache_outcome": "miss"})
                 return batch_summaries
 
 

@@ -106,6 +106,11 @@ class Container:
             telemetry=self.telemetry,
         )
 
+        self.flash_with_kimi_fallback = CompositeAIClient(
+            [self.gemini_flash, self.ollama_kimi],
+            telemetry=self.telemetry,
+        )
+
         self.qwen_with_gemma_fallback = CompositeAIClient(
             [self.ollama_qwen_vl, self.retrying_gemma],
             telemetry=self.telemetry,
@@ -163,7 +168,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            gemini_client=self.gemini_flash,
+            gemini_client=self.flash_with_kimi_fallback,
             gemma_client=self.kimi_with_gemma_fallback,
             user_resolver=self.user_resolver,
         )
