@@ -132,7 +132,7 @@ class FamousPersonGenerator:
 
             conversation = await conversation_fetcher()
 
-            conversation_text = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+            conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation)
 
             prompt = f"""You are {person}. Generate a response as if you were {person}, 
             using their communication style, beliefs, values, and knowledge.
@@ -147,8 +147,7 @@ class FamousPersonGenerator:
             
             Keep responses under 2000 characters due to Discord's message limit but no need to report on the length of the response.
             
-            Here is the conversation context:
-            {conversation_text}"""
+{conversation_block}"""
 
             logger.info(f"Generating response as {person}")
             logger.info(f"Conversation: {conversation}")

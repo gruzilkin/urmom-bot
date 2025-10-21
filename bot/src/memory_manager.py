@@ -394,14 +394,14 @@ class MemoryManager:
             return merged_context
 
     async def build_memory_prompt(self, guild_id: int, user_ids: set[int] | list[int]) -> str:
-        """Build formatted memory blocks for LLM prompts.
+        """Build formatted memory blocks for LLM prompts with outer tags.
 
         Args:
             guild_id: Discord guild ID for context resolution
             user_ids: Set or list of user IDs to fetch memories for
 
         Returns:
-            Formatted XML memory blocks ready for inclusion in prompts, or empty string if no memories
+            Complete XML memories block (<memories>...</memories>), or empty string if no memories
         """
         if not user_ids:
             return ""
@@ -426,9 +426,11 @@ class MemoryManager:
 </memory>"""
                     memory_blocks.append(memory_block)
 
-            if memory_blocks:
-                return "\n".join(memory_blocks)
-            return ""
+            if not memory_blocks:
+                return ""
+
+            memories_xml = "\n".join(memory_blocks)
+            return f"<memories>\n{memories_xml}\n</memories>"
 
     async def ingest_message(self, guild_id: int, message: MessageNode) -> None:
         await self._store.add_chat_message(

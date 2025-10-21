@@ -124,9 +124,9 @@ class GeneralQueryGenerator:
             conversation = await conversation_fetcher()
 
             user_ids = self._extract_unique_user_ids(conversation)
-            memories = await self.memory_manager.build_memory_prompt(guild_id, user_ids)
+            memories_block = await self.memory_manager.build_memory_prompt(guild_id, user_ids)
 
-            conversation_text = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+            conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation)
 
             prompt = f"""<system_instructions>
 You are a Discord bot participating in an ongoing Discord conversation. Your role is to respond naturally within the conversational context while bringing external knowledge, fresh perspectives, and independent analysis to the discussion.
@@ -189,13 +189,9 @@ Memory Usage:
 - Be honest about the limitations of your memories - if you don't have information about someone or something, acknowledge it rather than guessing
 </system_instructions>
 
-<memories>
-{memories.strip() if memories else "No memories about users in this conversation."}
-</memories>
+{memories_block}
 
-<conversation_history>
-{conversation_text}
-</conversation_history>"""
+{conversation_block}"""
 
             logger.info(f"Generating response using {params.ai_backend}")
             logger.info(f"User message: {params.cleaned_query}")

@@ -11,15 +11,19 @@ class ConversationFormatter:
         self._user_resolver = user_resolver
 
     async def format_to_xml(self, guild_id: int, conversation: list[ConversationMessage]) -> str:
-        """Format conversation messages into XML blocks.
+        """Format conversation messages into XML blocks with outer tags.
 
         Args:
             guild_id: Discord guild ID for user context resolution
             conversation: List of conversation messages to format
 
         Returns:
-            Formatted XML conversation history ready for inclusion in prompts
+            Complete XML conversation history block (<conversation_history>...</conversation_history>),
+            or empty string if no messages
         """
+        if not conversation:
+            return ""
+
         message_blocks = []
         for msg in conversation:
             author_name = await self._user_resolver.get_display_name(guild_id, msg.author_id)
@@ -35,4 +39,5 @@ class ConversationFormatter:
 </message>"""
             message_blocks.append(message_block)
 
-        return "\n".join(message_blocks)
+        messages_xml = "\n".join(message_blocks)
+        return f"<conversation_history>\n{messages_xml}\n</conversation_history>"

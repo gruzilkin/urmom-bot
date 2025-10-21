@@ -19,7 +19,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         self.language_detector.get_language_name = AsyncMock(return_value="English")
 
         self.conversation_formatter = Mock()
-        self.conversation_formatter.format_to_xml = AsyncMock(return_value="<message>Mock conversation</message>")
+        self.conversation_formatter.format_to_xml = AsyncMock(
+            return_value="<conversation_history>\n<message>Mock conversation</message>\n</conversation_history>"
+        )
 
         self.response_summarizer = Mock()
         self.response_summarizer.process_response = AsyncMock(side_effect=lambda x: x)
@@ -66,7 +68,7 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         """Test that conversation context is included in the prompt."""
         # Update mock to return actual formatted conversation
         self.conversation_formatter.format_to_xml = AsyncMock(
-            return_value="<message><id>1</id><content>First message</content></message>\n<message><id>2</id><content>Second message</content></message>"
+            return_value="<conversation_history>\n<message><id>1</id><content>First message</content></message>\n<message><id>2</id><content>Second message</content></message>\n</conversation_history>"
         )
         self.ai_client.generate_content.return_value = WisdomResponse(
             answer="Wisdom from context.", reason="Drew on the conversation thread about messaging"
@@ -192,7 +194,7 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
 
     async def test_generate_wisdom_includes_memories(self) -> None:
         """Test that memories are fetched and included in the prompt."""
-        memory_block = "<memory><name>User</name><facts>Lives in Tokyo</facts></memory>"
+        memory_block = "<memories>\n<memory><name>User</name><facts>Lives in Tokyo</facts></memory>\n</memories>"
         self.memory_manager.build_memory_prompt = AsyncMock(return_value=memory_block)
         self.ai_client.generate_content.return_value = WisdomResponse(
             answer="Wisdom", reason="test"

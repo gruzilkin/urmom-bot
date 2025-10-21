@@ -37,11 +37,13 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_store.get_user_facts = AsyncMock(return_value=None)
 
         self.mock_conversation_formatter = Mock()
-        self.mock_conversation_formatter.format_to_xml = AsyncMock(return_value="<message>Mock conversation</message>")
+        self.mock_conversation_formatter.format_to_xml = AsyncMock(
+            return_value="<conversation_history>\n<message>Mock conversation</message>\n</conversation_history>"
+        )
 
         self.mock_memory_manager = Mock()
-        self.mock_memory_manager.get_memories = AsyncMock(return_value={})  # Default to no memories (empty dict)
-        self.mock_memory_manager.build_memory_prompt = AsyncMock(return_value="")  # Default to no memory prompt
+        self.mock_memory_manager.get_memories = AsyncMock(return_value={})
+        self.mock_memory_manager.build_memory_prompt = AsyncMock(return_value="")
 
         # Mock bot user for tests
         self.mock_bot_user = Mock()

@@ -70,9 +70,9 @@ class WisdomGenerator:
             span.set_attribute("conversation_length", len(conversation))
 
             user_ids = self._extract_unique_user_ids(conversation)
-            memories = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
+            memories_block = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
 
-            conversation_text = await self._conversation_formatter.format_to_xml(guild_id, conversation)
+            conversation_block = await self._conversation_formatter.format_to_xml(guild_id, conversation)
 
             prompt = f"""<system_instructions>
 You are a street-smart observer who distills Discord conversations into punchy, humorous wisdom.
@@ -122,16 +122,11 @@ Language:
 Personalization:
 - You have memories about some users in this conversation - use them to make the wisdom more personal and relevant
 - Reference their quirks, habits, or known facts when it adds to the humor or insight
-- Don't mention you have "memories" - just naturally weave in what you know about people
 </system_instructions>
 
-<memories>
-{memories.strip() if memories else "No memories about users in this conversation."}
-</memories>
+{memories_block}
 
-<conversation_history>
-{conversation_text}
-</conversation_history>
+{conversation_block}
 
 <trigger_message>
 {trigger_message_content}
