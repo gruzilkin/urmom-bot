@@ -532,6 +532,9 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
         guild_id=payload.guild_id,
     )
 
+    if wisdom is None:
+        return
+
     reply_message = await message.reply(wisdom)
 
     container.telemetry.metrics.wisdom_generated.add(1, {"guild_id": str(payload.guild_id)})

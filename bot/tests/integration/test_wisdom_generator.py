@@ -4,10 +4,10 @@ import os
 import unittest
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, Mock
 
 from dotenv import load_dotenv
 
+from ai_client import AIClient
 from conversation_graph import ConversationMessage
 from gemma_client import GemmaClient
 from grok_client import GrokClient
@@ -32,7 +32,7 @@ class WisdomClientProfile:
 class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
     """Integration tests for WisdomGenerator with real AI clients."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.telemetry = NullTelemetry()
         self.profiles: list[WisdomClientProfile] = []
 
@@ -71,9 +71,7 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
                     temperature=0.7,
                     telemetry=self.telemetry,
                 )
-                self.profiles.append(
-                    WisdomClientProfile(name="grok", client=grok_client)
-                )
+                self.profiles.append(WisdomClientProfile(name="grok", client=grok_client))
 
         ollama_api_key = os.getenv("OLLAMA_API_KEY")
         if ollama_api_key:
@@ -84,9 +82,7 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
                 telemetry=self.telemetry,
                 temperature=0.7,
             )
-            self.profiles.append(
-                WisdomClientProfile(name="ollama_kimi", client=kimi_client)
-            )
+            self.profiles.append(WisdomClientProfile(name="ollama_kimi", client=kimi_client))
 
         if not self.profiles:
             self.skipTest("No wisdom generator AI clients configured for integration tests")
@@ -96,7 +92,7 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.test_store = TestStore()
         self.mock_user_resolver = self.test_store.user_resolver
 
-    def _build_wisdom_generator(self, ai_client) -> WisdomGenerator:
+    def _build_wisdom_generator(self, ai_client: AIClient) -> WisdomGenerator:
         """Build a WisdomGenerator with the given AI client."""
         return WisdomGenerator(
             ai_client=ai_client,
@@ -106,16 +102,13 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             telemetry=self.telemetry,
         )
 
-    async def test_generate_wisdom_with_conversation_context(self):
+    async def test_generate_wisdom_with_conversation_context(self) -> None:
         """Test generating wisdom with realistic physicist conversation from TestStore."""
         start_date = datetime(1905, 3, 3, 9, 15, tzinfo=timezone.utc)
         end_date = datetime(1905, 3, 3, 9, 45, tzinfo=timezone.utc)
-        
-        physics_messages = [
-            msg for msg in self.test_store._messages
-            if start_date <= msg.timestamp <= end_date
-        ][:5]
-        
+
+        physics_messages = [msg for msg in self.test_store._messages if start_date <= msg.timestamp <= end_date][:5]
+
         conversation_messages = [
             ConversationMessage(
                 message_id=msg.message_id,
@@ -126,7 +119,7 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             )
             for msg in physics_messages
         ]
-        
+
         trigger_message = "God does not play dice with the universe"
 
         async def mock_conversation_fetcher():
@@ -145,16 +138,13 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertGreater(len(result), 0)
                 result_lower = result.lower()
                 context_mentioned = any(
-                    term in result_lower
-                    for term in ["quantum", "photoelectric", "einstein", "planck", "physics"]
+                    term in result_lower for term in ["quantum", "photoelectric", "einstein", "planck", "physics"]
                 )
                 self.assertTrue(
                     context_mentioned or len(result) > 50,
                     f"Wisdom should reference physics conversation context: {result}",
                 )
-                print(
-                    f"[{profile.name}] Generated wisdom from physicist chat: {result}"
-                )
+                print(f"[{profile.name}] Generated wisdom from physicist chat: {result}")
 
 
 if __name__ == "__main__":

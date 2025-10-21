@@ -36,7 +36,7 @@ class WisdomGenerator:
         trigger_message_content: str,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
         guild_id: int,
-    ) -> str:
+    ) -> str | None:
         """
         Generate wisdom based on a message and its conversation context.
 
