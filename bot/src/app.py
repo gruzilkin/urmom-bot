@@ -536,6 +536,16 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
 
     container.telemetry.metrics.wisdom_generated.add(1, {"guild_id": str(payload.guild_id)})
 
+    # Try to send to configured archive channel
+    if config.archive_channel_id:
+        try:
+            archive_channel = await bot.fetch_channel(config.archive_channel_id)
+            message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
+            archive_response = f"**Original message**: {message_link}\n{wisdom}"
+            await archive_channel.send(archive_response)
+        except Exception as e:
+            logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
+
     if config.delete_jokes_after_minutes > 0:
         asyncio.create_task(delete_message_later(reply_message, config.delete_jokes_after_minutes * 60))
 
