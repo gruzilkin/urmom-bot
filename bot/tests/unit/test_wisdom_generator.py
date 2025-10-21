@@ -18,20 +18,24 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         self.language_detector.detect_language = AsyncMock(return_value="en")
         self.language_detector.get_language_name = AsyncMock(return_value="English")
 
-        self.user_resolver = Mock()
-        self.user_resolver.get_display_name = AsyncMock(return_value="TestUser")
-        self.user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda content, guild_id: content)
+        self.conversation_formatter = Mock()
+        self.conversation_formatter.format_to_xml = AsyncMock(return_value="<message>Mock conversation</message>")
 
         self.response_summarizer = Mock()
         self.response_summarizer.process_response = AsyncMock(side_effect=lambda x: x)
+
+        self.memory_manager = Mock()
+        self.memory_manager.get_memories = AsyncMock(return_value={})
+        self.memory_manager.build_memory_prompt = AsyncMock(return_value="")
 
         self.telemetry = NullTelemetry()
 
         self.generator = WisdomGenerator(
             ai_client=self.ai_client,
             language_detector=self.language_detector,
-            user_resolver=self.user_resolver,
+            conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
+            memory_manager=self.memory_manager,
             telemetry=self.telemetry,
         )
 
@@ -60,6 +64,10 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
 
     async def test_generate_wisdom_with_conversation_context(self) -> None:
         """Test that conversation context is included in the prompt."""
+        # Update mock to return actual formatted conversation
+        self.conversation_formatter.format_to_xml = AsyncMock(
+            return_value="<message><id>1</id><content>First message</content></message>\n<message><id>2</id><content>Second message</content></message>"
+        )
         self.ai_client.generate_content.return_value = WisdomResponse(
             answer="Wisdom from context.", reason="Drew on the conversation thread about messaging"
         )
@@ -164,8 +172,7 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
             guild_id=123,
         )
 
-        self.user_resolver.replace_user_mentions_with_names.assert_called()
-        self.user_resolver.get_display_name.assert_called()
+        self.conversation_formatter.format_to_xml.assert_called_once()
 
     async def test_generate_wisdom_handles_none_response(self) -> None:
         """Test handling when AI returns None."""
@@ -183,6 +190,23 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(result)
 
+    async def test_generate_wisdom_includes_memories(self) -> None:
+        """Test that memories are fetched and included in the prompt."""
+        memory_block = "<memory><name>User</name><facts>Lives in Tokyo</facts></memory>"
+        self.memory_manager.build_memory_prompt = AsyncMock(return_value=memory_block)
+        self.ai_client.generate_content.return_value = WisdomResponse(
+            answer="Wisdom", reason="test"
+        )
+
+        await self.generator.generate_wisdom(
+            trigger_message_content="Test",
+            conversation_fetcher=AsyncMock(return_value=[]),
+            guild_id=123,
+        )
+
+        self.memory_manager.build_memory_prompt.assert_called_once()
+        prompt = self.ai_client.generate_content.call_args.kwargs["prompt"]
+        self.assertIn("Lives in Tokyo", prompt)
 
 if __name__ == "__main__":
     unittest.main()

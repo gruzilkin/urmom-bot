@@ -5,11 +5,11 @@ import nextcord
 
 from memory_manager import MemoryManager
 from conversation_graph import ConversationMessage
+from conversation_formatter import ConversationFormatter
 from open_telemetry import Telemetry
 from schemas import GeneralParams
 from response_summarizer import ResponseSummarizer
 from store import Store
-from user_resolver import UserResolver
 from ai_client import AIClient
 
 logger = logging.getLogger(__name__)
@@ -22,14 +22,14 @@ class GeneralQueryGenerator:
         response_summarizer: ResponseSummarizer,
         telemetry: Telemetry,
         store: Store,
-        user_resolver: UserResolver,
+        conversation_formatter: ConversationFormatter,
         memory_manager: MemoryManager,
     ) -> None:
         self._client_selector = client_selector
         self.response_summarizer = response_summarizer
         self.telemetry = telemetry
         self.store = store
-        self.user_resolver = user_resolver
+        self.conversation_formatter = conversation_formatter
         self.memory_manager = memory_manager
 
     def get_route_description(self) -> str:
@@ -45,12 +45,12 @@ class GeneralQueryGenerator:
         - Invalid: Simple reactions like "lol", "nice", "haha that's funny"
         """
 
-    
     def get_parameter_schema(self):
         """Return the Pydantic schema for parameter extraction."""
         from schemas import GeneralParams
+
         return GeneralParams
-    
+
     def get_parameter_extraction_prompt(self) -> str:
         """Return focused prompt for extracting general query parameters."""
         return """
@@ -90,82 +90,44 @@ class GeneralQueryGenerator:
         for msg in conversation:
             user_ids.add(msg.author_id)
             user_ids.update(msg.mentioned_user_ids)
-        # Remove system user ID (0) used for articles
-        user_ids.discard(0)
         return user_ids
 
-    async def _build_memories(self, guild_id: int, user_ids: Set[int]) -> str:
-        """Build memories section for LLM prompt using memory manager."""
-        if not user_ids:
-            return ""
-        
-        async with self.telemetry.async_create_span("build_memories") as span:
-            span.set_attribute("guild_id", guild_id)
-            span.set_attribute("user_count", len(user_ids))
-            span.set_attribute("user_ids", str(sorted(user_ids)))
-            
-            # Use new batch interface for concurrent processing
-            user_ids_list = list(user_ids)
-            memories_dict = await self.memory_manager.get_memories(guild_id, user_ids_list)
-            
-            memory_blocks = []
-            for user_id in user_ids_list:
-                memories = memories_dict.get(user_id)
-                if memories:
-                    display_name = await self.user_resolver.get_display_name(guild_id, user_id)
-                    memory_block = f"""<memory>
-<name>{display_name}</name>
-<facts>{memories}</facts>
-</memory>"""
-                    memory_blocks.append(memory_block)
-            
-            if memory_blocks:
-                return "\n".join(memory_blocks)
-            return ""
-
-    async def handle_request(self, params: GeneralParams, conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]], guild_id: int, bot_user: nextcord.User) -> str | None:
+    async def handle_request(
+        self,
+        params: GeneralParams,
+        conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
+        guild_id: int,
+        bot_user: nextcord.User,
+    ) -> str | None:
         """
         Handle a general query request using the provided parameters.
-        
+
         Args:
             params (GeneralParams): Parameters containing ai_backend, temperature, and cleaned_query
             conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]]: Parameterless async function that returns conversation history
             guild_id (int): Discord guild ID for user context resolution
             bot_user (nextcord.User): Discord user object of the bot to identify its own messages and establish bot identity
-            
+
         Returns:
             str | None: The response string ready to be sent by the caller, or None if no response should be sent
         """
         logger.info(f"Processing general request with params: {params}")
-        
+
         # Select the appropriate AI client based on parameters
         ai_client = self._client_selector(params.ai_backend)
-        
+
         async with self.telemetry.async_create_span("generate_general_response") as span:
             span.set_attribute("ai_backend", params.ai_backend)
             span.set_attribute("temperature", params.temperature)
             span.set_attribute("cleaned_query", params.cleaned_query)
-            
+
             conversation = await conversation_fetcher()
-            
+
             user_ids = self._extract_unique_user_ids(conversation)
-            memories = await self._build_memories(guild_id, user_ids)
-            
-            message_blocks = []
-            for msg in conversation:
-                author_name = await self.user_resolver.get_display_name(guild_id, msg.author_id)
-                content_with_names = await self.user_resolver.replace_user_mentions_with_names(msg.content, guild_id)
-                
-                message_block = f"""<message>
-<id>{msg.message_id}</id>
-{f"<reply_to>{msg.reply_to_id}</reply_to>" if msg.reply_to_id else ""}
-<timestamp>{msg.timestamp}</timestamp>
-<author>{author_name}</author>
-<content>{content_with_names}</content>
-</message>"""
-                message_blocks.append(message_block)
-            conversation_text = "\n".join(message_blocks)
-            
+            memories = await self.memory_manager.build_memory_prompt(guild_id, user_ids)
+
+            conversation_text = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+
             prompt = f"""<system_instructions>
 You are a Discord bot participating in an ongoing Discord conversation. Your role is to respond naturally within the conversational context while bringing external knowledge, fresh perspectives, and independent analysis to the discussion.
 
@@ -234,26 +196,26 @@ Memory Usage:
 <conversation_history>
 {conversation_text}
 </conversation_history>"""
-            
+
             logger.info(f"Generating response using {params.ai_backend}")
             logger.info(f"User message: {params.cleaned_query}")
             logger.info(f"Conversation context: {conversation}")
-            
+
             response = await ai_client.generate_content(
                 message=params.cleaned_query,
                 prompt=prompt,
                 temperature=params.temperature,
-                enable_grounding=True  # Enable grounding for general queries to get current information
+                enable_grounding=True,  # Enable grounding for general queries to get current information
             )
-            
+
             logger.info(f"Generated response: {response}")
-            
+
             # If AI client returns None, don't send a response
             if response is None:
                 logger.warning("AI client returned None response, not replying")
                 return None
-            
+
             # Process response (summarize if too long, or truncate as fallback)
             processed_response = await self.response_summarizer.process_response(response)
-            
+
             return processed_response

@@ -1,14 +1,15 @@
 """Generator for street-smart, humorous wisdom from conversation context."""
 
 import logging
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Set
 
 from ai_client import AIClient
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from language_detector import LanguageDetector
-from user_resolver import UserResolver
 from response_summarizer import ResponseSummarizer
+from memory_manager import MemoryManager
+from conversation_formatter import ConversationFormatter
 from schemas import WisdomResponse
 
 logger = logging.getLogger(__name__)
@@ -21,15 +22,25 @@ class WisdomGenerator:
         self,
         ai_client: AIClient,
         language_detector: LanguageDetector,
-        user_resolver: UserResolver,
+        conversation_formatter: ConversationFormatter,
         response_summarizer: ResponseSummarizer,
+        memory_manager: MemoryManager,
         telemetry: Telemetry,
     ) -> None:
         self._ai_client = ai_client
         self._language_detector = language_detector
-        self._user_resolver = user_resolver
+        self._conversation_formatter = conversation_formatter
         self._response_summarizer = response_summarizer
+        self._memory_manager = memory_manager
         self._telemetry = telemetry
+
+    def _extract_unique_user_ids(self, conversation: list[ConversationMessage]) -> Set[int]:
+        """Extract all unique user IDs from conversation (authors + mentions)."""
+        user_ids = set()
+        for msg in conversation:
+            user_ids.add(msg.author_id)
+            user_ids.update(msg.mentioned_user_ids)
+        return user_ids
 
     async def generate_wisdom(
         self,
@@ -58,21 +69,10 @@ class WisdomGenerator:
             conversation = await conversation_fetcher()
             span.set_attribute("conversation_length", len(conversation))
 
-            message_blocks = []
-            for msg in conversation:
-                author_name = await self._user_resolver.get_display_name(guild_id, msg.author_id)
-                content_with_names = await self._user_resolver.replace_user_mentions_with_names(msg.content, guild_id)
+            user_ids = self._extract_unique_user_ids(conversation)
+            memories = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
 
-                message_block = f"""<message>
-<id>{msg.message_id}</id>
-{f"<reply_to>{msg.reply_to_id}</reply_to>" if msg.reply_to_id else ""}
-<timestamp>{msg.timestamp}</timestamp>
-<author>{author_name}</author>
-<content>{content_with_names}</content>
-</message>"""
-                message_blocks.append(message_block)
-
-            conversation_text = "\n".join(message_blocks)
+            conversation_text = await self._conversation_formatter.format_to_xml(guild_id, conversation)
 
             prompt = f"""<system_instructions>
 You are a street-smart observer who distills Discord conversations into punchy, humorous wisdom.
@@ -118,7 +118,16 @@ Response format:
 Language:
 - Respond in {language_name}
 - Use whatever language style best delivers the wisdom - slang, formal, archaic, whatever fits
+
+Personalization:
+- You have memories about some users in this conversation - use them to make the wisdom more personal and relevant
+- Reference their quirks, habits, or known facts when it adds to the humor or insight
+- Don't mention you have "memories" - just naturally weave in what you know about people
 </system_instructions>
+
+<memories>
+{memories.strip() if memories else "No memories about users in this conversation."}
+</memories>
 
 <conversation_history>
 {conversation_text}

@@ -8,10 +8,12 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from ai_client import AIClient
+from conversation_formatter import ConversationFormatter
 from conversation_graph import ConversationMessage
 from gemma_client import GemmaClient
 from grok_client import GrokClient
 from language_detector import LanguageDetector
+from memory_manager import MemoryManager
 from null_telemetry import NullTelemetry
 from ollama_client import OllamaClient
 from response_summarizer import ResponseSummarizer
@@ -92,13 +94,24 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.test_store = TestStore()
         self.mock_user_resolver = self.test_store.user_resolver
 
+        self.memory_manager = MemoryManager(
+            telemetry=self.telemetry,
+            store=self.test_store,
+            gemini_client=self.gemma_client,
+            gemma_client=self.gemma_client,
+            user_resolver=self.mock_user_resolver,
+        )
+
+        self.conversation_formatter = ConversationFormatter(self.mock_user_resolver)
+
     def _build_wisdom_generator(self, ai_client: AIClient) -> WisdomGenerator:
         """Build a WisdomGenerator with the given AI client."""
         return WisdomGenerator(
             ai_client=ai_client,
             language_detector=self.language_detector,
-            user_resolver=self.mock_user_resolver,
+            conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
+            memory_manager=self.memory_manager,
             telemetry=self.telemetry,
         )
 

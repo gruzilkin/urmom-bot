@@ -12,6 +12,7 @@ from unittest.mock import Mock, AsyncMock
 
 from dotenv import load_dotenv
 
+from conversation_formatter import ConversationFormatter
 from conversation_graph import ConversationMessage
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
@@ -69,13 +70,18 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.mock_bot_user.name = "urmom-bot"
         self.mock_bot_user.id = 99999
 
+        self.conversation_formatter = ConversationFormatter(self.mock_user_resolver)
+
+        self.mock_memory_manager = Mock()
+        self.mock_memory_manager.build_memory_prompt = AsyncMock(return_value="")
+
         self.generator = GeneralQueryGenerator(
             client_selector=lambda _: self.gemini_client,
             response_summarizer=self.response_summarizer,
             telemetry=self.telemetry,
             store=self.mock_store,
-            user_resolver=self.mock_user_resolver,
-            memory_manager=Mock(get_memories=AsyncMock(return_value={})),
+            conversation_formatter=self.conversation_formatter,
+            memory_manager=self.mock_memory_manager,
         )
 
     async def test_handle_request_with_conversation_context(self):

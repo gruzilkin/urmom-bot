@@ -15,6 +15,7 @@ from fact_handler import FactHandler
 from user_resolver import UserResolver
 from memory_manager import MemoryManager
 from language_detector import LanguageDetector
+from conversation_formatter import ConversationFormatter
 from config import AppConfig
 from ai_client_wrappers import CompositeAIClient, RetryAIClient
 from ai_client import AIClient
@@ -149,11 +150,13 @@ class Container:
         # UserResolver is initialized here but needs bot client to be set later
         self.user_resolver = UserResolver(self.telemetry)
 
+        self.conversation_formatter = ConversationFormatter(self.user_resolver)
+
         self.famous_person_generator = FamousPersonGenerator(
             self.retrying_grok,
             self.response_summarizer,
             self.telemetry,
-            self.user_resolver,
+            self.conversation_formatter,
         )
 
         fact_handler_client = CompositeAIClient(
@@ -180,7 +183,7 @@ class Container:
             response_summarizer=self.response_summarizer,
             telemetry=self.telemetry,
             store=self.store,
-            user_resolver=self.user_resolver,
+            conversation_formatter=self.conversation_formatter,
             memory_manager=self.memory_manager,
         )
 
@@ -205,8 +208,9 @@ class Container:
         self.wisdom_generator = WisdomGenerator(
             ai_client=self.shuffled_grok_kimi,
             language_detector=self.language_detector,
-            user_resolver=self.user_resolver,
+            conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
+            memory_manager=self.memory_manager,
             telemetry=self.telemetry,
         )
 
