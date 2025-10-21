@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from ai_client import AIClient
 from ai_router import AiRouter
+from conversation_formatter import ConversationFormatter
 from fact_handler import FactHandler
 from famous_person_generator import FamousPersonGenerator
 from gemma_client import GemmaClient
@@ -65,9 +66,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                 telemetry=self.telemetry,
                 temperature=0.0,
             )
-            self.profiles.append(
-                FactClientProfile(name="gemma", client=gemma_client)
-            )
+            self.profiles.append(FactClientProfile(name="gemma", client=gemma_client))
 
         ollama_api_key = os.getenv("OLLAMA_API_KEY")
         if ollama_api_key:
@@ -80,9 +79,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                 telemetry=self.telemetry,
                 temperature=0.0,
             )
-            self.profiles.append(
-                FactClientProfile(name="ollama_gpt_oss", client=gpt_oss_client)
-            )
+            self.profiles.append(FactClientProfile(name="ollama_gpt_oss", client=gpt_oss_client))
 
             kimi_client = OllamaClient(
                 api_key=ollama_api_key,
@@ -90,19 +87,16 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                 telemetry=self.telemetry,
                 temperature=0.0,
             )
-            self.profiles.append(
-                FactClientProfile(name="ollama_kimi", client=kimi_client)
-            )
+            self.profiles.append(FactClientProfile(name="ollama_kimi", client=kimi_client))
 
         if not self.profiles:
-            self.skipTest(
-                "No FactHandler AI clients configured; ensure Gemma or Ollama credentials are set."
-            )
+            self.skipTest("No FactHandler AI clients configured; ensure Gemma or Ollama credentials are set.")
 
     def _build_context(self, client: AIClient) -> FactTestContext:
         """Create a fresh FactHandler + router stack for a single test run."""
         store = TestStore()
         user_resolver = store.user_resolver
+        conversation_formatter = ConversationFormatter(user_resolver)
 
         fact_handler = FactHandler(
             ai_client=client,
@@ -115,7 +109,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             ai_client=Mock(),
             response_summarizer=Mock(),
             telemetry=self.telemetry,
-            user_resolver=Mock(),
+            conversation_formatter=conversation_formatter,
         )
         famous_generator.get_parameter_schema = Mock(
             side_effect=Exception("Should not extract FAMOUS params in FACT tests")
@@ -129,7 +123,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             response_summarizer=Mock(),
             telemetry=self.telemetry,
             store=Mock(),
-            user_resolver=Mock(),
+            conversation_formatter=conversation_formatter,
             memory_manager=Mock(),
         )
         general_generator.get_parameter_schema = Mock(
@@ -173,15 +167,11 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                     ctx.guild_id, ctx.target_user_id, fact_content, "English"
                 )
 
-                saved_memory = await ctx.store.get_user_facts(
-                    ctx.guild_id, ctx.target_user_id
-                )
+                saved_memory = await ctx.store.get_user_facts(ctx.guild_id, ctx.target_user_id)
                 self.assertIsNotNone(saved_memory, "Memory should be saved to store")
 
                 saved_memory_lower = saved_memory.lower()
-                self.assertIn(
-                    "chocolate", saved_memory_lower, "Memory should contain 'chocolate'"
-                )
+                self.assertIn("chocolate", saved_memory_lower, "Memory should contain 'chocolate'")
                 self.assertIn("cake", saved_memory_lower, "Memory should contain 'cake'")
 
                 self.assertIsNotNone(response, "Should return confirmation message")
@@ -202,17 +192,11 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 ctx = self._build_context(profile.client)
-                ctx.store.set_user_facts(
-                    ctx.guild_id, ctx.target_user_id, existing_memory
-                )
+                ctx.store.set_user_facts(ctx.guild_id, ctx.target_user_id, existing_memory)
 
-                response = await ctx.fact_handler._remember_fact(
-                    ctx.guild_id, ctx.target_user_id, new_fact, "English"
-                )
+                response = await ctx.fact_handler._remember_fact(ctx.guild_id, ctx.target_user_id, new_fact, "English")
 
-                updated_memory = await ctx.store.get_user_facts(
-                    ctx.guild_id, ctx.target_user_id
-                )
+                updated_memory = await ctx.store.get_user_facts(ctx.guild_id, ctx.target_user_id)
                 updated_memory_lower = updated_memory.lower()
 
                 self.assertIn(
@@ -250,17 +234,13 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 ctx = self._build_context(profile.client)
-                ctx.store.set_user_facts(
-                    ctx.guild_id, ctx.target_user_id, existing_memory
-                )
+                ctx.store.set_user_facts(ctx.guild_id, ctx.target_user_id, existing_memory)
 
                 response = await ctx.fact_handler._forget_fact(
                     ctx.guild_id, ctx.target_user_id, fact_to_forget, "English"
                 )
 
-                updated_memory = await ctx.store.get_user_facts(
-                    ctx.guild_id, ctx.target_user_id
-                )
+                updated_memory = await ctx.store.get_user_facts(ctx.guild_id, ctx.target_user_id)
                 updated_memory_lower = updated_memory.lower()
 
                 self.assertNotIn(
@@ -300,20 +280,14 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 ctx = self._build_context(profile.client)
-                ctx.store.set_user_facts(
-                    ctx.guild_id, ctx.target_user_id, existing_memory
-                )
+                ctx.store.set_user_facts(ctx.guild_id, ctx.target_user_id, existing_memory)
 
                 response = await ctx.fact_handler._forget_fact(
                     ctx.guild_id, ctx.target_user_id, nonexistent_fact, "English"
                 )
 
-                unchanged_memory = await ctx.store.get_user_facts(
-                    ctx.guild_id, ctx.target_user_id
-                )
-                self.assertEqual(
-                    unchanged_memory, existing_memory, "Memory should remain unchanged"
-                )
+                unchanged_memory = await ctx.store.get_user_facts(ctx.guild_id, ctx.target_user_id)
+                self.assertEqual(unchanged_memory, existing_memory, "Memory should remain unchanged")
 
                 response_lower = response.lower()
                 not_found_terms = ["not found", "couldn't find", "don't have"]
@@ -334,9 +308,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                     ctx.guild_id, ctx.target_user_id, fact_to_forget, "English"
                 )
 
-                memory = await ctx.store.get_user_facts(
-                    ctx.guild_id, ctx.target_user_id
-                )
+                memory = await ctx.store.get_user_facts(ctx.guild_id, ctx.target_user_id)
                 self.assertIsNone(memory, "No memory should exist for user")
 
                 response_lower = response.lower()
@@ -358,9 +330,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                     ctx.guild_id, ctx.target_user_id, english_fact, "English"
                 )
 
-                saved_memory = await ctx.store.get_user_facts(
-                    ctx.guild_id, ctx.target_user_id
-                )
+                saved_memory = await ctx.store.get_user_facts(ctx.guild_id, ctx.target_user_id)
                 self.assertIn(
                     "engineer",
                     saved_memory.lower(),
@@ -450,9 +420,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                 response = await ctx.fact_handler.handle_request(params, ctx.guild_id)
 
                 rutherford_id = ctx.store.physicist_ids["Rutherford"]
-                saved_memory = await ctx.store.get_user_facts(
-                    ctx.guild_id, rutherford_id
-                )
+                saved_memory = await ctx.store.get_user_facts(ctx.guild_id, rutherford_id)
                 self.assertIsNotNone(saved_memory, "Memory should be saved")
                 self.assertIn(
                     "крокодил",
@@ -486,9 +454,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
 
                 await ctx.fact_handler.handle_request(params, ctx.guild_id)
 
-                saved_memory = await ctx.store.get_user_facts(
-                    ctx.guild_id, ctx.target_user_id
-                )
+                saved_memory = await ctx.store.get_user_facts(ctx.guild_id, ctx.target_user_id)
                 self.assertIsNotNone(saved_memory)
                 self.assertIn("chocolate", saved_memory.lower())
 
