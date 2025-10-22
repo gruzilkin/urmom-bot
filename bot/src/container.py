@@ -73,6 +73,14 @@ class Container:
             base_url=self.config.ollama_base_url,
             temperature=self.config.ollama_temperature,
         )
+        self.ollama_kimi_long_timeout = OllamaClient(
+            api_key=self.config.ollama_api_key,
+            model_name=self.config.ollama_kimi_model,
+            telemetry=self.telemetry,
+            base_url=self.config.ollama_base_url,
+            temperature=self.config.ollama_temperature,
+            timeout=90.0,
+        )
         self.ollama_gpt_oss = OllamaClient(
             api_key=self.config.ollama_api_key,
             model_name=self.config.ollama_gpt_oss_model,
@@ -113,6 +121,11 @@ class Container:
 
         self.flash_with_kimi_fallback = CompositeAIClient(
             [self.gemini_flash, self.ollama_kimi],
+            telemetry=self.telemetry,
+        )
+
+        self.flash_with_kimi_long_timeout_fallback = CompositeAIClient(
+            [self.gemini_flash, self.ollama_kimi_long_timeout],
             telemetry=self.telemetry,
         )
 
@@ -173,7 +186,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            gemini_client=self.flash_with_kimi_fallback,
+            gemini_client=self.flash_with_kimi_long_timeout_fallback,
             gemma_client=self.kimi_with_gemma_fallback,
             user_resolver=self.user_resolver,
         )
