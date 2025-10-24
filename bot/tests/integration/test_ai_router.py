@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from ai_client import AIClient
 from ai_client_wrappers import CompositeAIClient
 from ai_router import AiRouter
+from conversation_formatter import ConversationFormatter
 from fact_handler import FactHandler
 from famous_person_generator import FamousPersonGenerator
 from gemini_client import GeminiClient
@@ -53,9 +54,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             self.profiles.append(kimi_profile)
 
         if not self.profiles:
-            self.skipTest(
-                "No AI router profiles configured; ensure Gemini and/or Ollama credentials are set."
-            )
+            self.skipTest("No AI router profiles configured; ensure Gemini and/or Ollama credentials are set.")
 
     def _build_gemini_profile(self) -> RouterProfile | None:
         gemini_api_key = os.getenv("GEMINI_API_KEY")
@@ -104,9 +103,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
 
-        router = self._create_router(
-            router_client, language_detector_client=gpt_oss_client
-        )
+        router = self._create_router(router_client, language_detector_client=gpt_oss_client)
         return RouterProfile(name="ollama_gpt_oss", router=router)
 
     def _build_kimi_profile(self) -> RouterProfile | None:
@@ -128,28 +125,27 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
 
-        router = self._create_router(
-            router_client, language_detector_client=kimi_client
-        )
+        router = self._create_router(router_client, language_detector_client=kimi_client)
         return RouterProfile(name="ollama_kimi", router=router)
 
     def _create_router(self, router_client: AIClient, *, language_detector_client: AIClient) -> AiRouter:
         """Instantiate AiRouter with shared mocks and specified AI client."""
         mock_user_resolver = Mock()
         mock_store = Mock()
+        conversation_formatter = ConversationFormatter(mock_user_resolver)
 
         famous_generator = FamousPersonGenerator(
             ai_client=None,
             response_summarizer=None,
             telemetry=self.telemetry,
-            user_resolver=mock_user_resolver,
+            conversation_formatter=conversation_formatter,
         )
         general_generator = GeneralQueryGenerator(
             client_selector=lambda _: AsyncMock(spec=AIClient),
             response_summarizer=None,
             telemetry=self.telemetry,
             store=mock_store,
-            user_resolver=mock_user_resolver,
+            conversation_formatter=conversation_formatter,
             memory_manager=AsyncMock(),
         )
         fact_handler = FactHandler(
@@ -188,9 +184,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(route, "GENERAL")
                 self.assertIsNotNone(params)
                 self.assertEqual(params.ai_backend, "grok")
-                self.assertEqual(
-                    params.cleaned_query.lower(), expected_cleaned_query.lower()
-                )
+                self.assertEqual(params.cleaned_query.lower(), expected_cleaned_query.lower())
                 self.assertGreaterEqual(
                     params.temperature,
                     0.7,
@@ -202,9 +196,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         Test that the router correctly handles a direct command to the bot,
         stripping out only the bot's name and routing hints.
         """
-        user_message = (
-            "BOT, ask claude to write a technical blog post, be very detailed"
-        )
+        user_message = "BOT, ask claude to write a technical blog post, be very detailed"
         expected_cleaned_query = "write a technical blog post"
 
         for profile in self.profiles:
@@ -214,9 +206,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(route, "GENERAL")
                 self.assertIsNotNone(params)
                 self.assertEqual(params.ai_backend, "claude")
-                self.assertEqual(
-                    params.cleaned_query.lower(), expected_cleaned_query.lower()
-                )
+                self.assertEqual(params.cleaned_query.lower(), expected_cleaned_query.lower())
                 self.assertLessEqual(
                     params.temperature,
                     0.3,
@@ -345,9 +335,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                     "Wordplay questions about names should route to GENERAL, not FAMOUS",
                 )
                 self.assertIsNotNone(params, "GENERAL route should have parameters")
-                self.assertIn(
-                    "Трамп", params.cleaned_query, "Should preserve the name in the query"
-                )
+                self.assertIn("Трамп", params.cleaned_query, "Should preserve the name in the query")
 
     async def test_route_request_statement_about_person_not_impersonation(self):
         user_message = "Медвед бы так не сказал"
@@ -385,9 +373,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                     "Commands to praise someone should route to GENERAL, not FAMOUS",
                 )
                 self.assertIsNotNone(params, "GENERAL route should have parameters")
-                self.assertIn(
-                    "осанну", params.cleaned_query, "Should preserve the praise request"
-                )
+                self.assertIn("осанну", params.cleaned_query, "Should preserve the praise request")
 
     async def test_route_request_question_with_name_not_memory_operation(self):
         user_message = "для чего Алексею нужна голова?"
@@ -402,9 +388,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                     "Questions with names should route to GENERAL, not FACT",
                 )
                 self.assertIsNotNone(params, "GENERAL route should have parameters")
-                self.assertIn(
-                    "Алексею", params.cleaned_query, "Should preserve the name in the query"
-                )
+                self.assertIn("Алексею", params.cleaned_query, "Should preserve the name in the query")
 
     async def test_route_request_song_writing_selects_claude(self):
         """Test that song writing requests are routed to Claude backend."""
@@ -414,9 +398,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(user_message)
 
-                self.assertEqual(
-                    route, "GENERAL", "Song requests should route to GENERAL"
-                )
+                self.assertEqual(route, "GENERAL", "Song requests should route to GENERAL")
                 self.assertIsNotNone(params, "GENERAL route should have parameters")
                 self.assertEqual(
                     params.ai_backend,

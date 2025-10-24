@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 import logging
-from typing import Union, Tuple
+
+from typing import Union
 from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import FamousParams, GeneralParams, FactParams, RouteSelection
@@ -92,7 +95,11 @@ NOTSURE: When uncertain about routing decision
 </route_definitions>
 """
 
-    async def _extract_parameters(self, route: str, message: str) -> Union[FamousParams, GeneralParams, FactParams, None]:
+    async def _extract_parameters(
+        self,
+        route: str,
+        message: str,
+    ) -> FamousParams | GeneralParams | FactParams | None:
         """Extract parameters for the selected route (tier 2)."""
         if route == "NONE":
             return None
@@ -123,7 +130,10 @@ NOTSURE: When uncertain about routing decision
             logger.info(f"Extracted parameters for {route}: {params}")
             return params
     
-    async def route_request(self, message: str) -> Tuple[str, Union[FamousParams, GeneralParams, FactParams, None]]:
+    async def route_request(
+        self,
+        message: str,
+    ) -> tuple[str, FamousParams | GeneralParams | FactParams | None]:
         """Route a message using 2-tier approach: route selection, language detection, then parameter extraction."""
         async with self.telemetry.async_create_span("route_request") as span:
             span.set_attribute("message", message)

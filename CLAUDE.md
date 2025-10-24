@@ -52,6 +52,7 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 - **grok_client.py**: xAI Grok (creative tasks, jokes, celebrity impersonation)
 - **claude_client.py**: Anthropic Claude (fallback option)
 - **ai_client_wrappers.py**: `RetryAIClient` and `CompositeAIClient` for reliability
+  - `CompositeAIClient` supports `shuffle=True` for randomized client order
   - **See `bot/documents/llm_fallback.md` for complete fallback strategy**
 
 ### Generators & Handlers
@@ -60,6 +61,7 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 - **general_query_generator.py**: General queries with memory context
 - **fact_handler.py**: "remember" and "forget" commands
 - **country_resolver.py**: Flag emoji to country mapping
+- **wisdom_generator.py**: Philosophical wisdom generation from conversation context with creative freedom
 
 ### Memory & Conversation
 - **memory_manager.py**: User memory system (facts + daily summaries)

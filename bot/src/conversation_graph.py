@@ -1,8 +1,11 @@
 import datetime
 import logging
-from typing import Callable, Awaitable, Any
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
+
 import nextcord
+
 from message_node import MessageNode
 
 logger = logging.getLogger(__name__)
