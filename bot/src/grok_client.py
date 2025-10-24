@@ -4,7 +4,7 @@ from openai.types.chat import ChatCompletion
 from openai import PermissionDeniedError
 from ai_client import AIClient, BlockedException
 from collections.abc import Sequence
-from typing import TypeVar
+from typing import TypeVar, Type
 from opentelemetry.trace import SpanKind
 from open_telemetry import Telemetry
 from pydantic import BaseModel
