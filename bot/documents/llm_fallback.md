@@ -34,7 +34,7 @@ Free-tier AI services are inherently fragile, so every feature needs a clear fal
 3. **Memory**
    Daily summaries run on flash only. Historical merge path uses kimi (fail fast) ➝ gemma (60s retry with jitter).
 4. **Language detector**
-   Use kimi (fail fast) ➝ gemma (60s retry with jitter).
+   Use gemma (60s retry with jitter) ➝ kimi (fail fast).
 5. **Fact handler**
    Use kimi (fail fast) ➝ gpt-oss (fail fast) ➝ gemma (60s retry with jitter).
 6. **Country resolver**
