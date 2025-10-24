@@ -3,7 +3,8 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai import PermissionDeniedError
 from ai_client import AIClient, BlockedException
-from typing import List, Tuple, Type, TypeVar
+from collections.abc import Sequence
+from typing import TypeVar
 from opentelemetry.trace import SpanKind
 from open_telemetry import Telemetry
 from pydantic import BaseModel
@@ -62,7 +63,7 @@ class GrokClient(AIClient):
         self,
         message: str,
         prompt: str = None,
-        samples: List[Tuple[str, str]] = None,
+        samples: Sequence[tuple[str, str]] | None = None,
         enable_grounding: bool = False,
         response_schema: Type[T] | None = None,
         temperature: float | None = None,

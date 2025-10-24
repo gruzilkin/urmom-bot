@@ -1,7 +1,7 @@
 """Generator for street-smart, humorous wisdom from conversation context."""
 
 import logging
-from typing import Callable, Awaitable, Set
+from collections.abc import Callable, Awaitable
 
 from ai_client import AIClient
 from conversation_graph import ConversationMessage
@@ -34,7 +34,7 @@ class WisdomGenerator:
         self._memory_manager = memory_manager
         self._telemetry = telemetry
 
-    def _extract_unique_user_ids(self, conversation: list[ConversationMessage]) -> Set[int]:
+    def _extract_unique_user_ids(self, conversation: list[ConversationMessage]) -> set[int]:
         """Extract all unique user IDs from conversation (authors + mentions)."""
         user_ids = set()
         for msg in conversation:

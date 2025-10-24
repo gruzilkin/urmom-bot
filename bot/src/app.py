@@ -2,7 +2,8 @@ import asyncio
 from enum import Enum
 from types import SimpleNamespace
 import logging
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
+
 import nextcord
 
 from opentelemetry.trace import SpanKind, Status, StatusCode
