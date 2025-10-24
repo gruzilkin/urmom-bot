@@ -192,7 +192,7 @@ class Container:
             telemetry=self.telemetry,
             store=self.store,
             gemini_client=self.flash_with_kimi_long_timeout_fallback,
-            gemma_client=self.kimi_with_gemma_fallback,
+            gemma_client=self.gemma_with_kimi_fallback,
             user_resolver=self.user_resolver,
         )
 
