@@ -17,6 +17,7 @@ class TestAppConfig(unittest.TestCase):
             postgres_db="test",
             gemini_api_key="test-key",
             gemini_flash_model="gemini-1.5-flash",
+            gemini_pro_model="gemini-2.5-pro",
             gemini_gemma_model="gemini-2.0-flash-exp",
             grok_api_key="test-grok-key",
             grok_model="grok-beta",
@@ -40,6 +41,7 @@ class TestAppConfig(unittest.TestCase):
                 postgres_db="test",
                 gemini_api_key="test-key",
                 gemini_flash_model="gemini-1.5-flash",
+                gemini_pro_model="gemini-2.5-pro",
                 gemini_gemma_model="gemini-2.0-flash-exp",
                 grok_api_key="test-grok-key",
                 grok_model="grok-beta",
@@ -60,6 +62,7 @@ class TestAppConfig(unittest.TestCase):
                 postgres_db="test",
                 gemini_api_key="test-key",
                 gemini_flash_model="gemini-1.5-flash",
+                gemini_pro_model="gemini-2.5-pro",
                 gemini_gemma_model="gemini-2.0-flash-exp",
                 gemini_temperature=3.0,  # Invalid temperature
                 grok_api_key="test-grok-key",
@@ -78,6 +81,7 @@ class TestAppConfig(unittest.TestCase):
         'POSTGRES_DB': 'test-db',
         'GEMINI_API_KEY': 'test-gemini-key',
         'GEMINI_FLASH_MODEL': 'test-flash-model',
+        'GEMINI_PRO_MODEL': 'test-pro-model',
         'GEMINI_GEMMA_MODEL': 'test-gemma-model',
         'GROK_API_KEY': 'test-grok-key',
         'GROK_MODEL': 'test-grok-model',
@@ -98,6 +102,7 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(config.postgres_db, 'test-db')
         self.assertEqual(config.gemini_api_key, 'test-gemini-key')
         self.assertEqual(config.gemini_flash_model, 'test-flash-model')
+        self.assertEqual(config.gemini_pro_model, 'test-pro-model')
         self.assertEqual(config.gemini_gemma_model, 'test-gemma-model')
         self.assertEqual(config.grok_api_key, 'test-grok-key')
         self.assertEqual(config.grok_model, 'test-grok-model')

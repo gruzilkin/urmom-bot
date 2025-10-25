@@ -21,7 +21,7 @@
 The urmom-bot memory system is a sophisticated AI-powered memory architecture that maintains both permanent factual knowledge and transient episodic memories about users. The system provides rich contextual awareness by preserving detailed memories from the full week of user interactions.
 
 **Key Design Decisions:**
-- Uses two AI clients: Gemini Flash for batch daily summaries; Gemma for context merging and fact operations (free tier used where possible)
+- Uses Gemini 2.5 Pro (primary) with Gemini Flash and Ollama Kimi long-timeout fallback for batch daily summaries; Gemma for context merging and fact operations (free tier used where possible)
 - Optimized for small-scale deployment (5-100 users)
 - `cachetools` caches for async-friendly TTL/LRU behavior (not built-in `@lru_cache`)
 - Discord user ID storage with nickname translation only for LLM calls
@@ -35,7 +35,7 @@ The urmom-bot memory system is a sophisticated AI-powered memory architecture th
 2. **Transient Memory**: Automatic extraction and summarization of chat interactions
 
 ### Multi-Day AI Integration
-- Raw chat history → Daily summaries (Gemini) → Final context (Gemma, multi-day merge)
+- Raw chat history → Daily summaries (Gemini 2.5 Pro composite) → Final context (Gemma, multi-day merge)
 - **Strategy**: `merge(facts, day_0..day_6)` with full week context
 - Current day (day 0) updated approximately hourly via TTL cache
 - Historical days (1–6) persisted in database and cached in-process
@@ -104,8 +104,7 @@ class MemoryManager:
 - **Exception Handling**: Graceful degradation with concurrent exception handling
 - **Daily Summaries Caching**: Current day in-process TTL; historical days DB + in-process LRU cache
 
-### AI Client Strategy (Cost-Optimized)
-- **Batch Daily Summaries (Gemini Flash)**: Multi-user daily summary generation per guild/date
+- **Batch Daily Summaries (Gemini 2.5 Pro → Flash → Kimi Long Timeout)**: Multi-user daily summary generation per guild/date with resilient fallback chain
 - **Context Merging (Gemma - Free)**: Per-user merge of facts + daily summaries
 - **Optimization**: Reduces API calls from N per day to 1 per day per guild for daily summaries
 
