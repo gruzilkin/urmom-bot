@@ -15,6 +15,7 @@ class AppConfig(BaseSettings):
     # Gemini/Gemma configuration
     gemini_api_key: str = Field(env="GEMINI_API_KEY")
     gemini_flash_model: str = Field(env="GEMINI_FLASH_MODEL")
+    gemini_pro_model: str = Field(env="GEMINI_PRO_MODEL")
     gemini_gemma_model: str = Field(env="GEMINI_GEMMA_MODEL")
     gemini_temperature: float = Field(default=0.7, env="GEMINI_TEMPERATURE")
 

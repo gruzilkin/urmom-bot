@@ -50,6 +50,13 @@ class Container:
             temperature=self.config.gemini_temperature,
         )
 
+        self.gemini_pro = GeminiClient(
+            api_key=self.config.gemini_api_key,
+            model_name=self.config.gemini_pro_model,
+            telemetry=self.telemetry,
+            temperature=self.config.gemini_temperature,
+        )
+
         self.gemma = GemmaClient(
             api_key=self.config.gemini_api_key,
             model_name=self.config.gemini_gemma_model,
@@ -129,8 +136,8 @@ class Container:
             telemetry=self.telemetry,
         )
 
-        self.flash_with_kimi_long_timeout_fallback = CompositeAIClient(
-            [self.gemini_flash, self.ollama_kimi_long_timeout],
+        self.pro_flash_with_kimi_long_timeout = CompositeAIClient(
+            [self.gemini_pro, self.gemini_flash, self.ollama_kimi_long_timeout],
             telemetry=self.telemetry,
         )
 
@@ -191,7 +198,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            gemini_client=self.flash_with_kimi_long_timeout_fallback,
+            gemini_client=self.pro_flash_with_kimi_long_timeout,
             gemma_client=self.gemma_with_kimi_fallback,
             user_resolver=self.user_resolver,
         )
