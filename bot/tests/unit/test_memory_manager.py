@@ -69,29 +69,30 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         self.mock_gemini_client.generate_content.assert_called_once()  # Only one AI call
 
     async def test_current_day_cache_hit_same_date(self):
-        """Test that current day summary cache hits for same date regardless of hour."""
+        """Test staleness-based caching: fresh cache within 1h, too stale after 2h."""
         # Arrange - Planck's quantum discussions continuing throughout the day
         planck_id = self.physicist_ids["Planck"]
         self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
             summaries=[UserSummary(user_id=planck_id, summary="Planck questioned Einstein's quantum theory while defending wave theory")]
         ))
-        
+
         with patch('memory_manager.datetime') as mock_datetime:
             # First call during morning physics discussion (9:30)
             mock_datetime.now.return_value = datetime(1905, 3, 3, 9, 30, tzinfo=timezone.utc)
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-            
+
             # Act - First call in morning hour
             await self.memory_manager._daily_summary(self.physics_guild_id, self.test_date)
-            
-            # Later in afternoon physics discussion (15:30)
+
+            # Later in afternoon physics discussion (15:30) - 6 hours later
+            # This exceeds 2-hour staleness threshold, forcing sync rebuild
             mock_datetime.now.return_value = datetime(1905, 3, 3, 15, 30, tzinfo=timezone.utc)
-            
-            # Act - Second call in different hour but same date should hit cache
+
+            # Act - Second call triggers sync rebuild due to staleness (>2h)
             await self.memory_manager._daily_summary(self.physics_guild_id, self.test_date)
-        
-        # Assert
-        self.assertEqual(self.mock_gemini_client.generate_content.call_count, 1)  # Only one AI call since hour buckets are eliminated
+
+        # Assert - Two AI calls: initial + sync rebuild after 6h staleness
+        self.assertEqual(self.mock_gemini_client.generate_content.call_count, 2)
 
     async def test_historical_daily_cache_hit(self):
         """Test that historical daily summary cache hits for same guild/date, avoiding AI calls."""
@@ -1300,6 +1301,323 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
             # Verify persistence integration - summaries stored and retrievable
             stored_summaries = await self.test_store.get_daily_summaries(self.physics_guild_id, physics_date)
             self.assertEqual(stored_summaries, generated_summaries)
+
+
+class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
+    """Test staleness-based caching with async rebuild functionality."""
+
+    def setUp(self):
+        self.telemetry = NullTelemetry()
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
+        self.mock_gemini_client = Mock(spec=AIClient)
+        self.mock_gemma_client = Mock(spec=AIClient)
+        self.memory_manager = MemoryManager(
+            telemetry=self.telemetry,
+            store=self.test_store,
+            gemini_client=self.mock_gemini_client,
+            gemma_client=self.mock_gemma_client,
+            user_resolver=self.user_resolver
+        )
+        self.physics_guild_id = self.user_resolver.physics_guild_id
+        self.physicist_ids = self.user_resolver.physicist_ids
+
+    async def test_fresh_cache_returns_immediately_no_rebuild(self):
+        """Test that cache less than 1 hour old returns immediately without triggering rebuild."""
+        # Arrange - Create cache entry 30 minutes old
+        today = date(1905, 3, 3)
+        cache_key = (self.physics_guild_id, today)
+        einstein_id = self.physicist_ids["Einstein"]
+        cached_summaries = {einstein_id: "Einstein discussed photoelectric effect"}
+
+        with patch('memory_manager.datetime') as mock_datetime:
+            # Cache was created 30 minutes ago
+            cache_time = datetime(1905, 3, 3, 10, 0, tzinfo=timezone.utc)
+            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+
+            # Pre-populate cache
+            from memory_manager import CachedDailySummary
+            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
+                summaries=cached_summaries,
+                created_at=cache_time
+            )
+
+            mock_datetime.now.return_value = current_time
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            # Act
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+
+            # Assert
+            self.assertEqual(result, cached_summaries)
+            self.mock_gemini_client.generate_content.assert_not_called()
+            # Verify no async rebuild was triggered
+            self.assertEqual(len(self.memory_manager._in_flight_rebuilds), 0)
+
+    async def test_stale_cache_returns_immediately_triggers_async_rebuild(self):
+        """Test that cache 1-2 hours old returns stale data and triggers async rebuild."""
+        # Arrange - Create cache entry 1.5 hours old
+        today = date(1905, 3, 3)
+        cache_key = (self.physics_guild_id, today)
+        einstein_id = self.physicist_ids["Einstein"]
+        stale_summaries = {einstein_id: "Old summary"}
+        fresh_summaries = {einstein_id: "Fresh summary"}
+
+        with patch('memory_manager.datetime') as mock_datetime:
+            # Cache was created 1.5 hours ago
+            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
+            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+
+            # Pre-populate cache with stale data
+            from memory_manager import CachedDailySummary
+            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
+                summaries=stale_summaries,
+                created_at=cache_time
+            )
+
+            mock_datetime.now.return_value = current_time
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            # Mock AI client for async rebuild
+            self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
+                summaries=[UserSummary(user_id=einstein_id, summary="Fresh summary")]
+            ))
+
+            # Act
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+
+            # Assert - Returns stale data immediately
+            self.assertEqual(result, stale_summaries)
+
+            # Verify async rebuild was triggered
+            self.assertIn(cache_key, self.memory_manager._in_flight_rebuilds)
+
+            # Wait for async rebuild to complete
+            if cache_key in self.memory_manager._in_flight_rebuilds:
+                await self.memory_manager._in_flight_rebuilds[cache_key]
+
+            # Verify cache was updated with fresh data
+            self.assertEqual(
+                self.memory_manager._current_day_batch_cache[cache_key].summaries,
+                fresh_summaries
+            )
+
+    async def test_too_stale_cache_forces_sync_rebuild(self):
+        """Test that cache older than 2 hours forces synchronous rebuild."""
+        # Arrange - Create cache entry 3 hours old
+        today = date(1905, 3, 3)
+        cache_key = (self.physics_guild_id, today)
+        einstein_id = self.physicist_ids["Einstein"]
+        stale_summaries = {einstein_id: "Very old summary"}
+        fresh_summaries = {einstein_id: "Fresh summary"}
+
+        with patch('memory_manager.datetime') as mock_datetime:
+            # Cache was created 3 hours ago
+            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
+            current_time = datetime(1905, 3, 3, 12, 0, tzinfo=timezone.utc)
+
+            # Pre-populate cache with very stale data
+            from memory_manager import CachedDailySummary
+            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
+                summaries=stale_summaries,
+                created_at=cache_time
+            )
+
+            mock_datetime.now.return_value = current_time
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            # Mock AI client for sync rebuild
+            self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
+                summaries=[UserSummary(user_id=einstein_id, summary="Fresh summary")]
+            ))
+
+            # Act
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+
+            # Assert - Returns fresh data (sync rebuild)
+            self.assertEqual(result, fresh_summaries)
+            self.mock_gemini_client.generate_content.assert_called_once()
+
+    async def test_duplicate_async_rebuild_prevention(self):
+        """Test that multiple concurrent requests don't trigger duplicate async rebuilds."""
+        # Arrange - Create cache entry 1.5 hours old
+        today = date(1905, 3, 3)
+        cache_key = (self.physics_guild_id, today)
+        einstein_id = self.physicist_ids["Einstein"]
+        stale_summaries = {einstein_id: "Stale summary"}
+
+        with patch('memory_manager.datetime') as mock_datetime:
+            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
+            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+
+            # Pre-populate cache with stale data
+            from memory_manager import CachedDailySummary
+            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
+                summaries=stale_summaries,
+                created_at=cache_time
+            )
+
+            mock_datetime.now.return_value = current_time
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            # Mock AI client with slow response to test concurrency
+            async def slow_generate(*args, **kwargs):
+                await asyncio.sleep(0.1)
+                return DailySummaries(summaries=[UserSummary(user_id=einstein_id, summary="Fresh summary")])
+
+            self.mock_gemini_client.generate_content = AsyncMock(side_effect=slow_generate)
+
+            # Act - Multiple concurrent calls
+            results = await asyncio.gather(
+                self.memory_manager._daily_summary(self.physics_guild_id, today),
+                self.memory_manager._daily_summary(self.physics_guild_id, today),
+                self.memory_manager._daily_summary(self.physics_guild_id, today)
+            )
+
+            # Assert - All return stale data immediately
+            for result in results:
+                self.assertEqual(result, stale_summaries)
+
+            # Wait for async rebuild to complete
+            if cache_key in self.memory_manager._in_flight_rebuilds:
+                await self.memory_manager._in_flight_rebuilds[cache_key]
+
+            # Only one AI call should have been made (deduplication)
+            self.assertEqual(self.mock_gemini_client.generate_content.call_count, 1)
+
+    async def test_async_rebuild_cleans_up_task_on_completion(self):
+        """Test that completed async rebuild tasks are cleaned up from tracking dict."""
+        # Arrange
+        today = date(1905, 3, 3)
+        cache_key = (self.physics_guild_id, today)
+        einstein_id = self.physicist_ids["Einstein"]
+        stale_summaries = {einstein_id: "Stale summary"}
+
+        with patch('memory_manager.datetime') as mock_datetime:
+            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
+            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+
+            # Pre-populate cache with stale data
+            from memory_manager import CachedDailySummary
+            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
+                summaries=stale_summaries,
+                created_at=cache_time
+            )
+
+            mock_datetime.now.return_value = current_time
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            # Mock AI client
+            self.mock_gemini_client.generate_content = AsyncMock(return_value=DailySummaries(
+                summaries=[UserSummary(user_id=einstein_id, summary="Fresh summary")]
+            ))
+
+            # Act
+            await self.memory_manager._daily_summary(self.physics_guild_id, today)
+
+            # Verify task was added to tracking dict
+            self.assertIn(cache_key, self.memory_manager._in_flight_rebuilds)
+
+            # Wait for async rebuild to complete
+            await self.memory_manager._in_flight_rebuilds[cache_key]
+
+            # Give callback time to execute
+            await asyncio.sleep(0.01)
+
+            # Assert - Task should be cleaned up
+            self.assertNotIn(cache_key, self.memory_manager._in_flight_rebuilds)
+
+    async def test_async_rebuild_handles_blocked_exception(self):
+        """Test that async rebuild handles BlockedException gracefully."""
+        # Arrange
+        today = date(1905, 3, 3)
+        cache_key = (self.physics_guild_id, today)
+        einstein_id = self.physicist_ids["Einstein"]
+        stale_summaries = {einstein_id: "Stale summary"}
+
+        with patch('memory_manager.datetime') as mock_datetime:
+            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
+            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+
+            # Pre-populate cache with stale data
+            from memory_manager import CachedDailySummary
+            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
+                summaries=stale_summaries,
+                created_at=cache_time
+            )
+
+            mock_datetime.now.return_value = current_time
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            # Mock AI client to raise BlockedException
+            self.mock_gemini_client.generate_content = AsyncMock(
+                side_effect=BlockedException(reason="PROHIBITED_CONTENT")
+            )
+
+            # Act
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+
+            # Assert - Returns stale data
+            self.assertEqual(result, stale_summaries)
+
+            # Wait for async rebuild to complete (with error)
+            if cache_key in self.memory_manager._in_flight_rebuilds:
+                try:
+                    await self.memory_manager._in_flight_rebuilds[cache_key]
+                except Exception:
+                    pass  # Expected to fail
+
+            # Give callback time to execute
+            await asyncio.sleep(0.01)
+
+            # Task should still be cleaned up
+            self.assertNotIn(cache_key, self.memory_manager._in_flight_rebuilds)
+
+    async def test_async_rebuild_handles_generic_exception(self):
+        """Test that async rebuild handles generic exceptions gracefully."""
+        # Arrange
+        today = date(1905, 3, 3)
+        cache_key = (self.physics_guild_id, today)
+        einstein_id = self.physicist_ids["Einstein"]
+        stale_summaries = {einstein_id: "Stale summary"}
+
+        with patch('memory_manager.datetime') as mock_datetime:
+            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
+            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+
+            # Pre-populate cache with stale data
+            from memory_manager import CachedDailySummary
+            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
+                summaries=stale_summaries,
+                created_at=cache_time
+            )
+
+            mock_datetime.now.return_value = current_time
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            # Mock AI client to raise generic exception
+            self.mock_gemini_client.generate_content = AsyncMock(
+                side_effect=Exception("Network error")
+            )
+
+            # Act
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+
+            # Assert - Returns stale data
+            self.assertEqual(result, stale_summaries)
+
+            # Wait for async rebuild to complete (with error)
+            if cache_key in self.memory_manager._in_flight_rebuilds:
+                try:
+                    await self.memory_manager._in_flight_rebuilds[cache_key]
+                except Exception:
+                    pass  # Expected to fail
+
+            # Give callback time to execute
+            await asyncio.sleep(0.01)
+
+            # Task should still be cleaned up despite error
+            self.assertNotIn(cache_key, self.memory_manager._in_flight_rebuilds)
 
 
 if __name__ == '__main__':
