@@ -7,12 +7,12 @@ manually like Claude client, since Gemma models don't support native structured 
 
 import json
 import logging
-from typing import List, Tuple, Type, TypeVar
+from typing import TypeVar
 
 from google import genai
 from google.genai.types import GenerateContentConfig, GenerateContentResponse
 from google.genai import types
-from ai_client import AIClient
+from ai_client import AIClient, BlockedException
 from open_telemetry import Telemetry
 from opentelemetry.trace import SpanKind
 from pydantic import BaseModel
@@ -33,37 +33,47 @@ class GemmaClient(AIClient):
         self.temperature = temperature
         self.model_name = model_name
         self.telemetry = telemetry
-        
+
     def _track_completion_metrics(self, response: GenerateContentResponse, method_name: str, **additional_attributes):
         """Track metrics from Gemma response with detailed attributes"""
         try:
             usage_metadata = response.usage_metadata
-            
+
             prompt_tokens = usage_metadata.prompt_token_count or 0
             completion_tokens = usage_metadata.candidates_token_count or 0
             total_tokens = usage_metadata.total_token_count or 0
-                
+
             attributes = {
                 "service": "GEMMA",
                 "model": self.model_name,
             }
-            
+
             # Add any additional attributes passed in
             attributes.update(additional_attributes)
-            
+
             self.telemetry.track_token_usage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
-                attributes=attributes
+                attributes=attributes,
             )
         except Exception as e:
             logger.error(f"Error tracking token usage: {e}", exc_info=True)
 
-    async def generate_content(self, message: str, prompt: str = None, samples: List[Tuple[str, str]] = None, enable_grounding: bool = False, response_schema: Type[T] | None = None, temperature: float | None = None, image_data: bytes | None = None, image_mime_type: str | None = None) -> str | T:
+    async def generate_content(
+        self,
+        message: str,
+        prompt: str = None,
+        samples: list[tuple[str, str]] = None,
+        enable_grounding: bool = False,
+        response_schema: type[T] | None = None,
+        temperature: float | None = None,
+        image_data: bytes | None = None,
+        image_mime_type: str | None = None,
+    ) -> str | T:
         """
         Generate content using Gemma model.
-        
+
         Args:
             message: The main user message/query
             prompt: System prompt to guide the response
@@ -73,7 +83,7 @@ class GemmaClient(AIClient):
             temperature: Override default temperature for this request
             image_data: Raw image bytes for multimodal input
             image_mime_type: MIME type of the image (e.g., 'image/jpeg', 'image/png')
-            
+
         Returns:
             Generated text response or structured object if response_schema provided
         """
@@ -92,24 +102,31 @@ class GemmaClient(AIClient):
 
             # Build content parts for Gemma (text and optional image)
             content_parts = []
-            
+
             # Add text content
             if response_schema:
                 # Structured format for JSON responses
-                text_content = f"""<system>{prompt or 'You are a helpful assistant.'}</system>
+                text_content = f"""<system>{prompt or "You are a helpful assistant."}</system>
 <user_message>{message}</user_message>
-<response_format>Respond with a valid JSON object matching the provided schema. Do not include explanations or multiple JSON blocks - return only the requested parameter values as a single JSON object.</response_format>
+<response_format>
+Respond with a valid JSON object matching the provided schema.
+Do not include explanations or multiple JSON blocks - return only the requested
+parameter values as a single JSON object.
+</response_format>
 
 Schema: {response_schema.model_json_schema()}"""
             else:
                 # Simple format for text responses
                 if prompt:
-                    text_content = f"<system>{prompt or 'You are a helpful assistant.'}</system>\n<user_message>{message}</user_message>"
+                    text_content = (
+                        f"<system>{prompt or 'You are a helpful assistant.'}</system>\n"
+                        f"<user_message>{message}</user_message>"
+                    )
                 else:
                     text_content = message
-            
+
             content_parts.append(types.Part.from_text(text=text_content))
-            
+
             # Add image if provided
             if image_data and image_mime_type:
                 content_parts.append(types.Part.from_bytes(data=image_data, mime_type=image_mime_type))
@@ -125,9 +142,7 @@ Schema: {response_schema.model_json_schema()}"""
             timer = self.telemetry.metrics.timer()
             try:
                 response = await self.client.aio.models.generate_content(
-                    model=self.model_name,
-                    contents=content_parts,
-                    config=config
+                    model=self.model_name, contents=content_parts, config=config
                 )
                 attrs = {**base_attrs, "outcome": "success"}
                 self.telemetry.metrics.llm_latency.record(timer(), attrs)
@@ -143,15 +158,24 @@ Schema: {response_schema.model_json_schema()}"""
                 raise
 
             logger.info(response)
+
+            # Check for blocked content before processing
+            block_reason = self._get_block_reason(response)
+            if block_reason:
+                attrs_blocked = {**base_attrs, "outcome": "blocked"}
+                self.telemetry.metrics.llm_latency.record(timer(), attrs_blocked)
+                self.telemetry.metrics.llm_requests.add(1, attrs_blocked)
+                raise BlockedException(reason=str(block_reason))
+
             # Track metrics with multimodal indicator
             additional_attributes = {}
             if image_data:
                 additional_attributes["multimodal"] = True
                 additional_attributes["image_mime_type"] = image_mime_type
             self._track_completion_metrics(response, method_name="generate_content", **additional_attributes)
-            
+
             response_text = response.text
-            
+
             # Parse structured response if schema was provided
             if response_schema:
                 try:
@@ -161,13 +185,24 @@ Schema: {response_schema.model_json_schema()}"""
                         start = json_str.find("```json") + 7
                         end = json_str.find("```", start)
                         json_str = json_str[start:end].strip()
-                    
+
                     response_data = json.loads(json_str)
                     parsed_result = response_schema.model_validate(response_data)
                     return parsed_result
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.error(f"Failed to parse structured response: {e}", exc_info=True)
-                    self.telemetry.metrics.structured_output_failures.add(1, {"service": "GEMMA", "model": self.model_name})
-                    raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {response_text}")
-            
+                    self.telemetry.metrics.structured_output_failures.add(
+                        1, {"service": "GEMMA", "model": self.model_name}
+                    )
+                    raise ValueError(
+                        f"Failed to parse response with schema {response_schema.__name__}: {response_text}"
+                    )
+
             return response_text
+
+    def _get_block_reason(self, response: GenerateContentResponse):
+        """Return the Gemma block reason if the response was rejected."""
+        prompt_feedback = getattr(response, "prompt_feedback", None)
+        if prompt_feedback is None:
+            return None
+        return getattr(prompt_feedback, "block_reason", None)
