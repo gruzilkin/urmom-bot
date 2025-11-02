@@ -102,8 +102,8 @@ class ResponseSummarizer:
             Exception: If summarization fails
         """
         # Create system prompt with instructions only
-        prompt = f"""Summarize the following content so the response stays comfortably under {target_length} characters while preserving the most important points, conclusions, and original tone.
-        Minor or repetitive details can be omitted. Preserve the original language. Do not add any meta-commentary about the summarization process."""
+        prompt = f"""Summarize the following content so the response stays comfortably under {target_length} characters while preserving the key points, conclusions, tone, and any Markdown formatting that still matters.
+        Trim repeated or low-value details, keep the original language, and avoid meta-commentary about the summarization."""
 
         summarized = await self._ai_client.generate_content(
             message=original_response,
