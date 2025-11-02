@@ -75,9 +75,9 @@ class MemoryManager:
         self._user_resolver = user_resolver
 
         # Caches
-        # TTL must exceed staleness threshold (2h) to allow stale-but-usable window
-        # Extra 5min buffer ensures entry survives long enough for async rebuild to complete
-        self._current_day_batch_cache = TTLCache(maxsize=100, ttl=7500)  # 2h 5min TTL for current day batch summaries
+        # TTL must exceed staleness threshold (6h) to allow stale-but-usable window
+        # Extra 10min buffer ensures entry survives long enough for async rebuild to complete
+        self._current_day_batch_cache = TTLCache(maxsize=100, ttl=22200)  # 6h 10min TTL for current day batch summaries
         self._context_cache = LRUCache(maxsize=500)  # Final context cache
 
         # Track in-flight async rebuilds to prevent duplicate API calls
@@ -219,8 +219,8 @@ class MemoryManager:
                         )
                         return cached.summaries
 
-                    # Stale but usable (1-2 hours) - return + async rebuild
-                    elif age < timedelta(hours=2):
+                    # Stale but usable (1-6 hours) - return + async rebuild
+                    elif age < timedelta(hours=6):
                         self._telemetry.metrics.daily_summary_jobs.add(
                             1, {"guild_id": str(guild_id), "cache_outcome": "stale_hit", "outcome": outcome}
                         )
@@ -228,7 +228,7 @@ class MemoryManager:
                         self._trigger_async_rebuild(guild_id, for_date, cache_key)
                         return cached.summaries
 
-                    # Too stale (>= 2 hours) - force sync rebuild
+                    # Too stale (>= 6 hours) - force sync rebuild
                     # Fall through to synchronous generation
 
                 span.set_attribute("cache_hit", False)
@@ -350,6 +350,10 @@ class MemoryManager:
                 self._current_day_batch_cache[cache_key] = CachedDailySummary(
                     summaries=batch_summaries, created_at=datetime.now(timezone.utc)
                 )
+
+                # Rebuild memories for affected users to warm context cache
+                if batch_summaries:
+                    await self.get_memories(guild_id, list(batch_summaries.keys()))
 
             except BlockedException as blocked:
                 span.record_exception(blocked)
