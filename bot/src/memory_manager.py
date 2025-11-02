@@ -50,6 +50,10 @@ Keep each summary in the third person.
 Return a list of summaries, one for each active user.
 """
 
+CURRENT_DAY_CACHE_TTL_SECONDS = (6 * 3600) + (10 * 60)
+FRESH_CACHE_MAX_AGE = timedelta(hours=1)
+STALE_CACHE_MAX_AGE = timedelta(hours=6)
+
 
 @dataclass
 class CachedDailySummary:
@@ -77,7 +81,9 @@ class MemoryManager:
         # Caches
         # TTL must exceed staleness threshold (6h) to allow stale-but-usable window
         # Extra 10min buffer ensures entry survives long enough for async rebuild to complete
-        self._current_day_batch_cache = TTLCache(maxsize=100, ttl=22200)  # 6h 10min TTL for current day batch summaries
+        self._current_day_batch_cache = TTLCache(
+            maxsize=100, ttl=CURRENT_DAY_CACHE_TTL_SECONDS
+        )  # 6h 10min TTL for current day batch summaries
         self._context_cache = LRUCache(maxsize=500)  # Final context cache
 
         # Track in-flight async rebuilds to prevent duplicate API calls
@@ -213,14 +219,16 @@ class MemoryManager:
                     age = now - cached.created_at
 
                     # Fresh cache (< 1 hour)
-                    if age < timedelta(hours=1):
+                    if age < FRESH_CACHE_MAX_AGE:
+                        span.set_attribute("cache_hit", True)
                         self._telemetry.metrics.daily_summary_jobs.add(
                             1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": outcome}
                         )
                         return cached.summaries
 
                     # Stale but usable (1-6 hours) - return + async rebuild
-                    elif age < timedelta(hours=6):
+                    elif age < STALE_CACHE_MAX_AGE:
+                        span.set_attribute("cache_hit", True)
                         self._telemetry.metrics.daily_summary_jobs.add(
                             1, {"guild_id": str(guild_id), "cache_outcome": "stale_hit", "outcome": outcome}
                         )

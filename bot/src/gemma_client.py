@@ -144,9 +144,6 @@ Schema: {response_schema.model_json_schema()}"""
                 response = await self.client.aio.models.generate_content(
                     model=self.model_name, contents=content_parts, config=config
                 )
-                attrs = {**base_attrs, "outcome": "success"}
-                self.telemetry.metrics.llm_latency.record(timer(), attrs)
-                self.telemetry.metrics.llm_requests.add(1, attrs)
             except Exception as e:
                 attrs = {
                     **base_attrs,
@@ -166,6 +163,10 @@ Schema: {response_schema.model_json_schema()}"""
                 self.telemetry.metrics.llm_latency.record(timer(), attrs_blocked)
                 self.telemetry.metrics.llm_requests.add(1, attrs_blocked)
                 raise BlockedException(reason=str(block_reason))
+
+            attrs_success = {**base_attrs, "outcome": "success"}
+            self.telemetry.metrics.llm_latency.record(timer(), attrs_success)
+            self.telemetry.metrics.llm_requests.add(1, attrs_success)
 
             # Track metrics with multimodal indicator
             additional_attributes = {}
