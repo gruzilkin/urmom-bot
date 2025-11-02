@@ -221,6 +221,24 @@ Cache keys use different strategies based on operation type:
 - **Minimal recomputation**: Only process new time windows
 - **Memory efficiency**: Tiny footprint allows simple in-memory storage
 
+## Daily Summary and Memory Recompute Flow
+
+The memory system uses staleness-based caching with async background rebuilds to optimize response times while keeping data reasonably fresh.
+
+### Staleness Thresholds
+
+**Fresh (< 1 hour):**
+- Return cached summaries immediately
+
+**Stale (1-6 hours):**
+- Return slightly stale data immediately
+- Trigger fire-and-forget async rebuild in background
+- Background task regenerates daily summaries and updates cache
+- Background task precomputes merged contexts for affected users
+
+**Too Stale (≥ 6 hours):**
+- Force synchronous rebuild
+
 ## Discord Integration
 
 ### Freeform Commands ✅ IMPLEMENTED
