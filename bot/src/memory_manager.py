@@ -407,7 +407,7 @@ class MemoryManager:
             user_list = []
             for user_id in active_user_ids:
                 user_name = await self._user_resolver.get_display_name(guild_id, user_id)
-                user_list.append(f"<user><user_id>{user_id}</user_id><name>{user_name}</name></user>")
+                user_list.append(f"<user><user_id>{user_id}</user_id><nickname>{user_name}</nickname></user>")
 
             structured_prompt = f"""{BATCH_SUMMARIZE_DAILY_PROMPT}
 
@@ -513,7 +513,7 @@ class MemoryManager:
                 if memories:
                     display_name = await self._user_resolver.get_display_name(guild_id, user_id)
                     memory_block = f"""<memory>
-<name>{display_name}</name>
+<nickname>{display_name}</nickname>
 <facts>{memories}</facts>
 </memory>"""
                     memory_blocks.append(memory_block)

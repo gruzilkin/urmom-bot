@@ -194,7 +194,7 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
 
     async def test_generate_wisdom_includes_memories(self) -> None:
         """Test that memories are fetched and included in the prompt."""
-        memory_block = "<memories>\n<memory><name>User</name><facts>Lives in Tokyo</facts></memory>\n</memories>"
+        memory_block = "<memories>\n<memory><nickname>User</nickname><facts>Lives in Tokyo</facts></memory>\n</memories>"
         self.memory_manager.build_memory_prompt = AsyncMock(return_value=memory_block)
         self.ai_client.generate_content.return_value = WisdomResponse(
             answer="Wisdom", reason="test"
