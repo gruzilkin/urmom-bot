@@ -98,7 +98,7 @@ class Telemetry:
             logger_provider=otel_logger_provider
         )
 
-        json_formatter = jsonlogger.JsonFormatter()
+        json_formatter = jsonlogger.JsonFormatter(json_ensure_ascii=False)
         otel_handler.setFormatter(json_formatter)
 
         root_logger.addHandler(otel_handler)
