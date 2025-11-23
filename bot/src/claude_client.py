@@ -81,7 +81,7 @@ class ClaudeClient(AIClient):
                 "claude",
                 "--print",
                 "--output-format", "text",
-                "--allowedTools", "WebSearch",
+                "--allowedTools", "WebSearch", "WebFetch",
                 "--disallowedTools", "Bash", "Edit", "Write", "Create", "Read"
             ]
             
