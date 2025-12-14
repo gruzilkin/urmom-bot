@@ -108,7 +108,7 @@ print(umbrella.answer)
 customer_text = "Customer contacted twice, furious, demands refund."
 
 # Gemini
-decision = gemini_call("gemini-2.5-pro", customer_text, ActionDecision)
+decision = gemini_call("gemini-2.5-flash", customer_text, ActionDecision)
 print(decision.action, decision.reason)
 
 # OpenAI-compatible, with system role

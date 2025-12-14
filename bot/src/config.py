@@ -15,7 +15,6 @@ class AppConfig(BaseSettings):
     # Gemini/Gemma configuration
     gemini_api_key: str = Field(env="GEMINI_API_KEY")
     gemini_flash_model: str = Field(env="GEMINI_FLASH_MODEL")
-    gemini_pro_model: str = Field(env="GEMINI_PRO_MODEL")
     gemini_gemma_model: str = Field(env="GEMINI_GEMMA_MODEL")
     gemini_temperature: float = Field(default=0.7, env="GEMINI_TEMPERATURE")
 
@@ -28,12 +27,8 @@ class AppConfig(BaseSettings):
     ollama_api_key: str = Field(env="OLLAMA_API_KEY")
     ollama_base_url: str = Field(default="https://ollama.com", env="OLLAMA_BASE_URL")
     ollama_kimi_model: str = Field(default="kimi-k2:1t-cloud", env="OLLAMA_KIMI_MODEL")
-    ollama_qwen_vl_model: str = Field(
-        default="qwen3-vl:235b-cloud", env="OLLAMA_QWEN_VL_MODEL"
-    )
-    ollama_gpt_oss_model: str = Field(
-        default="gpt-oss:120b-cloud", env="OLLAMA_GPT_OSS_MODEL"
-    )
+    ollama_qwen_vl_model: str = Field(default="qwen3-vl:235b-cloud", env="OLLAMA_QWEN_VL_MODEL")
+    ollama_gpt_oss_model: str = Field(default="gpt-oss:120b-cloud", env="OLLAMA_GPT_OSS_MODEL")
     ollama_temperature: float = Field(default=0.1, env="OLLAMA_TEMPERATURE")
 
     # Discord configuration
@@ -45,9 +40,7 @@ class AppConfig(BaseSettings):
 
     # OpenTelemetry configuration
     otel_service_name: str = Field(default="urmom-bot", env="OTEL_SERVICE_NAME")
-    otel_exporter_otlp_endpoint: str = Field(
-        default="localhost:4317", env="OTEL_EXPORTER_OTLP_ENDPOINT"
-    )
+    otel_exporter_otlp_endpoint: str = Field(default="localhost:4317", env="OTEL_EXPORTER_OTLP_ENDPOINT")
 
     model_config = {
         "env_file": ".env",

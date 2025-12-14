@@ -3,7 +3,6 @@
 Free-tier AI services are inherently fragile, so every feature needs a clear fallback path.
 
 **Available clients**
-- gemini 2.5 pro
 - gemini flash
 - gemma
 - ollama kimi-k2
@@ -13,9 +12,8 @@ Free-tier AI services are inherently fragile, so every feature needs a clear fal
 - grok
 
 **Client notes**
-- Gemma and Gemini models share rate limits, so falling back between them rarely helps unless a second provider is in the chain. Gemini Flash and Gemini 2.5 Pro reuse the same client class; only the configured model name differs.
+- Gemma and Gemini Flash share rate limits, so falling back between them rarely helps unless a second provider is in the chain.
 - Ollama cloud is bursty and quota-based. We do **not** wrap Ollama clients in retries—fail fast and let the composite move on.
-- Gemini flash and Gemini 2.5 pro share the same client implementation; configuration selects the model variant.
 - Claude tends to respond slowly; plan for longer latency.
 - Grok is paid but reliable and relatively fast, so it is a good last-resort fallback.
 
@@ -34,7 +32,7 @@ Free-tier AI services are inherently fragile, so every feature needs a clear fal
 2. **AI router**
    Use kimi (fail fast) ➝ gemma (60s retry with jitter) ➝ grok (3-attempt retry). Fallback is triggered when the router returns `NOTSURE`.
 3. **Memory**
-   Daily summaries use composite client `pro_flash_with_kimi_long_timeout`: Gemini 2.5 Pro ➝ Gemini Flash ➝ Ollama Kimi (long timeout, fail fast). Historical merge path uses Kimi (fail fast) ➝ Gemma (60s retry with jitter).
+   Daily summaries use composite client `flash_with_kimi_long_timeout`: Gemini Flash ➝ Ollama Kimi (long timeout, fail fast). Historical merge path uses Kimi (fail fast) ➝ Gemma (60s retry with jitter).
 4. **Language detector**
    Use gemma (60s retry with jitter) ➝ kimi (fail fast).
 5. **Fact handler**

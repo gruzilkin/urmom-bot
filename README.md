@@ -9,8 +9,7 @@ A Discord bot that responds with "ur mom" jokes when messages are reacted to wit
 - **AI-Powered Jokes**: Creates "ur mom" jokes and culturally-themed humor based on reactions
 - **Multi-Language Support**: Works in any language (English, Russian, French, Japanese, etc.)
 - **Multiple AI Providers**: Uses different AI models for different tasks with automatic fallback
-  - Gemini 2.5 Pro: Primary daily summaries and high-quality general reasoning
-  - Gemini Flash: Fast general questions and information retrieval
+  - Gemini Flash: Fast general questions, daily summaries, and information retrieval
   - Gemma: Under-the-hood operations (routing, language detection, fact extraction)
   - Grok: Creative tasks, jokes, and celebrity impersonation
   - Ollama Cloud: Assists Gemma with under-the-hood tasks (Kimi, GPT-OSS, Qwen3-VL)
@@ -41,7 +40,6 @@ DISCORD_TOKEN=your_discord_bot_token      # Get from Discord Developer Portal
 # Gemini/Gemma Configuration (Required)
 GEMINI_API_KEY=your_gemini_api_key        # Get from Google AI Studio
 GEMINI_FLASH_MODEL=gemini-2.5-flash      # Flash model name
-GEMINI_PRO_MODEL=gemini-2.5-pro         # Pro model name (required)
 GEMINI_GEMMA_MODEL=gemma-3-27b-it        # Gemma model name
 
 # Grok Configuration (Required)
