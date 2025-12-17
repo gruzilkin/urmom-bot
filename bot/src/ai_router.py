@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from ai_client import AIClient
+from conversation_formatter import ConversationFormatter
+from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from schemas import FamousParams, GeneralParams, FactParams, RouteSelection
 from language_detector import LanguageDetector
@@ -23,6 +26,7 @@ class AiRouter:
         famous_generator,
         general_generator,
         fact_handler,
+        conversation_formatter: ConversationFormatter,
     ):
         self.ai_client = ai_client
         self.telemetry = telemetry
@@ -30,12 +34,23 @@ class AiRouter:
         self.famous_generator = famous_generator
         self.general_generator = general_generator
         self.fact_handler = fact_handler
+        self.conversation_formatter = conversation_formatter
 
-    def _build_route_selection_prompt(self) -> str:
+    def _build_route_selection_prompt(self, conversation_context: str = "") -> str:
         """Build focused prompt for route selection only (tier 1)."""
         famous_desc = self.famous_generator.get_route_description()
         general_desc = self.general_generator.get_route_description()
         fact_desc = self.fact_handler.get_route_description()
+
+        if conversation_context:
+            conversation_context = f"""
+<conversation_context>
+Route the LAST message.
+Use earlier messages to resolve references like "this", "that", "it" in the last message.
+
+{conversation_context}
+</conversation_context>
+"""
 
         return f"""
 <system_instructions>
@@ -65,7 +80,7 @@ Instructions:
 6. ALWAYS provide a brief (1-2 sentence) reason for your decision.
 7. Focus ONLY on route selection - parameter extraction happens later.
 </system_instructions>
-
+{conversation_context}
 <route_definitions>
 <route route="FAMOUS">
 {famous_desc}
@@ -106,6 +121,7 @@ NOTSURE: When uncertain about routing decision
         self,
         route: str,
         message: str,
+        conversation_context: str = "",
     ) -> FamousParams | GeneralParams | FactParams | None:
         """Extract parameters for the selected route (tier 2)."""
         if route == "NONE":
@@ -123,7 +139,7 @@ NOTSURE: When uncertain about routing decision
 
         # Get schema and prompt from the handler
         param_schema = handler.get_parameter_schema()
-        extraction_prompt = handler.get_parameter_extraction_prompt()
+        extraction_prompt = handler.get_parameter_extraction_prompt(conversation_context)
 
         async with self.telemetry.async_create_span("extract_parameters") as span:
             span.set_attribute("route", route)
@@ -140,13 +156,20 @@ NOTSURE: When uncertain about routing decision
     async def route_request(
         self,
         message: str,
+        conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
+        guild_id: int,
     ) -> tuple[str, FamousParams | GeneralParams | FactParams | None]:
         """Route a message using 2-tier approach: route selection, language detection, then parameter extraction."""
         async with self.telemetry.async_create_span("route_request") as span:
             span.set_attribute("message", message)
 
+            conversation_context = ""
+            conversation = await conversation_fetcher()
+            if conversation:
+                conversation_context = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+
             # Tier 1: Route selection and language detection (run in parallel)
-            route_prompt = self._build_route_selection_prompt()
+            route_prompt = self._build_route_selection_prompt(conversation_context)
 
             route_selection, language_code = await asyncio.gather(
                 self.ai_client.generate_content(
@@ -170,7 +193,7 @@ NOTSURE: When uncertain about routing decision
 
             # Tier 2: Parameter extraction (if needed)
             try:
-                params = await self._extract_parameters(route_selection.route, message)
+                params = await self._extract_parameters(route_selection.route, message, conversation_context)
             except Exception:
                 # Record routing attempt with error outcome
                 self.telemetry.metrics.route_selections_counter.add(

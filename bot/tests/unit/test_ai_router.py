@@ -1,7 +1,7 @@
 """
 Unit tests for AiRouter.
 
-Tests the NOTSURE fallback behavior using CompositeAIClient with mocked dependencies.
+Tests NOTSURE fallback behavior and conversation context handling.
 """
 
 import unittest
@@ -9,6 +9,8 @@ from unittest.mock import Mock, AsyncMock
 
 from ai_router import AiRouter
 from ai_client_wrappers import CompositeAIClient
+from conversation_formatter import ConversationFormatter
+from conversation_graph import ConversationMessage
 from schemas import RouteSelection, GeneralParams
 from null_telemetry import NullTelemetry
 
@@ -19,33 +21,39 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         """Set up test dependencies with mocks."""
         self.telemetry = NullTelemetry()
-        
+
         # Mock AI clients
         self.primary_client = Mock()
         self.fallback_client = Mock()
-        
+
         # Mock language detector
         self.language_detector = Mock()
         self.language_detector.detect_language = AsyncMock(return_value="en")
         self.language_detector.get_language_name = AsyncMock(return_value="English")
-        
+
+        # Mock conversation formatter
+        self.conversation_formatter = Mock(spec=ConversationFormatter)
+        self.conversation_formatter.format_to_xml = AsyncMock(
+            return_value="<conversation_history></conversation_history>"
+        )
+
         # Mock generators - only need route descriptions for prompts
         self.famous_generator = Mock()
         self.famous_generator.get_route_description.return_value = "FAMOUS: For impersonating famous people"
-        
+
         self.general_generator = Mock()
         self.general_generator.get_route_description.return_value = "GENERAL: For general AI queries"
         self.general_generator.get_parameter_schema.return_value = GeneralParams
         self.general_generator.get_parameter_extraction_prompt.return_value = "Extract parameters"
-        
+
         self.fact_handler = Mock()
         self.fact_handler.get_route_description.return_value = "FACT: For memory operations"
-        
+
         # The router client will be a composite client that handles the NOTSURE fallback.
         router_client = CompositeAIClient(
             [self.primary_client, self.fallback_client],
             telemetry=self.telemetry,
-            is_bad_response=lambda r: hasattr(r, 'route') and r.route == "NOTSURE"
+            is_bad_response=lambda r: hasattr(r, "route") and r.route == "NOTSURE",
         )
 
         # Create router with mocked dependencies
@@ -55,24 +63,35 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
             language_detector=self.language_detector,
             famous_generator=self.famous_generator,
             general_generator=self.general_generator,
-            fact_handler=self.fact_handler
+            fact_handler=self.fact_handler,
+            conversation_formatter=self.conversation_formatter,
         )
+
+        # Default mock conversation fetcher for tests
+        self.default_guild_id = 12345
+        self.default_conversation_fetcher = AsyncMock(return_value=[])
 
     async def test_notsure_triggers_fallback(self):
         """
         Test that when primary client returns NOTSURE, fallback client is called
         and its response is used as the final result.
         """
-        self.primary_client.generate_content = AsyncMock(side_effect=[
-            RouteSelection(route="NOTSURE", reason="Message is ambiguous"),
-            GeneralParams(ai_backend="gemini_flash", temperature=0.5, cleaned_query="test query")
-        ])
+        self.primary_client.generate_content = AsyncMock(
+            side_effect=[
+                RouteSelection(route="NOTSURE", reason="Message is ambiguous"),
+                GeneralParams(ai_backend="gemini_flash", temperature=0.5, cleaned_query="test query"),
+            ]
+        )
 
         self.fallback_client.generate_content = AsyncMock(
             return_value=RouteSelection(route="GENERAL", reason="Definitively a general query")
         )
 
-        route, params = await self.router.route_request("What is the weather like?")
+        route, params = await self.router.route_request(
+            "What is the weather like?",
+            self.default_conversation_fetcher,
+            self.default_guild_id,
+        )
 
         self.fallback_client.generate_content.assert_called_once()
         self.assertEqual(route, "GENERAL")
@@ -83,12 +102,18 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         Test that when primary client returns a definitive route (not NOTSURE),
         fallback client is NOT called.
         """
-        self.primary_client.generate_content = AsyncMock(side_effect=[
-            RouteSelection(route="GENERAL", reason="Clear general query"),
-            GeneralParams(ai_backend="gemini_flash", temperature=0.5, cleaned_query="test query")
-        ])
+        self.primary_client.generate_content = AsyncMock(
+            side_effect=[
+                RouteSelection(route="GENERAL", reason="Clear general query"),
+                GeneralParams(ai_backend="gemini_flash", temperature=0.5, cleaned_query="test query"),
+            ]
+        )
 
-        route, params = await self.router.route_request("What is the weather like?")
+        route, params = await self.router.route_request(
+            "What is the weather like?",
+            self.default_conversation_fetcher,
+            self.default_guild_id,
+        )
 
         self.fallback_client.generate_content.assert_not_called()
         self.assertEqual(route, "GENERAL")
@@ -107,13 +132,57 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
             return_value=RouteSelection(route="NONE", reason="Just an acknowledgment")
         )
 
-        route, params = await self.router.route_request("ok")
+        route, params = await self.router.route_request(
+            "ok",
+            self.default_conversation_fetcher,
+            self.default_guild_id,
+        )
 
         self.fallback_client.generate_content.assert_called_once()
         self.assertEqual(route, "NONE")
         self.assertIsNone(params)
         self.assertEqual(self.primary_client.generate_content.call_count, 1)
 
+    async def test_routing_with_conversation_context(self):
+        """Test that conversation context is fetched and included in routing."""
+        self.primary_client.generate_content = AsyncMock(
+            side_effect=[
+                RouteSelection(route="GENERAL", reason="Follow-up question about previous topic"),
+                GeneralParams(ai_backend="gemini_flash", temperature=0.5, cleaned_query="explain more"),
+            ]
+        )
 
-if __name__ == '__main__':
+        mock_conversation = [
+            ConversationMessage(
+                message_id=1,
+                author_id=123,
+                content="What is quantum physics?",
+                timestamp="2024-01-01 12:00:00",
+                mentioned_user_ids=[],
+            ),
+            ConversationMessage(
+                message_id=2,
+                author_id=456,
+                content="explain more",
+                timestamp="2024-01-01 12:01:00",
+                mentioned_user_ids=[],
+            ),
+        ]
+        mock_fetcher = AsyncMock(return_value=mock_conversation)
+
+        route, params = await self.router.route_request(
+            "explain more", mock_fetcher, self.default_guild_id
+        )
+
+        self.assertEqual(route, "GENERAL")
+        mock_fetcher.assert_called_once()
+        self.conversation_formatter.format_to_xml.assert_called_once_with(
+            self.default_guild_id, mock_conversation
+        )
+        # Verify context is passed to parameter extraction
+        self.general_generator.get_parameter_extraction_prompt.assert_called_once_with(
+            "<conversation_history></conversation_history>"
+        )
+
+if __name__ == "__main__":
     unittest.main()

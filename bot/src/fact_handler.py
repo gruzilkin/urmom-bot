@@ -47,17 +47,30 @@ class FactHandler:
         from schemas import FactParams
         return FactParams
     
-    def get_parameter_extraction_prompt(self) -> str:
+    def get_parameter_extraction_prompt(self, conversation_context: str = "") -> str:
         """Return focused prompt for extracting fact operation parameters."""
-        return """
+        context_section = ""
+        if conversation_context:
+            context_section = f"""
+<conversation_context>
+Extract parameters from the LAST message.
+Use earlier messages to resolve references like "this", "that", "it" in the last message.
+
+{conversation_context}
+</conversation_context>
+"""
+
+        return f"""
         Extract parameters for a memory fact operation (remember/forget).
         
         CRITICAL: Only extract parameters if the message is an IMPERATIVE SENTENCE commanding the bot to store/remove facts.
         DO NOT extract parameters for ANY QUESTION.
         
+        IMPORTANT: "BOT" is just a placeholder for the assistant. It is not a user to remember facts about.
+        
         operation: "remember" or "forget" based on an EXPLICIT and IMPERATIVE command.
-        user_mention: Extract user reference (Discord ID for <@1333878858138652682> or nickname)
-        fact_content: The specific fact to remember or forget, converted to third-person perspective using appropriate pronouns. This can be extracted both from the user message and inferred from the conversation history.
+        user_mention: Extract user reference (Discord ID for <@1333878858138652682> or nickname). Never extract "BOT" as user_mention.
+        fact_content: The specific fact to remember or forget, converted to third-person perspective using appropriate pronouns. Extract from the user message or infer from the conversation history when references like "this" are used.
         
         Questions are never fact operations:
         - "What do you remember about X?" → NOT a fact operation
@@ -74,10 +87,11 @@ class FactHandler:
         - "БОТ запомни что gruzilkin так же известен как Медвед" → operation: "remember", user_mention: "gruzilkin", fact_content: "он также известен как Медвед"
         - "запомни что <@123456> живёт в Москве" → operation: "remember", user_mention: "123456", fact_content: "они живут в Москве"
         - "Bot oublie que Pierre aime le fromage" → operation: "forget", user_mention: "Pierre", fact_content: "il aime le fromage"
+        - "remember this about John" (where "this" refers to something in conversation) → Extract the fact from conversation context
         
         For fact_content conversion to third-person perspective:
         - Use appropriate third person forms for the language when gender is unknown
-        """
+        {context_section}"""
     
     
     

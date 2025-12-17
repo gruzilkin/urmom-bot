@@ -41,10 +41,23 @@ class FamousPersonGenerator:
 
         return FamousParams
 
-    def get_parameter_extraction_prompt(self) -> str:
+    def get_parameter_extraction_prompt(self, conversation_context: str = "") -> str:
         """Return focused prompt for extracting famous person parameters."""
-        return """
+        context_section = ""
+        if conversation_context:
+            context_section = f"""
+<conversation_context>
+Extract parameters from the LAST message.
+Use earlier messages to resolve references like "he", "she", "they" to the actual person's name.
+
+{conversation_context}
+</conversation_context>
+"""
+
+        return f"""
         Extract the famous person's name from the user message.
+        
+        IMPORTANT: "BOT" is just a placeholder for the assistant, not a famous person. Never extract "BOT".
         
         Examples:
         - "What would Trump say?" → famous_person: "Trump"
@@ -53,7 +66,7 @@ class FamousPersonGenerator:
         - "What would Jesus say if he spoke like Trump?" → famous_person: "Jesus"
         
         Extract the person's name (can be real celebrities, fictional characters, historical figures).
-        """
+        {context_section}"""
 
     async def is_famous_person_request(self, message: str) -> str | None:
         """
