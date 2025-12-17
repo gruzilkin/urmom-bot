@@ -103,7 +103,16 @@ async def on_message(message: nextcord.Message):
 
         # Replace bot mention with "BOT" and pass the whole message to the router
         processed_message = message.content.replace(f"<@{bot.user.id}>", "BOT").strip()
-        route, params = await container.ai_router.route_request(processed_message)
+        router_conversation_fetcher = create_conversation_fetcher(
+            message,
+            min_messages=5,
+            max_messages=10,
+        )
+        route, params = await container.ai_router.route_request(
+            processed_message,
+            conversation_fetcher=router_conversation_fetcher,
+            guild_id=message.guild.id,
+        )
 
         reply = None
         if route == "FAMOUS":
@@ -398,28 +407,30 @@ async def get_recent_conversation(
 
 def create_conversation_fetcher(
     message: nextcord.Message,
+    min_messages: int = 10,
+    max_messages: int = 30,
+    max_age_minutes: int = 30,
 ) -> Callable[[], Awaitable[list[ConversationMessage]]]:
     """
     Create a parameterless lambda that encapsulates conversation fetching logic.
 
     Args:
-        message: The Discord message to use for conversation context
+        message: The Discord message to start conversation history from
+        min_messages: Minimum number of messages to retrieve (default: 10)
+        max_messages: Maximum number of messages to retrieve (default: 30)
+        max_age_minutes: Time threshold for temporal connections (default: 30)
 
     Returns:
         async function: Parameterless function that returns conversation history
     """
 
     async def fetch_conversation():
-        reference_message = None
-        if message.reference and message.reference.message_id:
-            reference_message = await message.channel.fetch_message(message.reference.message_id)
-
         return await get_recent_conversation(
             message.channel,
-            min_messages=10,
-            max_messages=30,
-            max_age_minutes=30,
-            reference_message=reference_message,
+            min_messages=min_messages,
+            max_messages=max_messages,
+            max_age_minutes=max_age_minutes,
+            reference_message=message,
         )
 
     return fetch_conversation
@@ -518,14 +529,7 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
 
-    async def fetch_conversation():
-        return await get_recent_conversation(
-            channel,
-            min_messages=10,
-            max_messages=30,
-            max_age_minutes=30,
-            reference_message=message,
-        )
+    fetch_conversation = create_conversation_fetcher(message)
 
     wisdom = await container.wisdom_generator.generate_wisdom(
         trigger_message_content=message.content,

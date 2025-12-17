@@ -219,6 +219,7 @@ class Container:
             self.famous_person_generator,
             self.general_query_generator,
             self.fact_handler,
+            self.conversation_formatter,
         )
 
         self.country_resolver = CountryResolver(self.gemma_with_grok_fallback, self.telemetry)

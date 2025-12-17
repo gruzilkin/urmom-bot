@@ -51,9 +51,21 @@ class GeneralQueryGenerator:
 
         return GeneralParams
 
-    def get_parameter_extraction_prompt(self) -> str:
+    def get_parameter_extraction_prompt(self, conversation_context: str = "") -> str:
         """Return focused prompt for extracting general query parameters."""
-        return """
+        context_section = ""
+        if conversation_context:
+            context_section = f"""
+<conversation_context>
+Extract parameters from the LAST message.
+Use earlier messages to resolve references like "this", "that", "it" in the last message.
+If a specific ai_backend was explicitly requested earlier, reuse it for follow-up questions.
+
+{conversation_context}
+</conversation_context>
+"""
+
+        return f"""
         Extract parameters for a general AI query request.
         
         ai_backend selection:
@@ -82,7 +94,7 @@ class GeneralQueryGenerator:
           - "ask grok to write a poem about cats" → "write a poem about cats"
           - "use gemini flash to explain quantum physics" → "explain quantum physics"
           - "with high creativity, write a story" → "write a story"
-        """
+        {context_section}"""
 
     def _extract_unique_user_ids(self, conversation) -> Set[int]:
         """Extract all unique user IDs from conversation (authors + mentions)."""

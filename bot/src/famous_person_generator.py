@@ -41,7 +41,7 @@ class FamousPersonGenerator:
 
         return FamousParams
 
-    def get_parameter_extraction_prompt(self) -> str:
+    def get_parameter_extraction_prompt(self, conversation_context: str = "") -> str:
         """Return focused prompt for extracting famous person parameters."""
         return """
         Extract the famous person's name from the user message.
