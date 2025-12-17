@@ -57,6 +57,8 @@ Use earlier messages to resolve references like "he", "she", "they" to the actua
         return f"""
         Extract the famous person's name from the user message.
         
+        IMPORTANT: "BOT" is just a placeholder for the assistant, not a famous person. Never extract "BOT".
+        
         Examples:
         - "What would Trump say?" → famous_person: "Trump"
         - "How would Darth Vader respond?" → famous_person: "Darth Vader"  

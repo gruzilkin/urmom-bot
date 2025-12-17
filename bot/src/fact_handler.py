@@ -66,8 +66,10 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         CRITICAL: Only extract parameters if the message is an IMPERATIVE SENTENCE commanding the bot to store/remove facts.
         DO NOT extract parameters for ANY QUESTION.
         
+        IMPORTANT: "BOT" is just a placeholder for the assistant. It is not a user to remember facts about.
+        
         operation: "remember" or "forget" based on an EXPLICIT and IMPERATIVE command.
-        user_mention: Extract user reference (Discord ID for <@1333878858138652682> or nickname)
+        user_mention: Extract user reference (Discord ID for <@1333878858138652682> or nickname). Never extract "BOT" as user_mention.
         fact_content: The specific fact to remember or forget, converted to third-person perspective using appropriate pronouns. Extract from the user message or infer from the conversation history when references like "this" are used.
         
         Questions are never fact operations:

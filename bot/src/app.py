@@ -101,7 +101,6 @@ async def on_message(message: nextcord.Message):
         if is_command:
             return
 
-        # Replace bot mention with "BOT" and pass the whole message to the router
         processed_message = message.content.replace(f"<@{bot.user.id}>", "BOT").strip()
         router_conversation_fetcher = create_conversation_fetcher(
             message,
