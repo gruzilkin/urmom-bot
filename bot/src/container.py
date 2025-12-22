@@ -51,8 +51,8 @@ class Container:
         )
 
         self.gemma = GemmaClient(
-            api_key=self.config.gemini_api_key,
-            model_name=self.config.gemini_gemma_model,
+            api_key=self.config.gemma_api_key,
+            model_name=self.config.gemma_model,
             telemetry=self.telemetry,
             temperature=self.config.gemini_temperature,
         )

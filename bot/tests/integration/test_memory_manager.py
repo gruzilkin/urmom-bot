@@ -63,10 +63,11 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
         ]
         self.merge_profiles: list[Profile] = []
 
-        gemma_model = os.getenv("GEMINI_GEMMA_MODEL")
-        if gemma_model:
+        gemma_api_key = os.getenv("GEMMA_API_KEY")
+        gemma_model = os.getenv("GEMMA_MODEL")
+        if gemma_api_key and gemma_model:
             gemma_client = GemmaClient(
-                api_key=self.api_key,
+                api_key=gemma_api_key,
                 model_name=gemma_model,
                 telemetry=self.telemetry,
                 temperature=0.1,

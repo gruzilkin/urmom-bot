@@ -12,11 +12,14 @@ class AppConfig(BaseSettings):
     postgres_password: str = Field(env="POSTGRES_PASSWORD")
     postgres_db: str = Field(env="POSTGRES_DB")
 
-    # Gemini/Gemma configuration
+    # Gemini configuration
     gemini_api_key: str = Field(env="GEMINI_API_KEY")
     gemini_flash_model: str = Field(env="GEMINI_FLASH_MODEL")
-    gemini_gemma_model: str = Field(env="GEMINI_GEMMA_MODEL")
     gemini_temperature: float = Field(default=0.7, env="GEMINI_TEMPERATURE")
+
+    # Gemma configuration (separate API key for free-tier access)
+    gemma_api_key: str = Field(env="GEMMA_API_KEY")
+    gemma_model: str = Field(env="GEMMA_MODEL")
 
     # Grok configuration
     grok_api_key: str = Field(env="GROK_API_KEY")

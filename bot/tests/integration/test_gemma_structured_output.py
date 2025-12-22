@@ -23,13 +23,13 @@ class TestGemmaStructuredOutput(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         
         # Check for API key and model name
-        self.api_key = os.getenv('GEMINI_API_KEY')
-        self.model_name = os.getenv('GEMINI_GEMMA_MODEL')
+        self.api_key = os.getenv('GEMMA_API_KEY')
+        self.model_name = os.getenv('GEMMA_MODEL')
         
         if not self.api_key:
-            self.skipTest("GEMINI_API_KEY environment variable not set")
+            self.skipTest("GEMMA_API_KEY environment variable not set")
         if not self.model_name:
-            self.skipTest("GEMINI_GEMMA_MODEL environment variable not set")
+            self.skipTest("GEMMA_MODEL environment variable not set")
             
         self.client = GemmaClient(
             api_key=self.api_key,

@@ -33,14 +33,17 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
 
         gemini_api_key = os.getenv("GEMINI_API_KEY")
         gemini_model = os.getenv("GEMINI_FLASH_MODEL")
-        gemma_model = os.getenv("GEMINI_GEMMA_MODEL")
+        gemma_api_key = os.getenv("GEMMA_API_KEY")
+        gemma_model = os.getenv("GEMMA_MODEL")
 
         if not gemini_api_key:
             self.skipTest("GEMINI_API_KEY environment variable not set")
         if not gemini_model:
             self.skipTest("GEMINI_FLASH_MODEL environment variable not set")
+        if not gemma_api_key:
+            self.skipTest("GEMMA_API_KEY environment variable not set")
         if not gemma_model:
-            self.skipTest("GEMINI_GEMMA_MODEL environment variable not set")
+            self.skipTest("GEMMA_MODEL environment variable not set")
 
         self.gemini_client = GeminiClient(
             api_key=gemini_api_key,
@@ -50,7 +53,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         )
 
         self.gemma_client = GemmaClient(
-            api_key=gemini_api_key,
+            api_key=gemma_api_key,
             model_name=gemma_model,
             telemetry=self.telemetry,
             temperature=0.1,

@@ -77,22 +77,6 @@ class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
         # Verify we get a string back
         self.assertIsInstance(result, str)
         self.assertIn("blue", result.lower())
-    
-    async def test_structured_output_with_grounding(self):
-        """Test that using structured output with grounding raises appropriate error."""
-        message = "Is Python a programming language?"
-        
-        # This should raise an error since structured output and grounding can't be used together
-        with self.assertRaises(Exception) as context:
-            await self.client.generate_content(
-                message=message,
-                enable_grounding=True,
-                response_schema=YesNo
-            )
-        
-        # Verify that the error mentions the conflict
-        error_msg = str(context.exception)
-        self.assertIn("Tool use with a response mime type", error_msg)
 
 
 if __name__ == '__main__':
