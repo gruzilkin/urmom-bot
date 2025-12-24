@@ -124,13 +124,8 @@ class Container:
             telemetry=self.telemetry,
         )
 
-        self.flash_with_kimi_fallback = CompositeAIClient(
-            [self.gemini_flash, self.ollama_kimi],
-            telemetry=self.telemetry,
-        )
-
-        self.flash_with_kimi_long_timeout = CompositeAIClient(
-            [self.gemini_flash, self.ollama_kimi_long_timeout],
+        self.claude_kimi_flash_fallback = CompositeAIClient(
+            [self.claude, self.ollama_kimi_long_timeout, self.gemini_flash],
             telemetry=self.telemetry,
         )
 
@@ -191,7 +186,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            gemini_client=self.flash_with_kimi_long_timeout,
+            gemini_client=self.claude_kimi_flash_fallback,
             gemma_client=self.gemma_with_kimi_fallback,
             user_resolver=self.user_resolver,
         )
@@ -245,7 +240,7 @@ class Container:
         if preferred_backend not in client_map:
             raise ValueError(f"Unknown ai_backend: {preferred_backend}")
 
-        fallback_order = ["gemini_flash", "claude", "grok"]
+        fallback_order = ["claude", "gemini_flash", "grok"]
         ordered_labels = [preferred_backend] + [label for label in fallback_order if label != preferred_backend]
 
         chain = [client_map[label] for label in ordered_labels]
