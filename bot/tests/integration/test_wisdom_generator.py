@@ -40,15 +40,15 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
 
         enable_paid_tests = os.getenv("ENABLE_PAID_TESTS", "").lower() == "true"
 
-        gemini_api_key = os.getenv("GEMINI_API_KEY")
-        gemma_model = os.getenv("GEMINI_GEMMA_MODEL")
-        if not gemini_api_key:
-            self.skipTest("GEMINI_API_KEY environment variable not set")
+        gemma_api_key = os.getenv("GEMMA_API_KEY")
+        gemma_model = os.getenv("GEMMA_MODEL")
+        if not gemma_api_key:
+            self.skipTest("GEMMA_API_KEY environment variable not set")
         if not gemma_model:
-            self.skipTest("GEMINI_GEMMA_MODEL environment variable not set")
+            self.skipTest("GEMMA_MODEL environment variable not set")
 
         self.gemma_client = GemmaClient(
-            api_key=gemini_api_key,
+            api_key=gemma_api_key,
             model_name=gemma_model,
             telemetry=self.telemetry,
         )

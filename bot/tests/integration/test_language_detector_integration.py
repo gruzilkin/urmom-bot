@@ -32,12 +32,12 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         self.profiles: list[DetectorProfile] = []
 
-        gemini_api_key = os.getenv("GEMINI_API_KEY")
-        gemma_model = os.getenv("GEMINI_GEMMA_MODEL")
+        gemma_api_key = os.getenv("GEMMA_API_KEY")
+        gemma_model = os.getenv("GEMMA_MODEL")
 
-        if gemini_api_key and gemma_model:
+        if gemma_api_key and gemma_model:
             gemma_client = GemmaClient(
-                api_key=gemini_api_key,
+                api_key=gemma_api_key,
                 model_name=gemma_model,
                 telemetry=self.telemetry,
             )

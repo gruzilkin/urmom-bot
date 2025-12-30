@@ -17,7 +17,8 @@ class TestAppConfig(unittest.TestCase):
             postgres_db="test",
             gemini_api_key="test-key",
             gemini_flash_model="gemini-1.5-flash",
-            gemini_gemma_model="gemini-2.0-flash-exp",
+            gemma_api_key="test-gemma-key",
+            gemma_model="gemma-3-27b-it",
             grok_api_key="test-grok-key",
             grok_model="grok-beta",
             discord_token="test-token",
@@ -39,7 +40,8 @@ class TestAppConfig(unittest.TestCase):
                 postgres_db="test",
                 gemini_api_key="test-key",
                 gemini_flash_model="gemini-1.5-flash",
-                gemini_gemma_model="gemini-2.0-flash-exp",
+                gemma_api_key="test-gemma-key",
+                gemma_model="gemma-3-27b-it",
                 grok_api_key="test-grok-key",
                 grok_model="grok-beta",
                 discord_token="test-token",
@@ -59,7 +61,8 @@ class TestAppConfig(unittest.TestCase):
                 postgres_db="test",
                 gemini_api_key="test-key",
                 gemini_flash_model="gemini-1.5-flash",
-                gemini_gemma_model="gemini-2.0-flash-exp",
+                gemma_api_key="test-gemma-key",
+                gemma_model="gemma-3-27b-it",
                 gemini_temperature=3.0,  # Invalid temperature
                 grok_api_key="test-grok-key",
                 grok_model="grok-beta",
@@ -79,7 +82,8 @@ class TestAppConfig(unittest.TestCase):
             "POSTGRES_DB": "test-db",
             "GEMINI_API_KEY": "test-gemini-key",
             "GEMINI_FLASH_MODEL": "test-flash-model",
-            "GEMINI_GEMMA_MODEL": "test-gemma-model",
+            "GEMMA_API_KEY": "test-gemma-key",
+            "GEMMA_MODEL": "gemma-3-27b-it",
             "GROK_API_KEY": "test-grok-key",
             "GROK_MODEL": "test-grok-model",
             "DISCORD_TOKEN": "test-discord-token",
@@ -100,7 +104,8 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(config.postgres_db, "test-db")
         self.assertEqual(config.gemini_api_key, "test-gemini-key")
         self.assertEqual(config.gemini_flash_model, "test-flash-model")
-        self.assertEqual(config.gemini_gemma_model, "test-gemma-model")
+        self.assertEqual(config.gemma_api_key, "test-gemma-key")
+        self.assertEqual(config.gemma_model, "gemma-3-27b-it")
         self.assertEqual(config.grok_api_key, "test-grok-key")
         self.assertEqual(config.grok_model, "test-grok-model")
         self.assertEqual(config.discord_token, "test-discord-token")

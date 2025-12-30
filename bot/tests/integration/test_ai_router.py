@@ -62,14 +62,15 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
 
     def _build_gemini_profile(self) -> RouterProfile | None:
         gemini_api_key = os.getenv("GEMINI_API_KEY")
-        gemma_model = os.getenv("GEMINI_GEMMA_MODEL")
+        gemma_api_key = os.getenv("GEMMA_API_KEY")
+        gemma_model = os.getenv("GEMMA_MODEL")
         flash_model = os.getenv("GEMINI_FLASH_MODEL")
 
-        if not all([gemini_api_key, gemma_model, flash_model]):
+        if not all([gemini_api_key, gemma_api_key, gemma_model, flash_model]):
             return None
 
         gemma_client = GemmaClient(
-            api_key=gemini_api_key,
+            api_key=gemma_api_key,
             model_name=gemma_model,
             telemetry=self.telemetry,
         )

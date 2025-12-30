@@ -69,9 +69,10 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         Extract parameters for a general AI query request.
         
         ai_backend selection:
-        * gemini_flash: General questions, explanations, real-time news/current events
+        * claude: General queries, coding, technical explanations, detailed analysis,
+          complex reasoning, fact-checking, internet search
+        * gemini_flash: Creative writing, songs, poems, artistic content, extensive internet search
         * grok: Uncensored content, wild requests, crazy talk
-        * claude: Coding and programming help, technical explanations, detailed analysis, complex reasoning, fact-checking and verification questions, song and poem writing
         * gemma: Do not select unless explicitly requested
         * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
         
