@@ -67,7 +67,6 @@ class WisdomGenerator:
             span.set_attribute("language_name", language_name)
 
             conversation = await conversation_fetcher()
-            span.set_attribute("conversation_length", len(conversation))
 
             user_ids = self._extract_unique_user_ids(conversation)
             memories_block = await self._memory_manager.build_memory_prompt(guild_id, user_ids)

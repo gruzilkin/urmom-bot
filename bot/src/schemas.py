@@ -123,3 +123,12 @@ class WisdomResponse(BaseModel):
     reason: str = Field(
         description="Explanation of the observation, style choice, and why this wisdom fits the conversation"
     )
+
+
+class DevilsAdvocateResponse(BaseModel):
+    """Schema for devil's advocate counter-argument response."""
+
+    answer: str = Field(description="The analytical counter-argument to deliver to the user")
+    reason: str = Field(
+        description="Explanation of the logical strategy and reasoning approach used for this counter-argument"
+    )

@@ -21,6 +21,7 @@ from ai_client_wrappers import CompositeAIClient, RetryAIClient
 from ai_client import AIClient
 from ollama_client import OllamaClient
 from wisdom_generator import WisdomGenerator
+from devils_advocate_generator import DevilsAdvocateGenerator
 
 
 class Container:
@@ -129,6 +130,12 @@ class Container:
             telemetry=self.telemetry,
         )
 
+        # Composite for devil's advocate: claude → gemini → kimi → grok
+        self.claude_gemini_kimi_grok = CompositeAIClient(
+            [self.claude, self.gemini_flash, self.ollama_kimi, self.retrying_grok],
+            telemetry=self.telemetry,
+        )
+
         self.qwen_with_gemma_fallback = CompositeAIClient(
             [self.ollama_qwen_vl, self.retrying_gemma],
             telemetry=self.telemetry,
@@ -221,6 +228,15 @@ class Container:
 
         self.wisdom_generator = WisdomGenerator(
             ai_client=self.shuffled_grok_kimi,
+            language_detector=self.language_detector,
+            conversation_formatter=self.conversation_formatter,
+            response_summarizer=self.response_summarizer,
+            memory_manager=self.memory_manager,
+            telemetry=self.telemetry,
+        )
+
+        self.devils_advocate_generator = DevilsAdvocateGenerator(
+            ai_client=self.claude_gemini_kimi_grok,
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
