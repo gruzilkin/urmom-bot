@@ -37,10 +37,13 @@ Create a `.env` file in the root directory with the following variables:
 # Discord Configuration (Required)
 DISCORD_TOKEN=your_discord_bot_token      # Get from Discord Developer Portal
 
-# Gemini/Gemma Configuration (Required)
+# Gemini Configuration (Required)
 GEMINI_API_KEY=your_gemini_api_key        # Get from Google AI Studio
 GEMINI_FLASH_MODEL=gemini-2.5-flash      # Flash model name
-GEMINI_GEMMA_MODEL=gemma-3-27b-it        # Gemma model name
+
+# Gemma Configuration (Required)
+GEMMA_API_KEY=your_gemma_api_key          # Get from Google AI Studio (separate key)
+GEMMA_MODEL=gemma-3-27b-it                # Gemma model name
 
 # Grok Configuration (Required)
 GROK_API_KEY=your_grok_api_key            # Get from xAI platform
