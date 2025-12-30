@@ -557,9 +557,6 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
         except Exception as e:
             logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
 
-    if config.delete_jokes_after_minutes > 0:
-        asyncio.create_task(delete_message_later(reply_message, config.delete_jokes_after_minutes * 60))
-
 
 async def process_devils_advocate_request(payload: nextcord.RawReactionActionEvent) -> None:
     """Handle devil's advocate generation triggered by imp emoji."""
@@ -592,9 +589,6 @@ async def process_devils_advocate_request(payload: nextcord.RawReactionActionEve
             await archive_channel.send(archive_response)
         except Exception as e:
             logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
-
-    if config.delete_jokes_after_minutes > 0:
-        asyncio.create_task(delete_message_later(reply_message, config.delete_jokes_after_minutes * 60))
 
 
 async def delete_message_later(message: nextcord.Message, delay_seconds: int) -> None:
