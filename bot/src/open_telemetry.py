@@ -229,6 +229,12 @@ class Telemetry:
             unit="1",
         )
 
+        devils_advocate_generated = meter.create_counter(
+            name="devils_advocate_generated_total",
+            description="Number of devil's advocate responses generated",
+            unit="1",
+        )
+
         message_deletions = meter.create_counter(
             name="message_deletions_total",
             description="Total bot message deletions by reason",
@@ -318,6 +324,7 @@ class Telemetry:
             message_latency=message_latency,
             jokes_generated=jokes_generated,
             wisdom_generated=wisdom_generated,
+            devils_advocate_generated=devils_advocate_generated,
             message_deletions=message_deletions,
             db_latency=db_latency,
             attachment_process=attachment_process,

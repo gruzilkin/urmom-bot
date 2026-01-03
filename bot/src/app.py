@@ -64,6 +64,7 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
             is_country = country is not None
             is_thumbs_down = emoji_str == "👎"
             is_wisdom = emoji_str in ("🧔", "🧠") or payload.emoji.id == 1180114631574962196
+            is_devils_advocate = emoji_str == "😈"
 
             if (is_clown or is_country) and message_key not in cache.processed_messages:
                 cache.processed_messages.add(message_key)
@@ -71,6 +72,9 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
             elif is_wisdom and message_key not in cache.processed_messages:
                 cache.processed_messages.add(message_key)
                 await process_wisdom_request(payload)
+            elif is_devils_advocate and message_key not in cache.processed_messages:
+                cache.processed_messages.add(message_key)
+                await process_devils_advocate_request(payload)
             elif is_thumbs_down:
                 await retract_joke(payload)
             elif await is_joke(payload):
@@ -553,8 +557,38 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
         except Exception as e:
             logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
 
-    if config.delete_jokes_after_minutes > 0:
-        asyncio.create_task(delete_message_later(reply_message, config.delete_jokes_after_minutes * 60))
+
+async def process_devils_advocate_request(payload: nextcord.RawReactionActionEvent) -> None:
+    """Handle devil's advocate generation triggered by imp emoji."""
+    config = await container.store.get_guild_config(payload.guild_id)
+
+    channel = await bot.fetch_channel(payload.channel_id)
+    message = await channel.fetch_message(payload.message_id)
+
+    fetch_conversation = create_conversation_fetcher(message)
+
+    counter_argument = await container.devils_advocate_generator.generate_counter_argument(
+        trigger_message_content=message.content,
+        conversation_fetcher=fetch_conversation,
+        guild_id=payload.guild_id,
+    )
+
+    if counter_argument is None:
+        return
+
+    reply_message = await message.reply(counter_argument)
+
+    container.telemetry.metrics.devils_advocate_generated.add(1, {"guild_id": str(payload.guild_id)})
+
+    # Try to send to configured archive channel
+    if config.archive_channel_id:
+        try:
+            archive_channel = await bot.fetch_channel(config.archive_channel_id)
+            message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
+            archive_response = f"**Original message**: {message_link}\n{counter_argument}"
+            await archive_channel.send(archive_response)
+        except Exception as e:
+            logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
 
 
 async def delete_message_later(message: nextcord.Message, delay_seconds: int) -> None:
