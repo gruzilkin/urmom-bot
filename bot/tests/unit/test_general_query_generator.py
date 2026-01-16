@@ -50,6 +50,11 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_bot_user.name = "urmom-bot"
         self.mock_bot_user.id = 99999
 
+        # Mock requesting user
+        self.mock_requesting_user = Mock()
+        self.mock_requesting_user.id = 123
+        self.mock_requesting_user.display_name = "TestUser"
+
         self.telemetry = NullTelemetry()
 
         def selector(backend: str):
@@ -85,7 +90,8 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             return [msg]
 
         result = await self.generator.handle_request(
-            params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user
+            params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user,
+            requesting_user=self.mock_requesting_user
         )
 
         self.assertEqual(result, "Quick answer!")
@@ -111,7 +117,8 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             ]
 
         result = await self.generator.handle_request(
-            params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user
+            params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user,
+            requesting_user=self.mock_requesting_user
         )
 
         self.assertEqual(result, "Creative response!")
@@ -136,7 +143,8 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             return [msg]
 
         result = await self.generator.handle_request(
-            params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user
+            params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user,
+            requesting_user=self.mock_requesting_user
         )
 
         # Should return None when AI client returns None
@@ -165,7 +173,8 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         # Exception should propagate instead of being caught
         with self.assertRaises(Exception) as context:
             await self.generator.handle_request(
-                params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user
+                params, mock_conversation_fetcher, guild_id=12345, bot_user=self.mock_bot_user,
+                requesting_user=self.mock_requesting_user
             )
 
         self.assertEqual(str(context.exception), "API error")
@@ -185,7 +194,10 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
 
         self.mock_gemini_flash.generate_content.return_value = "Hi"
 
-        await self.generator.handle_request(params, mock_conversation_fetcher, guild_id=1, bot_user=self.mock_bot_user)
+        await self.generator.handle_request(
+            params, mock_conversation_fetcher, guild_id=1, bot_user=self.mock_bot_user,
+            requesting_user=self.mock_requesting_user
+        )
 
         self.mock_gemini_flash.generate_content.assert_called_once()
 

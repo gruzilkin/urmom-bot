@@ -111,6 +111,7 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
         guild_id: int,
         bot_user: nextcord.User,
+        requesting_user: nextcord.User,
     ) -> str | None:
         """
         Handle a general query request using the provided parameters.
@@ -120,6 +121,7 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
             conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]]: Parameterless async function that returns conversation history
             guild_id (int): Discord guild ID for user context resolution
             bot_user (nextcord.User): Discord user object of the bot to identify its own messages and establish bot identity
+            requesting_user (nextcord.User): The user who sent the message (Member extends User, so both work)
 
         Returns:
             str | None: The response string ready to be sent by the caller, or None if no response should be sent
@@ -141,6 +143,13 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
 
             conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation)
 
+            # Format the user message in the same XML structure as conversation_history
+            user_message_xml = f"""<request>
+<author_id>{requesting_user.id}</author_id>
+<author>{requesting_user.display_name}</author>
+<content>{params.cleaned_query}</content>
+</request>"""
+
             prompt = f"""<system_instructions>
 You are a Discord bot participating in an ongoing Discord conversation. Your role is to respond naturally within the conversational context while bringing external knowledge, fresh perspectives, and independent analysis to the discussion.
 
@@ -150,10 +159,16 @@ Your Discord Bot Identity:
 - Use this context to understand what you've already contributed to avoid repetition
 - Build naturally on your previous responses when relevant to the current discussion
 
+Message Attribution - CRITICAL:
+- The <request> block contains the message you must respond to, with the author clearly identified
+- NEVER guess or assume who said something - ALWAYS trace statements back to <conversation_history> or <memories>
+- Each message has exactly ONE author. When quoting or referencing what someone said, verify the author_id matches
+- If you cannot find attribution for a statement in the conversation history or memories, do not claim anyone specific said it
+- Pay attention to reply relationships (reply_to_id) to understand conversational threads and who is responding to whom
+
 Conversational Behavior:
 - You are participating in an ongoing Discord conversation - respond naturally within the conversational flow
 - The most recent message in the conversation history is what you're directly responding to
-- Pay attention to reply relationships (reply_to_id) to understand conversational threads and who is responding to whom
 - When users refer to "this", "that", "what you said", they're referencing conversation history
 - If there are any hints that the current message relates to previous discussion, treat it as a continuation of that conversation thread
 - Only build on previous messages when you can see the relevant information in the conversation history or your provided memories
@@ -196,7 +211,7 @@ Information Boundaries:
 
 Memory Usage:
 - Use the provided memories naturally in your responses, as if you simply remember these things about people
-- Prefer to use real names from memories if they are available instead of discord nicknames.
+- Prefer to use real names if they are mentioned in memory facts over nicknames
 - NEVER explicitly mention that you have "memory blocks", "stored information", or "records" about users
 - NEVER say phrases like "I know that...", "According to my memory...", "I have information that...", or "This information is associated with..."
 - Simply incorporate the facts naturally into conversation, like a friend who remembers things about you
@@ -209,11 +224,11 @@ Memory Usage:
 {conversation_block}"""
 
             logger.info(f"Generating response using {params.ai_backend}")
-            logger.info(f"User message: {params.cleaned_query}")
+            logger.info(f"User message XML: {user_message_xml}")
             logger.info(f"Conversation context: {conversation}")
 
             response = await ai_client.generate_content(
-                message=params.cleaned_query,
+                message=user_message_xml,
                 prompt=prompt,
                 temperature=params.temperature,
                 enable_grounding=True,  # Enable grounding for general queries to get current information
