@@ -45,6 +45,12 @@ class AppConfig(BaseSettings):
     otel_service_name: str = Field(default="urmom-bot", env="OTEL_SERVICE_NAME")
     otel_exporter_otlp_endpoint: str = Field(default="localhost:4317", env="OTEL_EXPORTER_OTLP_ENDPOINT")
 
+    # Cobalt configuration
+    cobalt_url: str = Field(default="http://cobalt:9000", env="COBALT_URL")
+
+    # TinyURL configuration
+    tinyurl_api_token: str = Field(env="TINYURL_API_TOKEN")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
