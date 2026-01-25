@@ -20,8 +20,6 @@ URL_PATTERNS = [
     re.compile(r"https?://(?:www\.)?(?:x|twitter)\.com/\w+/status/\d+"),
     # Instagram Reels: https://www.instagram.com/reel/ABC123/
     re.compile(r"https?://(?:www\.)?instagram\.com/reel/[\w-]+"),
-    # Reddit: https://www.reddit.com/r/subreddit/comments/id/slug/
-    re.compile(r"https?://(?:www\.)?reddit\.com/r/\w+/comments/\w+(?:/[\w-]*)?"),
 ]
 
 # 8MB limit for Discord attachments (non-Nitro)
