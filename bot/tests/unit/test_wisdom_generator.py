@@ -32,6 +32,13 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
 
         self.telemetry = NullTelemetry()
 
+        # Mock trigger message
+        self.mock_trigger_message = Mock()
+        self.mock_trigger_message.content = "Test message"
+        self.mock_trigger_message.author = Mock()
+        self.mock_trigger_message.author.id = 12345
+        self.mock_trigger_message.author.display_name = "TestUser"
+
         self.generator = WisdomGenerator(
             ai_client=self.ai_client,
             language_detector=self.language_detector,
@@ -46,12 +53,13 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         self.ai_client.generate_content.return_value = WisdomResponse(
             answer="Thus spoke the sage.", reason="Referenced ancient wisdom traditions to add gravitas"
         )
+        self.mock_trigger_message.content = "Hello world"
 
         async def mock_conversation():
             return []
 
         result = await self.generator.generate_wisdom(
-            trigger_message_content="Hello world",
+            trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
             guild_id=123,
         )
@@ -60,7 +68,11 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         self.ai_client.generate_content.assert_called_once()
         call_args = self.ai_client.generate_content.call_args
         self.assertEqual(call_args.kwargs["temperature"], 0.8)
-        self.assertEqual(call_args.kwargs["message"], "Hello world")
+        # Message should contain author attribution and content
+        message = call_args.kwargs["message"]
+        self.assertIn("12345", message)  # author id
+        self.assertIn("TestUser", message)  # author name
+        self.assertIn("Hello world", message)  # content
         self.assertEqual(call_args.kwargs["response_schema"], WisdomResponse)
         self.assertIn("prompt", call_args.kwargs)
 
@@ -93,8 +105,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
                 ),
             ]
 
+        self.mock_trigger_message.content = "Question?"
         result = await self.generator.generate_wisdom(
-            trigger_message_content="Question?",
+            trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
             guild_id=123,
         )
@@ -117,8 +130,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation():
             return []
 
+        self.mock_trigger_message.content = "Привет"
         result = await self.generator.generate_wisdom(
-            trigger_message_content="Привет",
+            trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
             guild_id=123,
         )
@@ -144,8 +158,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation():
             return []
 
+        self.mock_trigger_message.content = "Test"
         result = await self.generator.generate_wisdom(
-            trigger_message_content="Test",
+            trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
             guild_id=123,
         )
@@ -168,8 +183,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
                 ),
             ]
 
+        self.mock_trigger_message.content = "Test"
         await self.generator.generate_wisdom(
-            trigger_message_content="Test",
+            trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
             guild_id=123,
         )
@@ -184,8 +200,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation():
             return []
 
+        self.mock_trigger_message.content = "Test"
         result = await self.generator.generate_wisdom(
-            trigger_message_content="Test",
+            trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
             guild_id=123,
         )
@@ -200,8 +217,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
             answer="Wisdom", reason="test"
         )
 
+        self.mock_trigger_message.content = "Test"
         await self.generator.generate_wisdom(
-            trigger_message_content="Test",
+            trigger_message=self.mock_trigger_message,
             conversation_fetcher=AsyncMock(return_value=[]),
             guild_id=123,
         )

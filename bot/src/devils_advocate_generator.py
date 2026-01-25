@@ -3,6 +3,8 @@
 import logging
 from collections.abc import Callable, Awaitable
 
+import nextcord
+
 from ai_client import AIClient
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
@@ -44,7 +46,7 @@ class DevilsAdvocateGenerator:
 
     async def generate_counter_argument(
         self,
-        trigger_message_content: str,
+        trigger_message: nextcord.Message,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
         guild_id: int,
     ) -> str | None:
@@ -52,7 +54,7 @@ class DevilsAdvocateGenerator:
         Generate counter-argument based on a message and its conversation context.
 
         Args:
-            trigger_message_content: The content of the message that was reacted to
+            trigger_message: The Discord message that was reacted to
             conversation_fetcher: Async function that returns conversation history
             guild_id: Discord guild ID for user context resolution
 
@@ -60,7 +62,7 @@ class DevilsAdvocateGenerator:
             str: The generated counter-argument response, or None if generation fails
         """
         async with self._telemetry.async_create_span("generate_counter_argument") as span:
-            language_code = await self._language_detector.detect_language(trigger_message_content)
+            language_code = await self._language_detector.detect_language(trigger_message.content)
             language_name = await self._language_detector.get_language_name(language_code)
 
             span.set_attribute("language_code", language_code)
@@ -105,16 +107,19 @@ Personalization:
 
 {memories_block}
 
-{conversation_block}
+{conversation_block}"""
 
-<trigger_message>
-{trigger_message_content}
+            # Format trigger message with author attribution
+            trigger_message_xml = f"""<trigger_message>
+<author_id>{trigger_message.author.id}</author_id>
+<author>{trigger_message.author.display_name}</author>
+<content>{trigger_message.content}</content>
 </trigger_message>"""
 
-            logger.info(f"Generating counter-argument for message: {trigger_message_content}")
+            logger.info(f"Generating counter-argument for message: {trigger_message.content}")
 
             response = await self._ai_client.generate_content(
-                message=trigger_message_content,
+                message=trigger_message_xml,
                 prompt=prompt,
                 temperature=0.7,
                 response_schema=DevilsAdvocateResponse,

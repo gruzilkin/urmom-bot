@@ -130,7 +130,7 @@ async def on_message(message: nextcord.Message):
             conversation_fetcher = create_conversation_fetcher(message)
 
             response = await container.general_query_generator.handle_request(
-                params, conversation_fetcher, message.guild.id, bot.user
+                params, conversation_fetcher, message.guild.id, bot.user, message.author
             )
             if response is not None:
                 reply = await message.reply(response)
@@ -535,7 +535,7 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
     fetch_conversation = create_conversation_fetcher(message)
 
     wisdom = await container.wisdom_generator.generate_wisdom(
-        trigger_message_content=message.content,
+        trigger_message=message,
         conversation_fetcher=fetch_conversation,
         guild_id=payload.guild_id,
     )
@@ -568,7 +568,7 @@ async def process_devils_advocate_request(payload: nextcord.RawReactionActionEve
     fetch_conversation = create_conversation_fetcher(message)
 
     counter_argument = await container.devils_advocate_generator.generate_counter_argument(
-        trigger_message_content=message.content,
+        trigger_message=message,
         conversation_fetcher=fetch_conversation,
         guild_id=payload.guild_id,
     )
