@@ -51,6 +51,9 @@ GROK_MODEL=grok-3-mini                    # Grok model name
 
 # Ollama Cloud Configuration (Required)
 OLLAMA_API_KEY=your_ollama_api_key        # Get from Ollama Cloud
+
+# TinyURL Configuration (Required)
+TINYURL_API_TOKEN=your_tinyurl_api_token  # Get from TinyURL API Settings
 ```
 
 ### Where to get the keys:
@@ -58,6 +61,7 @@ OLLAMA_API_KEY=your_ollama_api_key        # Get from Ollama Cloud
 - Gemini API key: [Google AI Studio](https://aistudio.google.com)
 - Grok API key: [xAI Platform](https://console.x.ai/)
 - Ollama API key: [Ollama Cloud](https://ollama.com) - Sign up and create an API key
+- TinyURL API token: [TinyURL API Settings](https://tinyurl.com/app/settings/api)
 
 **Note**: All AI provider keys are required for full functionality.
 

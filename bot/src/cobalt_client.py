@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
 from typing import Literal
+from urllib.parse import urlparse
+import os
 
 import aiohttp
 import backoff
@@ -90,6 +92,24 @@ class VideoResult:
     filename: str
 
 
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v", ".flv"}
+
+
+def _filename_from_url(url: str, fallback: str = "media") -> str:
+    """Extract filename from URL path, or return fallback."""
+    path = urlparse(url).path
+    basename = os.path.basename(path)
+    if basename and "." in basename:
+        return basename
+    return fallback
+
+
+def _is_video_filename(filename: str) -> bool:
+    """Check if filename has a video extension."""
+    ext = os.path.splitext(filename.lower())[1]
+    return ext in VIDEO_EXTENSIONS
+
+
 class CobaltClient:
     """Client for Cobalt media extraction API."""
 
@@ -166,6 +186,8 @@ class CobaltClient:
 
         if status in ("tunnel", "redirect"):
             tunnel_response = CobaltTunnelResponse.model_validate(data)
+            if not _is_video_filename(tunnel_response.filename):
+                raise CobaltContentError("content.not_video")
             return VideoResult(
                 url=tunnel_response.url,
                 filename=tunnel_response.filename,
@@ -179,16 +201,10 @@ class CobaltClient:
                 if item.type == "video":
                     return VideoResult(
                         url=item.url,
-                        filename=picker_response.audioFilename or "video.mp4",
+                        filename=_filename_from_url(item.url, "video.mp4"),
                     )
 
-            # Fallback to first item with URL
-            if picker_response.picker:
-                first = picker_response.picker[0]
-                return VideoResult(
-                    url=first.url,
-                    filename="media",
-                )
-            raise CobaltContentError("fetch.empty")
+            # No videos found in picker
+            raise CobaltContentError("content.no_video")
 
         raise CobaltError(f"unexpected_status:{status}")

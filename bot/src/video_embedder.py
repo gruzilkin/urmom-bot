@@ -115,10 +115,12 @@ class VideoEmbedder:
                 )
 
             except CobaltContentError as e:
+                logger.warning(f"Skipping video embed for {url}: {e.code}", exc_info=True)
                 span.set_attribute("outcome", "skipped")
                 return None
 
-            except (CobaltError, TinyURLError):
+            except (CobaltError, TinyURLError) as e:
+                logger.warning(f"Video embed failed for {url}: {e}", exc_info=True)
                 span.set_attribute("outcome", "error")
                 return None
 
