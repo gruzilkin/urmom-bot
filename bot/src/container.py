@@ -22,6 +22,9 @@ from ai_client import AIClient
 from ollama_client import OllamaClient
 from wisdom_generator import WisdomGenerator
 from devils_advocate_generator import DevilsAdvocateGenerator
+from cobalt_client import CobaltClient
+from tinyurl_client import TinyURLClient
+from video_embedder import VideoEmbedder
 
 
 class Container:
@@ -31,6 +34,22 @@ class Container:
         self.telemetry = Telemetry(
             service_name=self.config.otel_service_name,
             endpoint=self.config.otel_exporter_otlp_endpoint,
+        )
+
+        self.cobalt_client = CobaltClient(
+            base_url=self.config.cobalt_url,
+            telemetry=self.telemetry,
+        )
+
+        self.tinyurl_client = TinyURLClient(
+            api_token=self.config.tinyurl_api_token,
+            telemetry=self.telemetry,
+        )
+
+        self.video_embedder = VideoEmbedder(
+            cobalt_client=self.cobalt_client,
+            tinyurl_client=self.tinyurl_client,
+            telemetry=self.telemetry,
         )
 
         self.store = Store(

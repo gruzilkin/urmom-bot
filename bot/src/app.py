@@ -1,4 +1,5 @@
 import asyncio
+import io
 from enum import Enum
 from types import SimpleNamespace
 import logging
@@ -97,6 +98,9 @@ async def on_message(message: nextcord.Message):
         if message.author.bot:
             return
 
+        # Process video embeds for all non-bot messages (runs independently)
+        await process_video_embeds(message)
+
         if not await should_reply(message):
             return
 
@@ -178,6 +182,28 @@ async def should_reply(message: nextcord.Message) -> bool:
             logger.error(f"Error checking if message is reply to bot: {e}", exc_info=True)
 
     return False
+
+
+async def process_video_embeds(message: nextcord.Message) -> None:
+    """
+    Check message for video URLs and reply with embedded video or link.
+    """
+    embeds = await container.video_embedder.process_message(message.content)
+
+    for embed in embeds:
+        try:
+            if embed.file_data and embed.filename:
+                # Send as file attachment
+                file = nextcord.File(
+                    io.BytesIO(embed.file_data),
+                    filename=embed.filename,
+                )
+                await message.reply(file=file, mention_author=False)
+            elif embed.short_url:
+                # Send shortened URL
+                await message.reply(embed.short_url, mention_author=False)
+        except Exception as e:
+            logger.error(f"Failed to send video embed: {e}", exc_info=True)
 
 
 async def process_bot_commands(message: nextcord.Message) -> bool:

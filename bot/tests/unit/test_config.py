@@ -24,6 +24,7 @@ class TestAppConfig(unittest.TestCase):
             discord_token="test-token",
             sample_jokes_count=5,
             sample_jokes_coef=1.0,
+            tinyurl_api_token="test-tinyurl-token",
         )
 
         self.assertEqual(config.postgres_host, "localhost")
@@ -47,6 +48,7 @@ class TestAppConfig(unittest.TestCase):
                 discord_token="test-token",
                 sample_jokes_count=5,
                 sample_jokes_coef=1.0,
+                tinyurl_api_token="test-tinyurl-token",
             )
         self.assertIn("POSTGRES_PORT must be between", str(cm.exception))
 
@@ -69,6 +71,7 @@ class TestAppConfig(unittest.TestCase):
                 discord_token="test-token",
                 sample_jokes_count=5,
                 sample_jokes_coef=1.0,
+                tinyurl_api_token="test-tinyurl-token",
             )
         self.assertIn("Temperature must be between", str(cm.exception))
 
@@ -91,6 +94,7 @@ class TestAppConfig(unittest.TestCase):
             "SAMPLE_JOKES_COEF": "2.5",
             "GEMINI_TEMPERATURE": "0.8",
             "GROK_TEMPERATURE": "0.9",
+            "TINYURL_API_TOKEN": "test-tinyurl-token",
         },
     )
     def test_from_env_method(self):

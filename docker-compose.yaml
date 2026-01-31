@@ -64,6 +64,15 @@ services:
     depends_on:
       - db
 
+  cobalt:
+    image: ghcr.io/imputnet/cobalt:11
+    init: true
+    read_only: true
+    restart: unless-stopped
+    environment:
+      API_URL: "http://cobalt:9000/"
+      CORS_WILDCARD: "0"
+
 volumes:
     pgadmin:
     db:

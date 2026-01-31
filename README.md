@@ -4,15 +4,20 @@ A Discord bot that responds with "ur mom" jokes when messages are reacted to wit
 
 ## Features
 - **Memory System**: Remembers facts about users and provides personalized responses
+- **Transient Memory**: Passively learns about users and chat dynamics from ongoing conversations
 - **General AI Assistant**: Answers questions as any AI does
 - **Celebrity Impersonation**: Generates responses as famous people with their unique style and personality
 - **AI-Powered Jokes**: Creates "ur mom" jokes and culturally-themed humor based on reactions
+- **Street Wisdom**: Generates witty one-liner observations from chat context
+- **Devil's Advocate**: Challenges opinions with counter-arguments
+- **Video Auto-Embedding**: Automatically extracts and embeds videos from X/Twitter and Instagram Reels
 - **Multi-Language Support**: Works in any language (English, Russian, French, Japanese, etc.)
 - **Multiple AI Providers**: Uses different AI models for different tasks with automatic fallback
-  - Gemini Flash: Fast general questions, daily summaries, and information retrieval
-  - Gemma: Under-the-hood operations (routing, language detection, fact extraction)
-  - Grok: Creative tasks, jokes, and celebrity impersonation
-  - Ollama Cloud: Assists Gemma with under-the-hood tasks (Kimi, GPT-OSS, Qwen3-VL)
+  - Claude: Analytical tasks
+  - Gemini Flash: General queries and information retrieval
+  - Grok: Creative tasks
+  - Gemma: Language detection and structured operations
+  - Ollama Cloud: Routing, summarization, and image analysis
 
 ## Adaptive Learning
 The bot features an adaptive learning system that improves its joke generation over time:
@@ -51,6 +56,9 @@ GROK_MODEL=grok-3-mini                    # Grok model name
 
 # Ollama Cloud Configuration (Required)
 OLLAMA_API_KEY=your_ollama_api_key        # Get from Ollama Cloud
+
+# TinyURL Configuration (Required)
+TINYURL_API_TOKEN=your_tinyurl_api_token  # Get from TinyURL API Settings
 ```
 
 ### Where to get the keys:
@@ -58,6 +66,7 @@ OLLAMA_API_KEY=your_ollama_api_key        # Get from Ollama Cloud
 - Gemini API key: [Google AI Studio](https://aistudio.google.com)
 - Grok API key: [xAI Platform](https://console.x.ai/)
 - Ollama API key: [Ollama Cloud](https://ollama.com) - Sign up and create an API key
+- TinyURL API token: [TinyURL API Settings](https://tinyurl.com/app/settings/api)
 
 **Note**: All AI provider keys are required for full functionality.
 
@@ -113,6 +122,9 @@ What can this bot do?
 ### Automated Features
 - Generate "ur mom" jokes when someone reacts to a message with 🤡
 - Create country-specific jokes when someone uses a flag emoji reaction
+- Generate street-smart wisdom one-liners when someone reacts with 🧔 or 🧠
+- Challenge opinions with devil's advocate counter-arguments when someone reacts with 😈
+- Automatically extract and embed videos from X/Twitter and Instagram Reel links
 - Archive all jokes to a dedicated channel of your choice
 - Keep your chat channels clean by automatically removing joke responses after a set time
 - Listen to your community's feedback - if a joke gets too many 👎 reactions, it gets removed
