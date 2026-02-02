@@ -11,8 +11,8 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs
 
-# Install Claude Code CLI via npm
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude Code CLI and Codex CLI via npm
+RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
 # Set environment variable for unbuffered output
 ENV PYTHONUNBUFFERED=1
