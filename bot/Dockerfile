@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     python3-dev \
     curl \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js (required for Claude Code CLI)
