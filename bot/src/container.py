@@ -6,6 +6,7 @@ from gemini_client import GeminiClient
 from gemma_client import GemmaClient
 from grok_client import GrokClient
 from claude_client import ClaudeClient
+from codex_client import CodexClient
 from country_resolver import CountryResolver
 from open_telemetry import Telemetry
 from ai_router import AiRouter
@@ -85,6 +86,8 @@ class Container:
         )
 
         self.claude = ClaudeClient(telemetry=self.telemetry)
+
+        self.codex = CodexClient(telemetry=self.telemetry)
 
         self.ollama_kimi = OllamaClient(
             api_key=self.config.ollama_api_key,
@@ -270,12 +273,13 @@ class Container:
             "claude": self.claude,
             "grok": self.retrying_grok,
             "gemma": self.retrying_gemma,
+            "codex": self.codex,
         }
 
         if preferred_backend not in client_map:
             raise ValueError(f"Unknown ai_backend: {preferred_backend}")
 
-        fallback_order = ["claude", "gemini_flash", "grok"]
+        fallback_order = ["claude", "codex", "gemini_flash", "grok"]
         ordered_labels = [preferred_backend] + [label for label in fallback_order if label != preferred_backend]
 
         chain = [client_map[label] for label in ordered_labels]

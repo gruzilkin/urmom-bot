@@ -47,6 +47,7 @@ services:
       - db
     volumes:
       - claude_auth:/root/.claude
+      - codex_auth:/root/.codex
 
   web:
     build: web
@@ -77,3 +78,4 @@ volumes:
     pgadmin:
     db:
     claude_auth:
+    codex_auth:

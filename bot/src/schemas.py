@@ -34,8 +34,8 @@ class FamousParams(BaseModel):
 class GeneralParams(BaseModel):
     """Parameters for general AI query requests."""
 
-    ai_backend: Literal["gemini_flash", "grok", "claude", "gemma"] = Field(
-        description="AI backend to use: gemini_flash for general questions, grok for creative tasks, claude for technical work, gemma only if explicitly requested"
+    ai_backend: Literal["gemini_flash", "grok", "claude", "gemma", "codex"] = Field(
+        description="AI backend to use: gemini_flash for general questions, grok for creative tasks, claude for technical work, codex for research, gemma only if explicitly requested"
     )
     temperature: float = Field(
         description="Response creativity level: 0.1-0.3 for factual/precise, 0.4-0.6 for balanced, 0.7-0.9 for creative",
