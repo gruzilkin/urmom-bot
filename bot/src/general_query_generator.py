@@ -73,7 +73,7 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
           complex reasoning, fact-checking, internet search
         * gemini_flash: Creative writing, songs, poems, artistic content, extensive internet search
         * grok: Uncensored content, wild requests, crazy talk
-        * codex/chatgpt: Research topics, analysis, current events, internet search
+        * codex: Research topics, analysis, current events (select for "chatgpt"/"openai" requests)
         * gemma: Do not select unless explicitly requested
         * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
         

@@ -180,7 +180,7 @@ class CodexClient(AIClient):
                         if not text:
                             raise RuntimeError("Empty agent_message text in Codex output")
                         return text
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, KeyError, TypeError):
                 continue
 
         raise RuntimeError("No agent_message found in Codex output")

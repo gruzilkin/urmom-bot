@@ -420,6 +420,24 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNotNone(params, "GENERAL route should have parameters")
                 self.assertIn("Алексею", params.cleaned_query, "Should preserve the name in the query")
 
+    async def test_route_request_chatgpt_alias_selects_codex(self):
+        """Test that chatgpt/openai requests are routed to codex backend."""
+        user_message = "BOT use chatgpt to research climate change"
+
+        for profile in self.profiles:
+            with self.subTest(profile=profile.name):
+                route, params = await profile.router.route_request(
+                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                )
+
+                self.assertEqual(route, "GENERAL")
+                self.assertIsNotNone(params)
+                self.assertEqual(
+                    params.ai_backend,
+                    "codex",
+                    "ChatGPT requests should select codex backend",
+                )
+
     async def test_route_request_song_writing_selects_claude(self):
         """Test that song writing requests are routed to Claude backend."""
         user_message = "BOT write a song about summer"
