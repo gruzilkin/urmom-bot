@@ -9,7 +9,6 @@ from open_telemetry import Telemetry
 
 logger = logging.getLogger(__name__)
 
-MIN_VIDEO_BITRATE_KBPS = 100
 SUBPROCESS_TIMEOUT_SECONDS = 300
 
 
@@ -47,14 +46,11 @@ class VideoCompressor:
 
                 duration = await self._probe_duration(input_path)
 
-                video_kbps = int(
-                    (self.target_size_bytes * 8 * 0.95 / duration) / 1000 - self.audio_bitrate_kbps
+                video_kbps = max(
+                    1,
+                    int((self.target_size_bytes * 8 * 0.95 / duration) / 1000 - self.audio_bitrate_kbps),
                 )
                 span.set_attribute("video_bitrate_kbps", video_kbps)
-
-                if video_kbps < MIN_VIDEO_BITRATE_KBPS:
-                    span.set_attribute("outcome", "bitrate_too_low")
-                    return None
 
                 await self._run_pass1(input_path, video_kbps, passlog_prefix)
                 await self._run_pass2(input_path, output_path, video_kbps, passlog_prefix)
