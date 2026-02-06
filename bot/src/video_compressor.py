@@ -22,7 +22,7 @@ class VideoCompressor:
         telemetry: Telemetry,
         target_size_bytes: int,
         audio_bitrate_kbps: int = 64,
-        ffmpeg_preset: str = "medium",
+        ffmpeg_preset: str = "veryfast",
     ):
         self.telemetry = telemetry
         self.target_size_bytes = target_size_bytes
@@ -48,7 +48,7 @@ class VideoCompressor:
 
                 video_kbps = max(
                     1,
-                    int((self.target_size_bytes * 8 * 0.95 / duration) / 1000 - self.audio_bitrate_kbps),
+                    int((self.target_size_bytes * 8 * 0.9 / duration) / 1000 - self.audio_bitrate_kbps),
                 )
                 span.set_attribute("video_bitrate_kbps", video_kbps)
 
