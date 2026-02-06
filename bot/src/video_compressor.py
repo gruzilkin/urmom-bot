@@ -4,12 +4,22 @@ import logging
 import os
 import shutil
 import tempfile
+from dataclasses import dataclass
 
 from open_telemetry import Telemetry
 
 logger = logging.getLogger(__name__)
 
 SUBPROCESS_TIMEOUT_SECONDS = 300
+MIN_BPP = 0.01
+
+
+@dataclass
+class VideoInfo:
+    duration: float
+    width: int
+    height: int
+    fps: float
 
 
 class VideoCompressionError(Exception):
@@ -44,13 +54,20 @@ class VideoCompressor:
                 with open(input_path, "wb") as f:
                     f.write(video_data)
 
-                duration = await self._probe_duration(input_path)
+                info = await self._probe(input_path)
 
                 video_kbps = max(
                     1,
-                    int((self.target_size_bytes * 8 * 0.9 / duration) / 1000 - self.audio_bitrate_kbps),
+                    int((self.target_size_bytes * 8 * 0.9 / info.duration) / 1000 - self.audio_bitrate_kbps),
                 )
                 span.set_attribute("video_bitrate_kbps", video_kbps)
+
+                bpp = video_kbps * 1000 / (info.width * info.height * info.fps)
+                span.set_attribute("bpp", round(bpp, 4))
+
+                if bpp < MIN_BPP:
+                    span.set_attribute("outcome", "quality_too_low")
+                    return None
 
                 await self._run_pass1(input_path, video_kbps, passlog_prefix)
                 await self._run_pass2(input_path, output_path, video_kbps, passlog_prefix)
@@ -75,54 +92,71 @@ class VideoCompressor:
             finally:
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
-    async def _probe_duration(self, input_path: str) -> float:
+    async def _probe(self, input_path: str) -> VideoInfo:
         async with self.telemetry.async_create_span("video_compressor.probe") as span:
             process = await asyncio.create_subprocess_exec(
                 "ffprobe",
-                "-v", "quiet",
-                "-print_format", "json",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
                 "-show_format",
+                "-show_streams",
+                "-select_streams",
+                "v:0",
                 input_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
             if process.returncode != 0:
                 raise VideoCompressionError(f"ffprobe failed (rc={process.returncode}): {stderr.decode()}")
 
             try:
-                info = json.loads(stdout)
-                duration = float(info["format"]["duration"])
-            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                data = json.loads(stdout)
+                duration = float(data["format"]["duration"])
+                stream = data["streams"][0]
+                width = int(stream["width"])
+                height = int(stream["height"])
+                r_num, r_den = stream["r_frame_rate"].split("/")
+                fps = int(r_num) / int(r_den)
+            except (json.JSONDecodeError, KeyError, ValueError, IndexError, ZeroDivisionError) as e:
                 raise VideoCompressionError(f"ffprobe returned unparseable output: {e}") from e
 
             if duration <= 0:
                 raise VideoCompressionError(f"ffprobe returned invalid duration: {duration}")
 
             span.set_attribute("duration", duration)
-            return duration
+            span.set_attribute("width", width)
+            span.set_attribute("height", height)
+            span.set_attribute("fps", fps)
+            return VideoInfo(duration=duration, width=width, height=height, fps=fps)
 
     async def _run_pass1(self, input_path: str, video_kbps: int, passlog_prefix: str) -> None:
         async with self.telemetry.async_create_span("video_compressor.pass1"):
             process = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-y",
-                "-i", input_path,
-                "-c:v", "libx264",
-                "-preset", self.ffmpeg_preset,
-                "-b:v", f"{video_kbps}k",
-                "-pass", "1",
-                "-passlogfile", passlog_prefix,
+                "ffmpeg",
+                "-y",
+                "-i",
+                input_path,
+                "-c:v",
+                "libx264",
+                "-preset",
+                self.ffmpeg_preset,
+                "-b:v",
+                f"{video_kbps}k",
+                "-pass",
+                "1",
+                "-passlogfile",
+                passlog_prefix,
                 "-an",
-                "-f", "null",
+                "-f",
+                "null",
                 "/dev/null",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS
-            )
+            _, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
             if process.returncode != 0:
                 raise VideoCompressionError(f"ffmpeg pass 1 failed (rc={process.returncode}): {stderr.decode()}")
 
@@ -135,22 +169,30 @@ class VideoCompressor:
     ) -> None:
         async with self.telemetry.async_create_span("video_compressor.pass2"):
             process = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-y",
-                "-i", input_path,
-                "-c:v", "libx264",
-                "-preset", self.ffmpeg_preset,
-                "-b:v", f"{video_kbps}k",
-                "-pass", "2",
-                "-passlogfile", passlog_prefix,
-                "-c:a", "aac",
-                "-b:a", f"{self.audio_bitrate_kbps}k",
-                "-movflags", "+faststart",
+                "ffmpeg",
+                "-y",
+                "-i",
+                input_path,
+                "-c:v",
+                "libx264",
+                "-preset",
+                self.ffmpeg_preset,
+                "-b:v",
+                f"{video_kbps}k",
+                "-pass",
+                "2",
+                "-passlogfile",
+                passlog_prefix,
+                "-c:a",
+                "aac",
+                "-b:a",
+                f"{self.audio_bitrate_kbps}k",
+                "-movflags",
+                "+faststart",
                 output_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS
-            )
+            _, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
             if process.returncode != 0:
                 raise VideoCompressionError(f"ffmpeg pass 2 failed (rc={process.returncode}): {stderr.decode()}")
