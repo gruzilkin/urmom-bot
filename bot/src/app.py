@@ -200,7 +200,7 @@ async def process_video_embeds(message: nextcord.Message) -> None:
                 )
                 await message.reply(file=file, mention_author=False)
             elif embed.short_url:
-                # Send shortened URL
+                # Send shortened URL for videos too large to compress
                 await message.reply(embed.short_url, mention_author=False)
         except Exception as e:
             logger.error(f"Failed to send video embed: {e}", exc_info=True)

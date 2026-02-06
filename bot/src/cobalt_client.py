@@ -90,6 +90,7 @@ class VideoResult:
 
     url: str
     filename: str
+    is_tunnel: bool = False
 
 
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v", ".flv"}
@@ -191,6 +192,7 @@ class CobaltClient:
             return VideoResult(
                 url=tunnel_response.url,
                 filename=tunnel_response.filename,
+                is_tunnel=status == "tunnel",
             )
 
         if status == "picker":
