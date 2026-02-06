@@ -90,7 +90,7 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
         tinyurl.shorten.assert_not_called()
 
     @patch.object(VideoEmbedder, "_download_video")
-    async def test_oversized_video_compression_fails_returns_none(self, mock_download: AsyncMock):
+    async def test_compression_fails_redirect_falls_back_to_tinyurl(self, mock_download: AsyncMock):
         large_data = b"x" * (11 * 1024 * 1024)
         mock_download.return_value = large_data
 
@@ -99,6 +99,33 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
             return_value=VideoResult(
                 url="https://cdn.example.com/video.mp4",
                 filename="video.mp4",
+                is_tunnel=False,
+            )
+        )
+        compressor = Mock(spec=VideoCompressor)
+        compressor.compress = AsyncMock(return_value=None)
+        tinyurl = Mock(spec=TinyURLClient)
+        tinyurl.shorten = AsyncMock(return_value="https://tinyurl.com/abc123")
+
+        embedder = VideoEmbedder(cobalt, compressor, tinyurl, NullTelemetry())
+        result = await embedder.process_url("https://x.com/user/status/123")
+
+        self.assertIsNone(result.file_data)
+        self.assertEqual(result.short_url, "https://tinyurl.com/abc123")
+        compressor.compress.assert_awaited_once()
+        tinyurl.shorten.assert_awaited_once()
+
+    @patch.object(VideoEmbedder, "_download_video")
+    async def test_compression_fails_tunnel_returns_none(self, mock_download: AsyncMock):
+        large_data = b"x" * (11 * 1024 * 1024)
+        mock_download.return_value = large_data
+
+        cobalt = Mock(spec=CobaltClient)
+        cobalt.extract_video = AsyncMock(
+            return_value=VideoResult(
+                url="https://cobalt.internal/tunnel/abc",
+                filename="video.mp4",
+                is_tunnel=True,
             )
         )
         compressor = Mock(spec=VideoCompressor)
@@ -110,6 +137,7 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(result)
         compressor.compress.assert_awaited_once()
+        tinyurl.shorten.assert_not_called()
 
     @patch.object(VideoEmbedder, "_download_video")
     async def test_download_returns_none_redirect_creates_short_url(self, mock_download: AsyncMock):

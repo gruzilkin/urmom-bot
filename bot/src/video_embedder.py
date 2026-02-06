@@ -127,6 +127,10 @@ class VideoEmbedder:
                 span.set_attribute("method", "compress")
                 compressed = await self.video_compressor.compress(file_data, filename)
                 if compressed is None:
+                    if not result.is_tunnel:
+                        span.set_attribute("method", "url")
+                        short_url = await self.tinyurl_client.shorten(video_url)
+                        return VideoEmbed(short_url=short_url, source_url=url)
                     span.set_attribute("outcome", "compression_failed")
                     return None
 
