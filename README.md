@@ -7,10 +7,11 @@ A Discord bot that responds with "ur mom" jokes when messages are reacted to wit
 - **Transient Memory**: Passively learns about users and chat dynamics from ongoing conversations
 - **General AI Assistant**: Answers questions as any AI does
 - **Celebrity Impersonation**: Generates responses as famous people with their unique style and personality
-- **AI-Powered Jokes**: Creates "ur mom" jokes and culturally-themed humor based on reactions
-- **Street Wisdom**: Generates witty one-liner observations from chat context
-- **Devil's Advocate**: Challenges opinions with counter-arguments
-- **Video Auto-Embedding**: Automatically extracts and embeds videos from X/Twitter and Instagram Reels
+- **AI-Powered Jokes**: Creates "ur mom" jokes (🤡) and culturally-themed humor (flag emoji reactions)
+- **Street Wisdom**: Generates witty one-liner observations from chat context (🧔 or 🧠)
+- **Devil's Advocate**: Challenges opinions with counter-arguments (😈)
+- **Video Auto-Embedding**: Extracts and embeds videos from X/Twitter, Instagram Reels, and Reddit posts, with ffmpeg compression for oversized videos
+- **Self-Cleaning**: Auto-archives jokes, removes them after a set time, or when downvoted by the community
 - **Multi-Language Support**: Works in any language (English, Russian, French, Japanese, etc.)
 - **Multiple AI Providers**: Uses different AI models for different tasks with automatic fallback
   - Claude: Analytical tasks
@@ -57,7 +58,7 @@ GROK_MODEL=grok-3-mini                    # Grok model name
 # Ollama Cloud Configuration (Required)
 OLLAMA_API_KEY=your_ollama_api_key        # Get from Ollama Cloud
 
-# TinyURL Configuration (Required)
+# TinyURL Configuration (Optional - fallback for very large videos)
 TINYURL_API_TOKEN=your_tinyurl_api_token  # Get from TinyURL API Settings
 ```
 
@@ -118,16 +119,6 @@ What can this bot do?
     - `@urmom-bot what would Jesus say if we could rap like Eminen?`
     - `@urmom-bot what would Trump say if he was a software developer?`
     - `@urmom-bot Что бы сказал Гоблин если бы он делал свой перевод?`
-
-### Automated Features
-- Generate "ur mom" jokes when someone reacts to a message with 🤡
-- Create country-specific jokes when someone uses a flag emoji reaction
-- Generate street-smart wisdom one-liners when someone reacts with 🧔 or 🧠
-- Challenge opinions with devil's advocate counter-arguments when someone reacts with 😈
-- Automatically extract and embed videos from X/Twitter and Instagram Reel links
-- Archive all jokes to a dedicated channel of your choice
-- Keep your chat channels clean by automatically removing joke responses after a set time
-- Listen to your community's feedback - if a joke gets too many 👎 reactions, it gets removed
 
 ## Try It Out! 🤖
 Want to test the bot without setting up your own instance? You can add my hosted instance to your Discord server:
