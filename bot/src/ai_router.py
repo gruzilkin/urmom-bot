@@ -168,38 +168,37 @@ NOTSURE: When uncertain about routing decision
             if conversation:
                 conversation_context = await self.conversation_formatter.format_to_xml(guild_id, conversation)
 
-            # Tier 1: Route selection and language detection (run in parallel)
-            route_prompt = self._build_route_selection_prompt(conversation_context)
+            # Start language detection in background while routing proceeds
+            lang_task = asyncio.create_task(self.language_detector.detect_language(message))
 
-            route_selection, language_code = await asyncio.gather(
-                self.ai_client.generate_content(
-                    message=message,
-                    prompt=route_prompt,
-                    temperature=0.0,  # Deterministic route selection
-                    response_schema=RouteSelection,
-                ),
-                self.language_detector.detect_language(message),
+            # Tier 1: Route selection
+            route_prompt = self._build_route_selection_prompt(conversation_context)
+            route_selection = await self.ai_client.generate_content(
+                message=message,
+                prompt=route_prompt,
+                temperature=0.0,
+                response_schema=RouteSelection,
             )
 
             logger.info(f"Final route selection: {route_selection.route}, Reason: {route_selection.reason}")
-
             span.set_attribute("route", route_selection.route)
             span.set_attribute("reason", route_selection.reason)
 
-            language_name = await self.language_detector.get_language_name(language_code)
-            span.set_attribute("language_code", language_code)
-            span.set_attribute("language_name", language_name)
-            logger.info(f"Detected language: {language_code} ({language_name})")
-
-            # Tier 2: Parameter extraction (if needed)
+            # Tier 2: Parameter extraction (starts immediately, doesn't wait for language detection)
             try:
                 params = await self._extract_parameters(route_selection.route, message, conversation_context)
             except Exception:
-                # Record routing attempt with error outcome
+                language_code = await lang_task
                 self.telemetry.metrics.route_selections_counter.add(
                     1, {"route": route_selection.route, "outcome": "error", "language_code": language_code}
                 )
                 raise
+
+            language_code = await lang_task
+            language_name = await self.language_detector.get_language_name(language_code)
+            span.set_attribute("language_code", language_code)
+            span.set_attribute("language_name", language_name)
+            logger.info(f"Detected language: {language_code} ({language_name})")
 
             # Count route selection success
             self.telemetry.metrics.route_selections_counter.add(
