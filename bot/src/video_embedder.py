@@ -31,6 +31,9 @@ MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 # Hard ceiling for downloads before attempting compression
 MAX_DOWNLOAD_SIZE_BYTES = 200 * 1024 * 1024
 
+# Minimum fraction of pixels removed by crop to justify re-encoding a within-limits video
+MIN_CROP_PIXEL_REDUCTION = 0.20
+
 
 @dataclass
 class VideoEmbed:
@@ -116,6 +119,16 @@ class VideoEmbedder:
                     return VideoEmbed(short_url=short_url, source_url=url)
 
                 if len(file_data) <= self.max_file_size:
+                    crop = await self.video_compressor.analyze_crop(file_data)
+                    if crop and crop.pixel_reduction >= MIN_CROP_PIXEL_REDUCTION:
+                        span.set_attribute("method", "crop_only")
+                        compressed = await self.video_compressor.compress(file_data, filename, crop=crop)
+                        if compressed is not None:
+                            return VideoEmbed(
+                                file_data=compressed,
+                                filename=_to_mp4_filename(filename),
+                                source_url=url,
+                            )
                     span.set_attribute("method", "attachment")
                     span.set_attribute("file_size", len(file_data))
                     return VideoEmbed(

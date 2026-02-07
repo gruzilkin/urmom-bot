@@ -2,8 +2,10 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
+from collections import Counter
 from dataclasses import dataclass
 
 from open_telemetry import Telemetry
@@ -12,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 SUBPROCESS_TIMEOUT_SECONDS = 300
 MIN_BPP = 0.01
+_CROP_PATTERN = re.compile(r"crop=(\d+):(\d+):(\d+):(\d+)")
 
 
 @dataclass
@@ -20,6 +23,15 @@ class VideoInfo:
     width: int
     height: int
     fps: float
+
+
+@dataclass
+class CropBox:
+    w: int
+    h: int
+    x: int
+    y: int
+    pixel_reduction: float
 
 
 class VideoCompressionError(Exception):
@@ -38,59 +50,6 @@ class VideoCompressor:
         self.target_size_bytes = target_size_bytes
         self.audio_bitrate_kbps = audio_bitrate_kbps
         self.ffmpeg_preset = ffmpeg_preset
-
-    async def compress(self, video_data: bytes, filename: str) -> bytes | None:
-        async with self.telemetry.async_create_span("video_compressor.compress") as span:
-            span.set_attribute("input_size", len(video_data))
-            span.set_attribute("filename", filename)
-
-            temp_dir = tempfile.mkdtemp(prefix="vidcomp_")
-            try:
-                ext = os.path.splitext(filename)[1] or ".mp4"
-                input_path = os.path.join(temp_dir, f"input{ext}")
-                output_path = os.path.join(temp_dir, "output.mp4")
-                passlog_prefix = os.path.join(temp_dir, "passlog")
-
-                with open(input_path, "wb") as f:
-                    f.write(video_data)
-
-                info = await self._probe(input_path)
-
-                video_kbps = max(
-                    1,
-                    int((self.target_size_bytes * 8 * 0.9 / info.duration) / 1000 - self.audio_bitrate_kbps),
-                )
-                span.set_attribute("video_bitrate_kbps", video_kbps)
-
-                bpp = video_kbps * 1000 / (info.width * info.height * info.fps)
-                span.set_attribute("bpp", round(bpp, 4))
-
-                if bpp < MIN_BPP:
-                    span.set_attribute("outcome", "quality_too_low")
-                    return None
-
-                await self._run_pass1(input_path, video_kbps, passlog_prefix)
-                await self._run_pass2(input_path, output_path, video_kbps, passlog_prefix)
-
-                with open(output_path, "rb") as f:
-                    output_data = f.read()
-
-                output_size = len(output_data)
-                span.set_attribute("output_size", output_size)
-                span.set_attribute(
-                    "compression_ratio",
-                    round(len(video_data) / output_size, 2) if output_size > 0 else 0,
-                )
-
-                if output_size > self.target_size_bytes:
-                    span.set_attribute("outcome", "still_too_large")
-                    return None
-
-                span.set_attribute("outcome", "success")
-                return output_data
-
-            finally:
-                shutil.rmtree(temp_dir, ignore_errors=True)
 
     async def _probe(self, input_path: str) -> VideoInfo:
         async with self.telemetry.async_create_span("video_compressor.probe") as span:
@@ -132,47 +91,149 @@ class VideoCompressor:
             span.set_attribute("fps", fps)
             return VideoInfo(duration=duration, width=width, height=height, fps=fps)
 
-    async def _run_pass1(self, input_path: str, video_kbps: int, passlog_prefix: str) -> None:
-        async with self.telemetry.async_create_span("video_compressor.pass1"):
-            process = await asyncio.create_subprocess_exec(
-                "ffmpeg",
-                "-y",
-                "-i",
-                input_path,
-                "-c:v",
-                "libx264",
-                "-preset",
-                self.ffmpeg_preset,
-                "-b:v",
-                f"{video_kbps}k",
-                "-pass",
-                "1",
-                "-passlogfile",
-                passlog_prefix,
-                "-an",
-                "-f",
-                "null",
-                "/dev/null",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
-            if process.returncode != 0:
-                raise VideoCompressionError(f"ffmpeg pass 1 failed (rc={process.returncode}): {stderr.decode()}")
+    async def _detect_crop(self, input_path: str, info: VideoInfo) -> CropBox | None:
+        async with self.telemetry.async_create_span("video_compressor.detect_crop") as span:
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    "ffmpeg",
+                    "-i",
+                    input_path,
+                    "-vf",
+                    "cropdetect=limit=24:round=2:reset=0",
+                    "-an",
+                    "-f",
+                    "null",
+                    "/dev/null",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
 
-    async def _run_pass2(
+                if process.returncode != 0:
+                    logger.warning(f"cropdetect failed (rc={process.returncode})")
+                    span.set_attribute("outcome", "crop_skipped")
+                    return None
+
+                matches = _CROP_PATTERN.findall(stderr.decode())
+                if not matches:
+                    span.set_attribute("outcome", "crop_skipped")
+                    return None
+
+                crop_tuples = [(int(w), int(h), int(x), int(y)) for w, h, x, y in matches]
+                mode_crop = Counter(crop_tuples).most_common(1)[0][0]
+                w, h, x, y = mode_crop
+
+                if w <= 0 or h <= 0:
+                    span.set_attribute("outcome", "crop_skipped")
+                    return None
+                if x + w > info.width or y + h > info.height:
+                    span.set_attribute("outcome", "crop_skipped")
+                    return None
+                if w % 2 != 0 or h % 2 != 0:
+                    span.set_attribute("outcome", "crop_skipped")
+                    return None
+
+                pixel_reduction = 1 - (w * h) / (info.width * info.height)
+                span.set_attribute("crop_w", w)
+                span.set_attribute("crop_h", h)
+                span.set_attribute("crop_x", x)
+                span.set_attribute("crop_y", y)
+                span.set_attribute("crop_pixel_reduction", round(pixel_reduction, 4))
+                span.set_attribute("outcome", "crop_applied")
+                return CropBox(w=w, h=h, x=x, y=y, pixel_reduction=round(pixel_reduction, 4))
+
+            except Exception as e:
+                logger.warning(f"Crop detection failed: {e}", exc_info=True)
+                span.set_attribute("outcome", "crop_skipped")
+                return None
+
+    async def analyze_crop(self, video_data: bytes) -> CropBox | None:
+        tmp_fd, tmp_path = tempfile.mkstemp(prefix="vidcrop_")
+        try:
+            with os.fdopen(tmp_fd, "wb") as f:
+                f.write(video_data)
+            info = await self._probe(tmp_path)
+            return await self._detect_crop(tmp_path, info)
+        except Exception:
+            logger.warning("Crop analysis failed", exc_info=True)
+            return None
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    async def compress(self, video_data: bytes, filename: str, crop: CropBox | None = None) -> bytes | None:
+        async with self.telemetry.async_create_span("video_compressor.compress") as span:
+            span.set_attribute("input_size", len(video_data))
+            span.set_attribute("filename", filename)
+
+            temp_dir = tempfile.mkdtemp(prefix="vidcomp_")
+            try:
+                ext = os.path.splitext(filename)[1] or ".mp4"
+                input_path = os.path.join(temp_dir, f"input{ext}")
+                output_path = os.path.join(temp_dir, "output.mp4")
+                passlog_prefix = os.path.join(temp_dir, "passlog")
+
+                with open(input_path, "wb") as f:
+                    f.write(video_data)
+
+                info = await self._probe(input_path)
+
+                if crop is None:
+                    crop = await self._detect_crop(input_path, info)
+
+                effective_width = crop.w if crop else info.width
+                effective_height = crop.h if crop else info.height
+
+                video_kbps = max(
+                    1,
+                    int((self.target_size_bytes * 8 * 0.9 / info.duration) / 1000 - self.audio_bitrate_kbps),
+                )
+                span.set_attribute("video_bitrate_kbps", video_kbps)
+
+                bpp = video_kbps * 1000 / (effective_width * effective_height * info.fps)
+                span.set_attribute("bpp", round(bpp, 4))
+
+                if bpp < MIN_BPP:
+                    span.set_attribute("outcome", "quality_too_low")
+                    return None
+
+                await self._run_encode_pass(1, input_path, "/dev/null", video_kbps, passlog_prefix, crop)
+                await self._run_encode_pass(2, input_path, output_path, video_kbps, passlog_prefix, crop)
+
+                with open(output_path, "rb") as f:
+                    output_data = f.read()
+
+                output_size = len(output_data)
+                span.set_attribute("output_size", output_size)
+                span.set_attribute(
+                    "compression_ratio",
+                    round(len(video_data) / output_size, 2) if output_size > 0 else 0,
+                )
+
+                if output_size > self.target_size_bytes:
+                    span.set_attribute("outcome", "still_too_large")
+                    return None
+
+                span.set_attribute("outcome", "success")
+                return output_data
+
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+    async def _run_encode_pass(
         self,
+        pass_number: int,
         input_path: str,
         output_path: str,
         video_kbps: int,
         passlog_prefix: str,
+        crop: CropBox | None,
     ) -> None:
-        async with self.telemetry.async_create_span("video_compressor.pass2"):
-            process = await asyncio.create_subprocess_exec(
-                "ffmpeg",
-                "-y",
-                "-i",
-                input_path,
+        async with self.telemetry.async_create_span(f"video_compressor.pass{pass_number}"):
+            args = ["ffmpeg", "-y", "-i", input_path]
+            if crop:
+                args += ["-vf", f"crop={crop.w}:{crop.h}:{crop.x}:{crop.y}"]
+            args += [
                 "-c:v",
                 "libx264",
                 "-preset",
@@ -180,19 +241,23 @@ class VideoCompressor:
                 "-b:v",
                 f"{video_kbps}k",
                 "-pass",
-                "2",
+                str(pass_number),
                 "-passlogfile",
                 passlog_prefix,
-                "-c:a",
-                "aac",
-                "-b:a",
-                f"{self.audio_bitrate_kbps}k",
-                "-movflags",
-                "+faststart",
-                output_path,
+            ]
+            if pass_number == 1:
+                args += ["-an", "-f", "null"]
+            else:
+                args += ["-c:a", "aac", "-b:a", f"{self.audio_bitrate_kbps}k", "-movflags", "+faststart"]
+            args += [output_path]
+
+            process = await asyncio.create_subprocess_exec(
+                *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             _, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
             if process.returncode != 0:
-                raise VideoCompressionError(f"ffmpeg pass 2 failed (rc={process.returncode}): {stderr.decode()}")
+                raise VideoCompressionError(
+                    f"ffmpeg pass {pass_number} failed (rc={process.returncode}): {stderr.decode()}"
+                )

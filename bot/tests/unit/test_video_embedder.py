@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from cobalt_client import CobaltClient, VideoResult
 from null_telemetry import NullTelemetry
 from tinyurl_client import TinyURLClient
-from video_compressor import VideoCompressor
+from video_compressor import CropBox, VideoCompressor
 from video_embedder import VideoEmbedder
 
 
@@ -32,9 +32,7 @@ class TestFindVideoUrls(unittest.TestCase):
         urls = self.embedder.find_video_urls(
             "https://www.reddit.com/r/PublicFreakout/comments/1qwl6es/loud_fck_ice_chants/"
         )
-        self.assertEqual(
-            urls, ["https://www.reddit.com/r/PublicFreakout/comments/1qwl6es/loud_fck_ice_chants"]
-        )
+        self.assertEqual(urls, ["https://www.reddit.com/r/PublicFreakout/comments/1qwl6es/loud_fck_ice_chants"])
 
     def test_find_ignores_non_video_twitter(self):
         urls = self.embedder.find_video_urls("https://twitter.com/user")
@@ -54,6 +52,7 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
             )
         )
         compressor = Mock(spec=VideoCompressor)
+        compressor.analyze_crop = AsyncMock(return_value=None)
         tinyurl = Mock(spec=TinyURLClient)
 
         embedder = VideoEmbedder(cobalt, compressor, tinyurl, NullTelemetry())
@@ -184,6 +183,89 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
         tinyurl.shorten.assert_not_called()
         compressor.compress.assert_not_called()
+
+
+class TestWithinLimitsCrop(unittest.IsolatedAsyncioTestCase):
+    @patch.object(VideoEmbedder, "_download_video")
+    async def test_significant_bars_triggers_compression(self, mock_download: AsyncMock):
+        mock_download.return_value = b"video data"
+        crop = CropBox(w=1920, h=800, x=0, y=140, pixel_reduction=0.26)
+        compressed = b"cropped video"
+
+        cobalt = Mock(spec=CobaltClient)
+        cobalt.extract_video = AsyncMock(
+            return_value=VideoResult(url="https://cdn.example.com/video.mp4", filename="video.mp4")
+        )
+        compressor = Mock(spec=VideoCompressor)
+        compressor.analyze_crop = AsyncMock(return_value=crop)
+        compressor.compress = AsyncMock(return_value=compressed)
+        tinyurl = Mock(spec=TinyURLClient)
+
+        embedder = VideoEmbedder(cobalt, compressor, tinyurl, NullTelemetry())
+        result = await embedder.process_url("https://x.com/user/status/123")
+
+        self.assertEqual(result.file_data, compressed)
+        self.assertEqual(result.filename, "video.mp4")
+        compressor.compress.assert_awaited_once_with(b"video data", "video.mp4", crop=crop)
+
+    @patch.object(VideoEmbedder, "_download_video")
+    async def test_minor_bars_returned_as_is(self, mock_download: AsyncMock):
+        mock_download.return_value = b"video data"
+        crop = CropBox(w=1920, h=1026, x=0, y=27, pixel_reduction=0.05)
+
+        cobalt = Mock(spec=CobaltClient)
+        cobalt.extract_video = AsyncMock(
+            return_value=VideoResult(url="https://cdn.example.com/video.mp4", filename="video.mp4")
+        )
+        compressor = Mock(spec=VideoCompressor)
+        compressor.analyze_crop = AsyncMock(return_value=crop)
+        tinyurl = Mock(spec=TinyURLClient)
+
+        embedder = VideoEmbedder(cobalt, compressor, tinyurl, NullTelemetry())
+        result = await embedder.process_url("https://x.com/user/status/123")
+
+        self.assertEqual(result.file_data, b"video data")
+        self.assertEqual(result.filename, "video.mp4")
+        compressor.compress.assert_not_called()
+
+    @patch.object(VideoEmbedder, "_download_video")
+    async def test_no_crop_detected_returned_as_is(self, mock_download: AsyncMock):
+        mock_download.return_value = b"video data"
+
+        cobalt = Mock(spec=CobaltClient)
+        cobalt.extract_video = AsyncMock(
+            return_value=VideoResult(url="https://cdn.example.com/video.mp4", filename="video.mp4")
+        )
+        compressor = Mock(spec=VideoCompressor)
+        compressor.analyze_crop = AsyncMock(return_value=None)
+        tinyurl = Mock(spec=TinyURLClient)
+
+        embedder = VideoEmbedder(cobalt, compressor, tinyurl, NullTelemetry())
+        result = await embedder.process_url("https://x.com/user/status/123")
+
+        self.assertEqual(result.file_data, b"video data")
+        self.assertEqual(result.filename, "video.mp4")
+        compressor.compress.assert_not_called()
+
+    @patch.object(VideoEmbedder, "_download_video")
+    async def test_crop_compression_fails_returned_as_is(self, mock_download: AsyncMock):
+        mock_download.return_value = b"video data"
+        crop = CropBox(w=1920, h=800, x=0, y=140, pixel_reduction=0.26)
+
+        cobalt = Mock(spec=CobaltClient)
+        cobalt.extract_video = AsyncMock(
+            return_value=VideoResult(url="https://cdn.example.com/video.mp4", filename="video.mp4")
+        )
+        compressor = Mock(spec=VideoCompressor)
+        compressor.analyze_crop = AsyncMock(return_value=crop)
+        compressor.compress = AsyncMock(return_value=None)
+        tinyurl = Mock(spec=TinyURLClient)
+
+        embedder = VideoEmbedder(cobalt, compressor, tinyurl, NullTelemetry())
+        result = await embedder.process_url("https://x.com/user/status/123")
+
+        self.assertEqual(result.file_data, b"video data")
+        self.assertEqual(result.filename, "video.mp4")
 
 
 if __name__ == "__main__":
