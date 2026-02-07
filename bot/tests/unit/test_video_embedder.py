@@ -64,15 +64,16 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
         tinyurl.shorten.assert_not_called()
 
     @patch.object(VideoEmbedder, "_download_video")
-    async def test_oversized_video_compresses_successfully(self, mock_download: AsyncMock):
-        large_data = b"x" * (11 * 1024 * 1024)  # 10MB
+    async def test_oversized_tunnel_video_compresses_successfully(self, mock_download: AsyncMock):
+        large_data = b"x" * (11 * 1024 * 1024)
         mock_download.return_value = large_data
 
         cobalt = Mock(spec=CobaltClient)
         cobalt.extract_video = AsyncMock(
             return_value=VideoResult(
-                url="https://cdn.example.com/video.webm",
+                url="https://cobalt.internal/tunnel/abc",
                 filename="video.webm",
+                is_tunnel=True,
             )
         )
         compressed_data = b"small" * 100
@@ -89,7 +90,7 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
         tinyurl.shorten.assert_not_called()
 
     @patch.object(VideoEmbedder, "_download_video")
-    async def test_compression_fails_redirect_falls_back_to_tinyurl(self, mock_download: AsyncMock):
+    async def test_oversized_redirect_falls_back_to_tinyurl(self, mock_download: AsyncMock):
         large_data = b"x" * (11 * 1024 * 1024)
         mock_download.return_value = large_data
 
@@ -102,7 +103,6 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
             )
         )
         compressor = Mock(spec=VideoCompressor)
-        compressor.compress = AsyncMock(return_value=None)
         tinyurl = Mock(spec=TinyURLClient)
         tinyurl.shorten = AsyncMock(return_value="https://tinyurl.com/abc123")
 
@@ -111,7 +111,7 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(result.file_data)
         self.assertEqual(result.short_url, "https://tinyurl.com/abc123")
-        compressor.compress.assert_awaited_once()
+        compressor.compress.assert_not_called()
         tinyurl.shorten.assert_awaited_once()
 
     @patch.object(VideoEmbedder, "_download_video")
