@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 SUBPROCESS_TIMEOUT_SECONDS = 300
 MIN_BPP = 0.01
+MIN_SCALE_SHORT_EDGE = 240
 _CROP_PATTERN = re.compile(r"crop=(\d+):(\d+):(\d+):(\d+)")
 
 
@@ -31,6 +33,12 @@ class CropBox:
     x: int
     y: int
     pixel_reduction: float
+
+
+@dataclass
+class ScaleParams:
+    w: int
+    h: int
 
 
 class VideoCompressionError(Exception):
@@ -186,22 +194,34 @@ class VideoCompressor:
                 span.set_attribute("video_bitrate_kbps", video_kbps)
 
                 uncropped_bpp = video_kbps * 1000 / (info.width * info.height * info.fps)
+
+                scale_params: ScaleParams | None = None
+
                 if uncropped_bpp < MIN_BPP:
-                    span.set_attribute("bpp", round(uncropped_bpp, 4))
-                    span.set_attribute("outcome", "quality_too_low")
-                    return None
+                    scale = math.sqrt(uncropped_bpp / MIN_BPP)
+                    scaled_w = int(info.width * scale) // 2 * 2
+                    scaled_h = int(info.height * scale) // 2 * 2
+
+                    if min(scaled_w, scaled_h) < MIN_SCALE_SHORT_EDGE:
+                        span.set_attribute("bpp", round(uncropped_bpp, 4))
+                        span.set_attribute("outcome", "quality_too_low")
+                        return None
+
+                    scale_params = ScaleParams(w=scaled_w, h=scaled_h)
+                    span.set_attribute("scale_width", scaled_w)
+                    span.set_attribute("scale_height", scaled_h)
 
                 if crop is None:
                     crop = await self._detect_crop(input_path, info)
 
-                effective_width = crop.w if crop else info.width
-                effective_height = crop.h if crop else info.height
+                effective_width = scale_params.w if scale_params else (crop.w if crop else info.width)
+                effective_height = scale_params.h if scale_params else (crop.h if crop else info.height)
 
                 bpp = video_kbps * 1000 / (effective_width * effective_height * info.fps)
                 span.set_attribute("bpp", round(bpp, 4))
 
-                await self._run_encode_pass(1, input_path, "/dev/null", video_kbps, passlog_prefix, crop)
-                await self._run_encode_pass(2, input_path, output_path, video_kbps, passlog_prefix, crop)
+                await self._run_encode_pass(1, input_path, "/dev/null", video_kbps, passlog_prefix, crop, scale_params)
+                await self._run_encode_pass(2, input_path, output_path, video_kbps, passlog_prefix, crop, scale_params)
 
                 with open(output_path, "rb") as f:
                     output_data = f.read()
@@ -231,11 +251,18 @@ class VideoCompressor:
         video_kbps: int,
         passlog_prefix: str,
         crop: CropBox | None,
+        scale: ScaleParams | None,
     ) -> None:
         async with self.telemetry.async_create_span(f"video_compressor.pass{pass_number}"):
-            args = ["ffmpeg", "-y", "-i", input_path]
+            filters: list[str] = []
             if crop:
-                args += ["-vf", f"crop={crop.w}:{crop.h}:{crop.x}:{crop.y}"]
+                filters.append(f"crop={crop.w}:{crop.h}:{crop.x}:{crop.y}")
+            if scale:
+                filters.append(f"scale={scale.w}:{scale.h}")
+
+            args = ["ffmpeg", "-y", "-i", input_path]
+            if filters:
+                args += ["-vf", ",".join(filters)]
             args += [
                 "-c:v",
                 "libx264",
