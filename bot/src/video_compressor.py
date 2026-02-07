@@ -120,15 +120,19 @@ class VideoCompressor:
                     return None
 
                 crop_tuples = [(int(w), int(h), int(x), int(y)) for w, h, x, y in matches]
-                mode_crop = Counter(crop_tuples).most_common(1)[0][0]
-                w, h, x, y = mode_crop
+                top_crops = [crop for crop, _ in Counter(crop_tuples).most_common(3)]
+                x = min(x for _, _, x, _ in top_crops)
+                y = min(y for _, _, _, y in top_crops)
+                w = max(x + w for w, _, x, _ in top_crops) - x
+                h = max(y + h for _, h, _, y in top_crops) - y
+                w -= w % 2
+                h -= h % 2
 
                 is_empty = w <= 0 or h <= 0
                 is_out_of_bounds = x + w > info.width or y + h > info.height
-                is_odd = w % 2 != 0 or h % 2 != 0
                 is_full_frame = w == info.width and h == info.height
 
-                if is_empty or is_out_of_bounds or is_odd or is_full_frame:
+                if is_empty or is_out_of_bounds or is_full_frame:
                     span.set_attribute("outcome", "crop_skipped")
                     return None
 
