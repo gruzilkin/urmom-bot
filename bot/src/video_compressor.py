@@ -13,6 +13,7 @@ from open_telemetry import Telemetry
 logger = logging.getLogger(__name__)
 
 SUBPROCESS_TIMEOUT_SECONDS = 300
+PROCESS_KILL_TIMEOUT_SECONDS = 5
 MIN_BPP = 0.05
 MIN_SCALE_SHORT_EDGE = 240
 _CROP_PATTERN = re.compile(r"crop=(\d+):(\d+):(\d+):(\d+)")
@@ -39,6 +40,14 @@ class CropBox:
 class ScaleParams:
     w: int
     h: int
+
+
+async def _kill_process(process: asyncio.subprocess.Process) -> None:
+    try:
+        process.kill()
+        await asyncio.wait_for(process.wait(), timeout=PROCESS_KILL_TIMEOUT_SECONDS)
+    except (ProcessLookupError, asyncio.TimeoutError):
+        pass
 
 
 class VideoCompressionError(Exception):
@@ -74,7 +83,11 @@ class VideoCompressor:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                await _kill_process(process)
+                raise VideoCompressionError("ffprobe timed out")
             if process.returncode != 0:
                 raise VideoCompressionError(f"ffprobe failed (rc={process.returncode}): {stderr.decode()}")
 
@@ -114,7 +127,12 @@ class VideoCompressor:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                _, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
+                try:
+                    _, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
+                except asyncio.TimeoutError:
+                    await _kill_process(process)
+                    span.set_attribute("outcome", "crop_skipped")
+                    return None
 
                 if process.returncode != 0:
                     logger.warning(f"cropdetect failed (rc={process.returncode})")
@@ -193,17 +211,23 @@ class VideoCompressor:
                 )
                 span.set_attribute("video_bitrate_kbps", video_kbps)
 
-                uncropped_bpp = video_kbps * 1000 / (info.width * info.height * info.fps)
+                if crop is None:
+                    crop = await self._detect_crop(input_path, info)
+
+                frame_w = crop.w if crop else info.width
+                frame_h = crop.h if crop else info.height
+
+                bpp = video_kbps * 1000 / (frame_w * frame_h * info.fps)
 
                 scale_params: ScaleParams | None = None
 
-                if uncropped_bpp < MIN_BPP:
-                    scale = math.sqrt(uncropped_bpp / MIN_BPP)
-                    scaled_w = int(info.width * scale) // 2 * 2
-                    scaled_h = int(info.height * scale) // 2 * 2
+                if bpp < MIN_BPP:
+                    scale = math.sqrt(bpp / MIN_BPP)
+                    scaled_w = int(frame_w * scale) // 2 * 2
+                    scaled_h = int(frame_h * scale) // 2 * 2
 
                     if min(scaled_w, scaled_h) < MIN_SCALE_SHORT_EDGE:
-                        span.set_attribute("bpp", round(uncropped_bpp, 4))
+                        span.set_attribute("bpp", round(bpp, 4))
                         span.set_attribute("outcome", "quality_too_low")
                         return None
 
@@ -211,11 +235,8 @@ class VideoCompressor:
                     span.set_attribute("scale_width", scaled_w)
                     span.set_attribute("scale_height", scaled_h)
 
-                if crop is None:
-                    crop = await self._detect_crop(input_path, info)
-
-                effective_width = scale_params.w if scale_params else (crop.w if crop else info.width)
-                effective_height = scale_params.h if scale_params else (crop.h if crop else info.height)
+                effective_width = scale_params.w if scale_params else frame_w
+                effective_height = scale_params.h if scale_params else frame_h
 
                 bpp = video_kbps * 1000 / (effective_width * effective_height * info.fps)
                 span.set_attribute("bpp", round(bpp, 4))
@@ -286,7 +307,11 @@ class VideoCompressor:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
+            try:
+                _, stderr = await asyncio.wait_for(process.communicate(), timeout=SUBPROCESS_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                await _kill_process(process)
+                raise VideoCompressionError(f"ffmpeg pass {pass_number} timed out")
             if process.returncode != 0:
                 raise VideoCompressionError(
                     f"ffmpeg pass {pass_number} failed (rc={process.returncode}): {stderr.decode()}"
