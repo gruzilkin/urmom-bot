@@ -179,7 +179,7 @@ class Container:
         self.language_detector = LanguageDetector(ai_client=self.gemma_with_kimi_fallback, telemetry=self.telemetry)
 
         self.attachment_processor = AttachmentProcessor(
-            ai_client=self.qwen_with_gemma_fallback,
+            ai_client=self.retrying_gemma,
             telemetry=self.telemetry,
             max_file_size_mb=10,
         )
