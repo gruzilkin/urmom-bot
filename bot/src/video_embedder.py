@@ -11,6 +11,7 @@ from cobalt_client import (
 )
 from open_telemetry import Telemetry
 from tinyurl_client import TinyURLClient, TinyURLError
+from video_compressor import VideoCompressionError, VideoCompressor
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +21,18 @@ URL_PATTERNS = [
     re.compile(r"https?://(?:www\.)?(?:x|twitter)\.com/\w+/status/\d+"),
     # Instagram Reels: https://www.instagram.com/reel/ABC123/
     re.compile(r"https?://(?:www\.)?instagram\.com/reel/[\w-]+"),
+    # Reddit: https://www.reddit.com/r/subreddit/comments/id/title/
+    re.compile(r"https?://(?:www\.)?reddit\.com/r/\w+/comments/\w+/\w+"),
 ]
 
-# 8MB limit for Discord attachments (non-Nitro)
-MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024
+# 10MB limit for Discord attachments (non-Nitro)
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+
+# Hard ceiling for downloads before attempting compression
+MAX_DOWNLOAD_SIZE_BYTES = 200 * 1024 * 1024
+
+# Minimum fraction of pixels removed by crop to justify re-encoding a within-limits video
+MIN_CROP_PIXEL_REDUCTION = 0.20
 
 
 @dataclass
@@ -34,7 +43,7 @@ class VideoEmbed:
     file_data: bytes | None = None
     filename: str | None = None
 
-    # If short_url is set, reply with this URL
+    # If short_url is set, reply with this URL (fallback for huge videos)
     short_url: str | None = None
 
     # Original URL that was processed
@@ -46,20 +55,20 @@ class VideoEmbedder:
     Service to extract and embed videos from social media links.
 
     Detects X/Twitter and Instagram links, extracts direct video URLs,
-    and either downloads the video (if < 8MB) or creates a TinyURL.
+    and either downloads the video (if < 8MB) or compresses it with ffmpeg.
     """
 
     def __init__(
         self,
         cobalt_client: CobaltClient,
+        video_compressor: VideoCompressor,
         tinyurl_client: TinyURLClient,
         telemetry: Telemetry,
-        max_file_size: int = MAX_FILE_SIZE_BYTES,
     ):
         self.cobalt_client = cobalt_client
+        self.video_compressor = video_compressor
         self.tinyurl_client = tinyurl_client
         self.telemetry = telemetry
-        self.max_file_size = max_file_size
 
     def find_video_urls(self, text: str) -> list[str]:
         """
@@ -84,7 +93,7 @@ class VideoEmbedder:
             url: The social media URL to process
 
         Returns:
-            VideoEmbed with either file data or short URL, or None if failed
+            VideoEmbed with file data, or None if failed
         """
         async with self.telemetry.async_create_span("video_embedder.process_url") as span:
             span.set_attribute("source_url", url)
@@ -95,10 +104,35 @@ class VideoEmbedder:
                 video_url = result.url
                 filename = result.filename
 
-                # Try to download and check size
-                file_data = await self._download_video(video_url)
+                # Download the video — only buffer up to compression limit for
+                # tunnels; non-tunnel videos beyond the Discord limit get
+                # URL-shortened, so there is no reason to download more.
+                max_download = MAX_DOWNLOAD_SIZE_BYTES if result.is_tunnel else MAX_FILE_SIZE_BYTES
+                file_data = await self._download_video(video_url, max_download)
 
-                if file_data and len(file_data) <= self.max_file_size:
+                if file_data is None:
+                    if result.is_tunnel:
+                        span.set_attribute("outcome", "tunnel_too_large")
+                        return None
+                    # Direct CDN link too large to download — fall back to TinyURL
+                    span.set_attribute("method", "url")
+                    short_url = await self.tinyurl_client.shorten(video_url)
+                    return VideoEmbed(short_url=short_url, source_url=url)
+
+                if len(file_data) <= MAX_FILE_SIZE_BYTES:
+                    try:
+                        crop = await self.video_compressor.analyze_crop(file_data)
+                        if crop and crop.pixel_reduction >= MIN_CROP_PIXEL_REDUCTION:
+                            span.set_attribute("method", "crop_only")
+                            compressed = await self.video_compressor.compress(file_data, filename, crop=crop)
+                            if compressed is not None:
+                                return VideoEmbed(
+                                    file_data=compressed,
+                                    filename=_to_mp4_filename(filename),
+                                    source_url=url,
+                                )
+                    except VideoCompressionError as e:
+                        logger.warning(f"Crop optimization failed, using original: {e}", exc_info=True)
                     span.set_attribute("method", "attachment")
                     span.set_attribute("file_size", len(file_data))
                     return VideoEmbed(
@@ -107,10 +141,21 @@ class VideoEmbedder:
                         source_url=url,
                     )
 
-                span.set_attribute("method", "url")
-                short_url = await self.tinyurl_client.shorten(video_url)
+                if not result.is_tunnel:
+                    span.set_attribute("method", "url")
+                    short_url = await self.tinyurl_client.shorten(video_url)
+                    return VideoEmbed(short_url=short_url, source_url=url)
+
+                span.set_attribute("method", "compress")
+                compressed = await self.video_compressor.compress(file_data, filename)
+                if compressed is None:
+                    span.set_attribute("outcome", "compression_failed")
+                    return None
+
+                span.set_attribute("file_size", len(compressed))
                 return VideoEmbed(
-                    short_url=short_url,
+                    file_data=compressed,
+                    filename=_to_mp4_filename(filename),
                     source_url=url,
                 )
 
@@ -119,7 +164,7 @@ class VideoEmbedder:
                 span.set_attribute("outcome", "skipped")
                 return None
 
-            except (CobaltError, TinyURLError) as e:
+            except (CobaltError, TinyURLError, VideoCompressionError) as e:
                 logger.warning(f"Video embed failed for {url}: {e}", exc_info=True)
                 span.set_attribute("outcome", "error")
                 return None
@@ -129,46 +174,45 @@ class VideoEmbedder:
                 span.set_attribute("outcome", "error")
                 return None
 
-    async def _download_video(self, url: str) -> bytes | None:
-        """
-        Download video from URL.
-
-        Args:
-            url: Direct video URL
-
-        Returns:
-            Video bytes or None if download fails
-        """
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                ) as response:
-                    if response.status != 200:
-                        logger.warning(f"Video download returned status {response.status}")
-                        return None
-
-                    # Check Content-Length header first to avoid downloading huge files
-                    content_length = response.headers.get("Content-Length")
-                    if content_length and int(content_length) > self.max_file_size:
-                        return None
-
-                    # Download with size limit
-                    chunks = []
-                    total_size = 0
-                    async for chunk in response.content.iter_chunked(64 * 1024):
-                        total_size += len(chunk)
-                        if total_size > self.max_file_size:
+    async def _download_video(self, url: str, max_bytes: int) -> bytes | None:
+        async with self.telemetry.async_create_span("video_embedder.download") as span:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        url,
+                        timeout=aiohttp.ClientTimeout(total=120),
+                    ) as response:
+                        if response.status != 200:
+                            logger.warning(f"Video download returned status {response.status}")
+                            span.set_attribute("outcome", "bad_status")
                             return None
-                        chunks.append(chunk)
 
-                    return b"".join(chunks)
+                        content_length = response.headers.get("Content-Length")
+                        if content_length and int(content_length) > max_bytes:
+                            span.set_attribute("outcome", "too_large")
+                            return None
 
-        except aiohttp.ClientError:
-            return None
-        except Exception:
-            return None
+                        chunks = []
+                        total_size = 0
+                        async for chunk in response.content.iter_chunked(64 * 1024):
+                            total_size += len(chunk)
+                            if total_size > max_bytes:
+                                span.set_attribute("outcome", "too_large")
+                                return None
+                            chunks.append(chunk)
+
+                        span.set_attribute("download_size", total_size)
+                        span.set_attribute("outcome", "success")
+                        return b"".join(chunks)
+
+            except aiohttp.ClientError as e:
+                logger.error(f"Video download failed for network error: {e}", exc_info=True)
+                span.set_attribute("outcome", "error")
+                return None
+            except Exception as e:
+                logger.error(f"Video download failed unexpectedly: {e}", exc_info=True)
+                span.set_attribute("outcome", "error")
+                return None
 
     async def process_message(self, text: str) -> list[VideoEmbed]:
         """
@@ -191,3 +235,8 @@ class VideoEmbedder:
                 results.append(embed)
 
         return results
+
+
+def _to_mp4_filename(filename: str) -> str:
+    base, _ = filename.rsplit(".", 1) if "." in filename else (filename, "")
+    return f"{base}.mp4"

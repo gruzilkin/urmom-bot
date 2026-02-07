@@ -27,6 +27,11 @@ cache.processed_messages = set()
 logger = logging.getLogger(__name__)
 
 
+async def traced_reply(message: nextcord.Message, *args, **kwargs) -> nextcord.Message:
+    async with container.telemetry.async_create_span("reply"):
+        return await message.reply(*args, **kwargs)
+
+
 class BotCommand(Enum):
     HELP = "help"
     SETTINGS = "settings"
@@ -128,7 +133,7 @@ async def on_message(message: nextcord.Message):
             response = await container.famous_person_generator.handle_request(
                 params, processed_message, conversation_fetcher, message.guild.id
             )
-            reply = await message.reply(response)
+            reply = await traced_reply(message, response)
 
         elif route == "GENERAL":
             conversation_fetcher = create_conversation_fetcher(message)
@@ -137,11 +142,11 @@ async def on_message(message: nextcord.Message):
                 params, conversation_fetcher, message.guild.id, bot.user, message.author
             )
             if response is not None:
-                reply = await message.reply(response)
+                reply = await traced_reply(message, response)
 
         elif route == "FACT" and params:
             response = await container.fact_handler.handle_request(params, message.guild.id)
-            reply = await message.reply(response)
+            reply = await traced_reply(message, response)
 
         # Record reply latency once if a reply was sent
         if reply is not None:
@@ -198,10 +203,10 @@ async def process_video_embeds(message: nextcord.Message) -> None:
                     io.BytesIO(embed.file_data),
                     filename=embed.filename,
                 )
-                await message.reply(file=file, mention_author=False)
+                await traced_reply(message, file=file, mention_author=False)
             elif embed.short_url:
-                # Send shortened URL
-                await message.reply(embed.short_url, mention_author=False)
+                # Send shortened URL for videos too large to compress
+                await traced_reply(message, embed.short_url, mention_author=False)
         except Exception as e:
             logger.error(f"Failed to send video embed: {e}", exc_info=True)
 
@@ -222,7 +227,7 @@ async def process_bot_commands(message: nextcord.Message) -> bool:
 
     # Check if user is admin before processing commands
     if not message.author.guild_permissions.administrator:
-        await message.reply("Sorry, only administrators can use bot commands!")
+        await traced_reply(message, "Sorry, only administrators can use bot commands!")
         return True
 
     config = await container.store.get_guild_config(message.guild.id)
@@ -236,7 +241,7 @@ Available commands:
 `@urmom-bot deleteJokesWhenDownvoted X` - Delete jokes when downvotes - upvotes >= X (0 to disable)
 `@urmom-bot enableCountryJokes true/false` - Enable/disable country-specific jokes
 """
-        await message.reply(help_text)
+        await traced_reply(message, help_text)
         return True
 
     if command == BotCommand.SETTINGS:
@@ -247,19 +252,19 @@ Current settings:
 • Delete on downvotes: {config.downvote_reaction_threshold} (0 = disabled)
 • Country jokes: {"Enabled" if config.enable_country_jokes else "Disabled"}
 """
-        await message.reply(settings_text)
+        await traced_reply(message, settings_text)
         return True
 
     if command == BotCommand.SET_ARCHIVE_CHANNEL:
         if not message.channel_mentions:
             config.archive_channel_id = 0  # Disable archiving
             await container.store.save_guild_config(config)
-            await message.reply("Joke archiving has been disabled.")
+            await traced_reply(message, "Joke archiving has been disabled.")
             return True
 
         config.archive_channel_id = message.channel_mentions[0].id
         await container.store.save_guild_config(config)
-        await message.reply(f"Jokes will now be archived in {message.channel_mentions[0].mention}")
+        await traced_reply(message, f"Jokes will now be archived in {message.channel_mentions[0].mention}")
         return True
 
     elif command == BotCommand.DELETE_JOKES_AFTER:
@@ -269,9 +274,9 @@ Current settings:
                 raise ValueError
             config.delete_jokes_after_minutes = minutes
             await container.store.save_guild_config(config)
-            await message.reply(f"Jokes will be deleted after {minutes} minutes (0 = never)")
+            await traced_reply(message, f"Jokes will be deleted after {minutes} minutes (0 = never)")
         except (IndexError, ValueError):
-            await message.reply("Please provide a valid number of minutes!")
+            await traced_reply(message, "Please provide a valid number of minutes!")
         return True
 
     elif command == BotCommand.DELETE_JOKES_WHEN_DOWNVOTED:
@@ -281,9 +286,9 @@ Current settings:
                 raise ValueError
             config.downvote_reaction_threshold = threshold
             await container.store.save_guild_config(config)
-            await message.reply(f"Jokes will be deleted when downvotes - upvotes >= {threshold}")
+            await traced_reply(message, f"Jokes will be deleted when downvotes - upvotes >= {threshold}")
         except (IndexError, ValueError):
-            await message.reply("Please provide a valid threshold number!")
+            await traced_reply(message, "Please provide a valid threshold number!")
         return True
 
     elif command == BotCommand.ENABLE_COUNTRY_JOKES:
@@ -291,9 +296,9 @@ Current settings:
             enable = args[1].lower() == "true"
             config.enable_country_jokes = enable
             await container.store.save_guild_config(config)
-            await message.reply(f"Country jokes {'enabled' if enable else 'disabled'}")
+            await traced_reply(message, f"Country jokes {'enabled' if enable else 'disabled'}")
         except IndexError:
-            await message.reply("Please specify true or false!")
+            await traced_reply(message, "Please specify true or false!")
         return True
 
     return False
@@ -529,7 +534,7 @@ async def process_joke_request(payload: nextcord.RawReactionActionEvent, country
         joke = await container.joke_generator.generate_joke(message.content, language)
 
     # Send direct reply
-    reply_message = await message.reply(joke)
+    reply_message = await traced_reply(message, joke)
     # Count jokes generated
     attrs = {"language": language or "unknown", "guild_id": str(payload.guild_id)}
     if country:
@@ -569,7 +574,7 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
     if wisdom is None:
         return
 
-    reply_message = await message.reply(wisdom)
+    reply_message = await traced_reply(message, wisdom)
 
     container.telemetry.metrics.wisdom_generated.add(1, {"guild_id": str(payload.guild_id)})
 
@@ -602,7 +607,7 @@ async def process_devils_advocate_request(payload: nextcord.RawReactionActionEve
     if counter_argument is None:
         return
 
-    reply_message = await message.reply(counter_argument)
+    reply_message = await traced_reply(message, counter_argument)
 
     container.telemetry.metrics.devils_advocate_generated.add(1, {"guild_id": str(payload.guild_id)})
 

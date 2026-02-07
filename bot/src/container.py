@@ -25,7 +25,8 @@ from wisdom_generator import WisdomGenerator
 from devils_advocate_generator import DevilsAdvocateGenerator
 from cobalt_client import CobaltClient
 from tinyurl_client import TinyURLClient
-from video_embedder import VideoEmbedder
+from video_compressor import VideoCompressor
+from video_embedder import MAX_FILE_SIZE_BYTES, VideoEmbedder
 
 
 class Container:
@@ -47,8 +48,14 @@ class Container:
             telemetry=self.telemetry,
         )
 
+        self.video_compressor = VideoCompressor(
+            telemetry=self.telemetry,
+            target_size_bytes=MAX_FILE_SIZE_BYTES,
+        )
+
         self.video_embedder = VideoEmbedder(
             cobalt_client=self.cobalt_client,
+            video_compressor=self.video_compressor,
             tinyurl_client=self.tinyurl_client,
             telemetry=self.telemetry,
         )
@@ -172,7 +179,7 @@ class Container:
         self.language_detector = LanguageDetector(ai_client=self.gemma_with_kimi_fallback, telemetry=self.telemetry)
 
         self.attachment_processor = AttachmentProcessor(
-            ai_client=self.qwen_with_gemma_fallback,
+            ai_client=self.retrying_gemma,
             telemetry=self.telemetry,
             max_file_size_mb=10,
         )
