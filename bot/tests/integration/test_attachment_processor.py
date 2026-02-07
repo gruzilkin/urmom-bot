@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from attachment_processor import AttachmentProcessor
 from gemma_client import GemmaClient
+from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
 from ollama_client import OllamaClient
 
@@ -51,6 +52,7 @@ class TestAttachmentProcessorIntegration(unittest.IsolatedAsyncioTestCase):
                     processor=AttachmentProcessor(
                         ai_client=gemma_client,
                         telemetry=self.telemetry,
+                        redis_cache=NullRedisCache(),
                         max_file_size_mb=20,
                     ),
                 )
@@ -72,6 +74,7 @@ class TestAttachmentProcessorIntegration(unittest.IsolatedAsyncioTestCase):
                     processor=AttachmentProcessor(
                         ai_client=qwen_client,
                         telemetry=self.telemetry,
+                        redis_cache=NullRedisCache(),
                         max_file_size_mb=20,
                     ),
                 )
@@ -110,7 +113,7 @@ class TestAttachmentProcessorIntegration(unittest.IsolatedAsyncioTestCase):
                     len(description), 100, "Description should be substantial."
                 )
 
-    def test_process_article_embed_from_url(self):
+    async def test_process_article_embed_from_url(self):
         """Test processing a real article from a URL."""
         article_url = "https://en.wikipedia.org/wiki/Tokyo"
 
@@ -119,7 +122,7 @@ class TestAttachmentProcessorIntegration(unittest.IsolatedAsyncioTestCase):
                 mock_embed = Mock()
                 mock_embed.url = article_url
 
-                embeddings = profile.processor._process_embeds([mock_embed])
+                embeddings = await profile.processor._process_embeds([mock_embed])
 
                 self.assertEqual(len(embeddings), 1)
                 embedding_text = embeddings[0]

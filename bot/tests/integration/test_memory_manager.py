@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 from dotenv import load_dotenv
 
 from memory_manager import MemoryManager
+from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
@@ -100,6 +101,7 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.gemini_client,
             gemma_client=profile.client,
             user_resolver=store.user_resolver,
+            redis_cache=NullRedisCache(),
         )
         return MemoryTestContext(
             memory_manager=memory_manager,
@@ -115,6 +117,7 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             gemini_client=summary_profile.client,
             gemma_client=self.default_merge_profile.client,
             user_resolver=store.user_resolver,
+            redis_cache=NullRedisCache(),
         )
         return MemoryTestContext(memory_manager=memory_manager, store=store)
 

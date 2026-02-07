@@ -12,10 +12,10 @@ import aiohttp
 import nextcord
 from goose3 import Goose
 from opentelemetry.trace import SpanKind, Status, StatusCode
-from cachetools import LRUCache
 
 from ai_client import AIClient
 from open_telemetry import Telemetry
+from redis_cache import RedisCache
 
 logger = logging.getLogger(__name__)
 
@@ -55,23 +55,18 @@ class AttachmentProcessor:
         return f'<embedding type="{embedding_type}" {attr_str}>{content}</embedding>'
 
     def __init__(
-        self, ai_client: AIClient, telemetry: Telemetry, max_file_size_mb: int = 10, goose: Goose | None = None
+        self,
+        ai_client: AIClient,
+        telemetry: Telemetry,
+        redis_cache: RedisCache,
+        max_file_size_mb: int = 10,
+        goose: Goose | None = None,
     ):
-        """
-        Initialize the attachment processor.
-
-        Args:
-            ai_client: AI client for image analysis (Gemma)
-            telemetry: Telemetry instance for tracking metrics
-            max_file_size_mb: Maximum file size in MB for processing
-            goose: Goose instance for article extraction (defaults to new instance)
-        """
         self.ai_client = ai_client
         self.telemetry = telemetry
+        self._redis_cache = redis_cache
         self.goose = goose or Goose()
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
-        self._article_cache = LRUCache(maxsize=128)
-        self._processed_attachment_cache = LRUCache(maxsize=128)
 
     def _is_supported_image(self, attachment: nextcord.Attachment) -> bool:
         """
@@ -83,26 +78,21 @@ class AttachmentProcessor:
         Returns:
             True if attachment is a supported image type
         """
-        return (
-            attachment.content_type in self.SUPPORTED_IMAGE_TYPES
-            and attachment.size <= self.max_file_size_bytes
-        )
+        return attachment.content_type in self.SUPPORTED_IMAGE_TYPES and attachment.size <= self.max_file_size_bytes
 
     async def _download_from_url(self, url: str) -> bytes | None:
         """Download binary data from URL."""
-        async with self.telemetry.async_create_span(
-            "download_from_url", kind=SpanKind.CLIENT
-        ) as span:
+        async with self.telemetry.async_create_span("download_from_url", kind=SpanKind.CLIENT) as span:
             span.set_attribute("url", url)
 
             try:
                 async with aiohttp.ClientSession() as session:
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    }
                     async with session.get(url, headers=headers) as response:
                         if response.status != 200:
-                            span.set_status(
-                                Status(StatusCode.ERROR, f"HTTP {response.status}")
-                            )
+                            span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status}"))
                             return None
 
                         binary_data = await response.read()
@@ -115,9 +105,7 @@ class AttachmentProcessor:
                 span.record_exception(e)
                 return None
 
-    async def _download_attachment(
-        self, attachment: nextcord.Attachment
-    ) -> AttachmentData | None:
+    async def _download_attachment(self, attachment: nextcord.Attachment) -> AttachmentData | None:
         """
         Download and validate a single attachment.
 
@@ -151,9 +139,7 @@ class AttachmentProcessor:
         Returns:
             AI-generated description of the image
         """
-        async with self.telemetry.async_create_span(
-            "analyze_image", kind=SpanKind.CLIENT
-        ) as span:
+        async with self.telemetry.async_create_span("analyze_image", kind=SpanKind.CLIENT) as span:
             span.set_attribute("filename", attachment_data.filename)
             span.set_attribute("mime_type", attachment_data.mime_type)
             span.set_attribute("size", attachment_data.size)
@@ -168,9 +154,7 @@ class AttachmentProcessor:
                 )
                 self.telemetry.metrics.attachment_analysis_latency.record(timer(), {"type": "image"})
                 span.set_attribute("description_length", len(description))
-                logger.info(
-                    f"Generated description for {attachment_data.filename}: {description}"
-                )
+                logger.info(f"Generated description for {attachment_data.filename}: {description}")
 
                 return description
 
@@ -182,9 +166,7 @@ class AttachmentProcessor:
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 raise
 
-    async def _process_attachments(
-        self, attachments: list[nextcord.Attachment]
-    ) -> list[str]:
+    async def _process_attachments(self, attachments: list[nextcord.Attachment]) -> list[str]:
         """
         Process Discord attachments and return embedding-formatted descriptions.
 
@@ -198,11 +180,13 @@ class AttachmentProcessor:
             descriptions = []
 
             for attachment in attachments:
-                cache_key = attachment.id
-                if cache_key in self._processed_attachment_cache:
-                    descriptions.append(self._processed_attachment_cache[cache_key])
+                cached = await self._redis_cache.get_attachment(attachment.id)
+                if cached is not None:
+                    descriptions.append(cached)
                     span.set_attribute("cache_hit", True)
-                    self.telemetry.metrics.attachment_process.add(1, {"type": "image", "outcome": "success", "cache_outcome": "hit"})
+                    self.telemetry.metrics.attachment_process.add(
+                        1, {"type": "image", "outcome": "success", "cache_outcome": "hit"}
+                    )
                     continue
 
                 span.set_attribute("cache_hit", False)
@@ -211,19 +195,21 @@ class AttachmentProcessor:
                     # Download attachment
                     attachment_data = await self._download_attachment(attachment)
                     if not attachment_data:
-                        self.telemetry.metrics.attachment_process.add(1, {"type": "image", "outcome": "skipped", "cache_outcome": "miss"})
+                        self.telemetry.metrics.attachment_process.add(
+                            1, {"type": "image", "outcome": "skipped", "cache_outcome": "miss"}
+                        )
                         continue
 
                     # Analyze image
                     description = await self._analyze_image(attachment_data)
 
                     # Format as embedding similar to article embeddings
-                    embedding_text = self._create_embedding(
-                        "image", description, filename=attachment.filename
-                    )
+                    embedding_text = self._create_embedding("image", description, filename=attachment.filename)
                     descriptions.append(embedding_text)
-                    self._processed_attachment_cache[cache_key] = embedding_text
-                    self.telemetry.metrics.attachment_process.add(1, {"type": "image", "outcome": "success", "cache_outcome": "miss"})
+                    await self._redis_cache.set_attachment(attachment.id, embedding_text)
+                    self.telemetry.metrics.attachment_process.add(
+                        1, {"type": "image", "outcome": "success", "cache_outcome": "miss"}
+                    )
 
                 except Exception as e:
                     logger.error(
@@ -232,43 +218,53 @@ class AttachmentProcessor:
                     )
                     span.record_exception(e)
                     span.set_status(Status(StatusCode.ERROR))
-                    self.telemetry.metrics.attachment_process.add(1, {"type": "image", "outcome": "error", "cache_outcome": "miss", "error_type": type(e).__name__})
+                    self.telemetry.metrics.attachment_process.add(
+                        1,
+                        {"type": "image", "outcome": "error", "cache_outcome": "miss", "error_type": type(e).__name__},
+                    )
                     continue
 
             span.set_attribute("success_count", len(descriptions))
 
             return descriptions
 
-    def _extract_article(self, url: str) -> str:
-        """Extract article content with LRU caching."""
-        if url in self._article_cache:
-            # Cache hit for article extraction
-            self.telemetry.metrics.attachment_process.add(1, {"type": "article", "outcome": "success", "cache_outcome": "hit"})
-            return self._article_cache[url]
+    async def _extract_article(self, url: str) -> str:
+        """Extract article content with Redis caching."""
+        cached = await self._redis_cache.get_article(url)
+        if cached is not None:
+            self.telemetry.metrics.attachment_process.add(
+                1, {"type": "article", "outcome": "success", "cache_outcome": "hit"}
+            )
+            return cached
 
-        with self.telemetry.create_span("extract_article") as span:
+        async with self.telemetry.async_create_span("extract_article") as span:
             span.set_attribute("url", url)
             try:
                 article = self.goose.extract(url=url)
                 content = article.cleaned_text if article.cleaned_text else ""
                 span.set_attribute("content_length", len(content))
-                self.telemetry.metrics.attachment_process.add(1, {"type": "article", "outcome": "success", "cache_outcome": "miss"})
+                self.telemetry.metrics.attachment_process.add(
+                    1, {"type": "article", "outcome": "success", "cache_outcome": "miss"}
+                )
                 if content:
                     logger.info(
                         f"Extracted article content from {url}: {content[:500]}{'...' if len(content) > 500 else ''}"
                     )
                 else:
                     logger.info(f"No content extracted from {url}")
-                self._article_cache[url] = content
+                await self._redis_cache.set_article(url, content)
                 return content
             except Exception as e:
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR))
                 logger.error(f"Error extracting article from {url}: {e}", exc_info=True)
-                self.telemetry.metrics.attachment_process.add(1, {"type": "article", "outcome": "error", "cache_outcome": "miss", "error_type": type(e).__name__})
+                self.telemetry.metrics.attachment_process.add(
+                    1, {"type": "article", "outcome": "error", "cache_outcome": "miss", "error_type": type(e).__name__}
+                )
+                await self._redis_cache.set_article(url, "")
                 return ""
 
-    def _process_embeds(self, embeds: list[nextcord.Embed]) -> list[str]:
+    async def _process_embeds(self, embeds: list[nextcord.Embed]) -> list[str]:
         """Process Discord embeds and return article embedding strings.
 
         Args:
@@ -277,25 +273,21 @@ class AttachmentProcessor:
         Returns:
             List of article embedding strings in XML format
         """
-        with self.telemetry.create_span("process_embeds") as span:
+        async with self.telemetry.async_create_span("process_embeds") as span:
             article_contents = []
 
             for embed in embeds:
                 if hasattr(embed, "url") and embed.url:
-                    article_text = self._extract_article(embed.url)
+                    article_text = await self._extract_article(embed.url)
                     if article_text:
-                        embedding_text = self._create_embedding(
-                            "article", article_text, url=embed.url
-                        )
+                        embedding_text = self._create_embedding("article", article_text, url=embed.url)
                         article_contents.append(embedding_text)
 
             span.set_attribute("success_count", len(article_contents))
 
             return article_contents
 
-    async def process_all_content(
-        self, attachments: list[nextcord.Attachment], embeds: list[nextcord.Embed]
-    ) -> str:
+    async def process_all_content(self, attachments: list[nextcord.Attachment], embeds: list[nextcord.Embed]) -> str:
         """Process both attachments and embeds, returning wrapped XML embeddings.
 
         Args:
@@ -310,7 +302,7 @@ class AttachmentProcessor:
 
             # Process article embeds
             if embeds:
-                article_embeddings = self._process_embeds(embeds)
+                article_embeddings = await self._process_embeds(embeds)
                 all_embeddings.extend(article_embeddings)
 
             # Process image attachments

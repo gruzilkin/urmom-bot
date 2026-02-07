@@ -8,6 +8,7 @@ from ai_client import AIClient, BlockedException
 from message_node import MessageNode
 from schemas import MemoryContext, DailySummaries, UserSummary
 from store import Store
+from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
 from test_user_resolver import TestUserResolver
 from test_store import TestStore  # Moved import to top
@@ -22,6 +23,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         # Use TestStore for realistic data and interactions
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
+        self.redis_cache = NullRedisCache()
 
         # Mock AI clients
         self.mock_gemini_client = Mock(spec=AIClient)
@@ -34,79 +36,13 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=self.redis_cache,
         )
 
         # Test data - Physics Guild with real physicist IDs
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
         self.test_date = date(1905, 3, 3)  # March 3, 1905 - Annus Mirabilis year
-
-    async def test_current_day_cache_hit_same_hour(self):
-        """Test that current day summary cache hits within the same hour."""
-        # Arrange - Einstein discussing photoelectric effect
-        einstein_id = self.physicist_ids["Einstein"]
-        self.mock_gemini_client.generate_content = AsyncMock(
-            return_value=DailySummaries(
-                summaries=[
-                    UserSummary(
-                        user_id=einstein_id,
-                        summary="Einstein proposed that light behaves as discrete energy packets, challenging wave theory",
-                    )
-                ]
-            )
-        )
-
-        with patch("memory_manager.datetime") as mock_datetime:
-            # Mock consistent hour during physics discussion
-            mock_datetime.now.return_value = datetime(1905, 3, 3, 9, 30, tzinfo=timezone.utc)
-            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-
-            # Act - First call should generate summary
-            daily_summaries1 = await self.memory_manager._daily_summary(self.physics_guild_id, self.test_date)
-            result1 = daily_summaries1.get(einstein_id)
-
-            # Act - Second call in same hour should hit cache
-            daily_summaries2 = await self.memory_manager._daily_summary(self.physics_guild_id, self.test_date)
-            result2 = daily_summaries2.get(einstein_id)
-
-        # Assert
-        expected_summary = "Einstein proposed that light behaves as discrete energy packets, challenging wave theory"
-        self.assertEqual(result1, expected_summary)
-        self.assertEqual(result2, expected_summary)
-        self.mock_gemini_client.generate_content.assert_called_once()  # Only one AI call
-
-    async def test_current_day_cache_hit_same_date(self):
-        """Test staleness-based caching: fresh cache within 1h, too stale after 6h."""
-        # Arrange - Planck's quantum discussions continuing throughout the day
-        planck_id = self.physicist_ids["Planck"]
-        self.mock_gemini_client.generate_content = AsyncMock(
-            return_value=DailySummaries(
-                summaries=[
-                    UserSummary(
-                        user_id=planck_id,
-                        summary="Planck questioned Einstein's quantum theory while defending wave theory",
-                    )
-                ]
-            )
-        )
-
-        with patch("memory_manager.datetime") as mock_datetime:
-            # First call during morning physics discussion (9:30)
-            mock_datetime.now.return_value = datetime(1905, 3, 3, 9, 30, tzinfo=timezone.utc)
-            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-
-            # Act - First call in morning hour
-            await self.memory_manager._daily_summary(self.physics_guild_id, self.test_date)
-
-            # Later in evening physics discussion (17:30) - 8 hours later
-            # This exceeds 6-hour staleness threshold, forcing sync rebuild
-            mock_datetime.now.return_value = datetime(1905, 3, 3, 17, 30, tzinfo=timezone.utc)
-
-            # Act - Second call triggers sync rebuild due to staleness (>6h)
-            await self.memory_manager._daily_summary(self.physics_guild_id, self.test_date)
-
-        # Assert - Two AI calls: initial + sync rebuild after 8h staleness
-        self.assertEqual(self.mock_gemini_client.generate_content.call_count, 2)
 
     async def test_historical_daily_cache_hit(self):
         """Test that historical daily summary cache hits for same guild/date, avoiding AI calls."""
@@ -152,7 +88,10 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         # Mock returns handled by TestUserResolver automatically
         self.mock_gemma_client.generate_content = AsyncMock(
             return_value=MemoryContext(
-                context="Einstein is a revolutionary physicist who challenges classical physics with quantum and relativity theories"
+                context=(
+                    "Einstein is a revolutionary physicist who challenges classical physics"
+                    " with quantum and relativity theories"
+                )
             )
         )
 
@@ -163,7 +102,10 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         result2 = await self.memory_manager._merge_context(self.physics_guild_id, einstein_id, facts, daily_summaries)
 
         # Assert
-        expected_context = "Einstein is a revolutionary physicist who challenges classical physics with quantum and relativity theories"
+        expected_context = (
+            "Einstein is a revolutionary physicist who challenges classical physics"
+            " with quantum and relativity theories"
+        )
         self.assertEqual(result1, expected_context)
         self.assertEqual(result2, expected_context)
         self.mock_gemma_client.generate_content.assert_called_once()  # Only one AI call
@@ -227,6 +169,7 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=NullRedisCache(),
         )
 
         # Test data - Physics Guild with real physicist IDs
@@ -248,7 +191,10 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
     async def test_facts_only_returns_facts_directly(self):
         """Test that get_memories returns facts directly when only facts exist."""
         # Arrange - Einstein with only stored facts, no daily activity
-        facts = "Einstein is the theoretical physicist who developed special relativity and explained the photoelectric effect"
+        facts = (
+            "Einstein is the theoretical physicist who developed special relativity"
+            " and explained the photoelectric effect"
+        )
         self.mock_store.get_user_facts = AsyncMock(return_value=facts)
 
         with patch.object(self.memory_manager, "_daily_summary", return_value={}):
@@ -447,6 +393,7 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=NullRedisCache(),
         )
 
         # Test data - Physics Guild with real physicist IDs
@@ -480,7 +427,11 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<author>Einstein</author>", prompt)
 
         # This content comes directly from TestStore's data for March 3rd, 1905
-        expected_content = "Good morning colleagues. I've been pondering the photoelectric effect. Light seems to behave as discrete packets of energy, not continuous waves as we've long assumed."
+        expected_content = (
+            "Good morning colleagues. I've been pondering the photoelectric effect."
+            " Light seems to behave as discrete packets of energy,"
+            " not continuous waves as we've long assumed."
+        )
         self.assertIn(f"<content>{expected_content}</content>", prompt)
 
         self.assertIn("</message>", prompt)
@@ -573,6 +524,7 @@ class TestMemoryManagerBatchProcessing(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=NullRedisCache(),
         )
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
@@ -644,6 +596,7 @@ class TestMemoryManagerExceptionIsolation(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=NullRedisCache(),
         )
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
@@ -749,7 +702,7 @@ class TestMemoryManagerExceptionIsolation(unittest.IsolatedAsyncioTestCase):
 
 
 class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
-    """Test the four-cache architecture of the MemoryManager."""
+    """Test the cache architecture of the MemoryManager."""
 
     def setUp(self):
         self.telemetry = NullTelemetry()
@@ -757,6 +710,7 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
         # Use TestStore for realistic data and interactions
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
+        self.redis_cache = NullRedisCache()
 
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
@@ -766,18 +720,17 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=self.redis_cache,
         )
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
 
     async def test_current_day_vs_historical_day_cache_separation(self):
-        """Test that current day uses TTL cache while historical days use Store's database caching."""
-        # Arrange
-        today = date(1905, 3, 6)  # March 6th has real physics messages
-        yesterday = date(1905, 3, 5)  # March 5th also has real physics messages
-
-        # Mock AI responses
+        """Test that current day stores in Redis while historical days store in database."""
+        today = date(1905, 3, 6)
+        yesterday = date(1905, 3, 5)
         einstein_id = self.physicist_ids["Einstein"]
+
         self.mock_gemini_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed physics")]
@@ -788,23 +741,22 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
             mock_datetime.now.return_value = datetime(1905, 3, 6, 12, 0, tzinfo=timezone.utc)
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Act
+            # Act - Process both today and yesterday
             await self.memory_manager._daily_summary(self.physics_guild_id, today)
             yesterday_result = await self.memory_manager._daily_summary(self.physics_guild_id, yesterday)
+            await asyncio.sleep(0.1)  # Wait for today's async rebuild
 
-            # Assert
-            # Current day should be in MemoryManager's TTL cache
-            self.assertIn((self.physics_guild_id, today), self.memory_manager._current_day_batch_cache)
-            # Yesterday should not be in current day cache
-            self.assertNotIn((self.physics_guild_id, yesterday), self.memory_manager._current_day_batch_cache)
+            # Assert - Today goes to Redis, NOT database
+            redis_today = await self.redis_cache.get_daily_summary(self.physics_guild_id, today)
+            self.assertIsNotNone(redis_today)
+            stored_today = await self.test_store.get_daily_summaries(self.physics_guild_id, today)
+            self.assertEqual(stored_today, {})
 
-            # Historical day should be stored in database via Store
+            # Assert - Yesterday goes to database, NOT Redis
+            redis_yesterday = await self.redis_cache.get_daily_summary(self.physics_guild_id, yesterday)
+            self.assertIsNone(redis_yesterday)
             stored_yesterday = await self.test_store.get_daily_summaries(self.physics_guild_id, yesterday)
             self.assertEqual(stored_yesterday, yesterday_result)
-
-            # Current day should NOT be stored in database (uses TTL cache only)
-            stored_today = await self.test_store.get_daily_summaries(self.physics_guild_id, today)
-            self.assertEqual(stored_today, {})  # Should be empty
 
     async def test_context_merge_content_based_hashing(self):
         """Test that context merge uses content hashes as cache keys."""
@@ -857,6 +809,7 @@ class TestMemoryManagerSmartFallback(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=NullRedisCache(),
         )
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
@@ -916,6 +869,7 @@ class TestMemoryManagerConcurrency(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=NullRedisCache(),
         )
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
@@ -985,6 +939,7 @@ class TestMemoryManagerDatabaseConcurrency(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=NullRedisCache(),
         )
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
@@ -1014,10 +969,6 @@ class TestMemoryManagerDatabaseConcurrency(unittest.IsolatedAsyncioTestCase):
         # Arrange
         user_ids = [self.physicist_ids["Einstein"], self.physicist_ids["Bohr"], self.physicist_ids["Planck"]]
 
-        # Einstein: has facts, current day fails, historical succeeds -> should get facts
-        # Bohr: no facts, current day succeeds, historical fails -> should get current day
-        # Planck: no facts, current day fails, historical succeeds -> should get historical
-
         async def facts_side_effect(guild_id, user_id):
             if user_id == self.physicist_ids["Einstein"]:
                 return "Einstein facts"
@@ -1025,12 +976,6 @@ class TestMemoryManagerDatabaseConcurrency(unittest.IsolatedAsyncioTestCase):
 
         async def daily_summary_side_effect(guild_id, for_date):
             return {self.physicist_ids["Bohr"]: "Bohr current day summary"}
-
-        async def week_summary_side_effect(daily_summaries):
-            # Only succeed for Einstein and Planck
-            if not daily_summaries:
-                return "Historical summary"
-            return "Historical summary"
 
         self.test_store.get_user_facts = AsyncMock(side_effect=facts_side_effect)
 
@@ -1067,6 +1012,7 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         # Use TestStore for realistic data and interactions
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
+        self.redis_cache = NullRedisCache()
 
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
@@ -1076,14 +1022,14 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=self.redis_cache,
         )
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
 
     async def test_daily_summary_cache_prevents_redundant_ai_calls(self):
-        """Test that repeated daily summary requests hit cache instead of making AI calls."""
-        # Arrange - Use real physics conversation data from Monday, March 3rd
-        test_date = date(1905, 3, 3)  # Monday with rich physics discussions
+        """Test that repeated daily summary requests hit Redis cache instead of making AI calls."""
+        test_date = date(1905, 3, 3)
 
         self.mock_gemini_client.generate_content = AsyncMock(
             return_value=DailySummaries(
@@ -1097,16 +1043,25 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch("memory_manager.datetime") as mock_datetime:
-            mock_datetime.now.return_value = datetime(1905, 3, 3, 12, 0, tzinfo=timezone.utc)
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Act - Make multiple calls for same date
+            # First call populates cache via async rebuild
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 11, 0, tzinfo=timezone.utc)
+            await self.memory_manager._daily_summary(self.physics_guild_id, test_date)
+            await asyncio.sleep(0.1)
+            self.mock_gemini_client.generate_content.assert_called_once()
+
+            # Reset mock to track subsequent calls
+            self.mock_gemini_client.generate_content.reset_mock()
+
+            # Act - Multiple calls within fresh window, all should hit cache
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 11, 30, tzinfo=timezone.utc)
             await self.memory_manager._daily_summary(self.physics_guild_id, test_date)
             await self.memory_manager._daily_summary(self.physics_guild_id, test_date)
             await self.memory_manager._daily_summary(self.physics_guild_id, test_date)
 
-            # Assert - Should only make one AI call due to caching
-            self.mock_gemini_client.generate_content.assert_called_once()
+            # Assert - No AI calls after initial rebuild
+            self.mock_gemini_client.generate_content.assert_not_called()
 
     async def test_context_merge_cache_prevents_redundant_ai_calls(self):
         """Test that identical context merge requests hit cache."""
@@ -1162,6 +1117,7 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
         # Use TestStore for realistic data and interactions
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
+        self.redis_cache = NullRedisCache()
 
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
@@ -1171,6 +1127,7 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=self.redis_cache,
         )
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
@@ -1179,12 +1136,14 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
         """Test cache behavior when date transitions from current to historical."""
         # Arrange - Use real physics conversation data from Tuesday, March 4th
         transition_date = date(1905, 3, 4)  # Tuesday with Marie Curie and Einstein discussions
+        einstein_id = self.physicist_ids["Einstein"]
+        expected_summaries = {einstein_id: "Einstein discussed relativity and mass-energy equivalence"}
 
         self.mock_gemini_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[
                     UserSummary(
-                        user_id=self.physicist_ids["Einstein"],
+                        user_id=einstein_id,
                         summary="Einstein discussed relativity and mass-energy equivalence",
                     )
                 ]
@@ -1192,26 +1151,32 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch("memory_manager.datetime") as mock_datetime:
-            # First call when date is "current"
-            mock_datetime.now.return_value = datetime(1905, 3, 4, 23, 59, tzinfo=timezone.utc)
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
+            # First call when date is "current" — cold start returns {} and triggers async rebuild
+            mock_datetime.now.return_value = datetime(1905, 3, 4, 23, 59, tzinfo=timezone.utc)
             result1 = await self.memory_manager._daily_summary(self.physics_guild_id, transition_date)
-            first_call_count = self.mock_gemini_client.generate_content.call_count
+            self.assertEqual(result1, {})
 
-            # Second call when date becomes "historical" (next day)
+            # Wait for async rebuild to populate Redis
+            await asyncio.sleep(0.1)
+            redis_data = await self.redis_cache.get_daily_summary(self.physics_guild_id, transition_date)
+            self.assertIsNotNone(redis_data)
+            self.assertEqual(redis_data[0], expected_summaries)
+
+            self.mock_gemini_client.generate_content.reset_mock()
+
+            # Second call after midnight — date is now "historical", goes through DB path
             mock_datetime.now.return_value = datetime(1905, 3, 5, 0, 1, tzinfo=timezone.utc)
-
             result2 = await self.memory_manager._daily_summary(self.physics_guild_id, transition_date)
-            second_call_count = self.mock_gemini_client.generate_content.call_count
+            self.assertEqual(result2, expected_summaries)
 
-            # Assert - Different cache systems should be used
-            self.assertIn((self.physics_guild_id, transition_date), self.memory_manager._current_day_batch_cache)
-            # Both calls should return the same summary data
-            self.assertEqual(result1, result2)
-            # Each cache system should get the result, but AI calls depend on implementation
-            self.assertGreaterEqual(first_call_count, 1)  # First call should trigger AI
-            self.assertGreaterEqual(second_call_count, 1)  # Second call might hit Store cache or make new call
+            # Historical path makes exactly one AI call for this date
+            self.mock_gemini_client.generate_content.assert_called_once()
+
+            # Verify data persisted to DB via historical path
+            db_data = await self.test_store.get_daily_summaries(self.physics_guild_id, transition_date)
+            self.assertEqual(db_data, expected_summaries)
 
     async def test_empty_date_range_handling(self):
         """Test behavior with empty or invalid date ranges."""
@@ -1261,6 +1226,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=NullRedisCache(),
         )
 
         # Test data
@@ -1337,12 +1303,11 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
             has_messages = await self.test_store.has_chat_messages_for_date(self.physics_guild_id, historical_date)
             self.assertFalse(has_messages)
 
-    async def test_current_day_still_uses_ttl_cache(self):
-        """Test that current day continues to use TTL cache and not database."""
+    async def test_current_day_returns_empty_on_cache_miss(self):
+        """Test that current day returns empty dict on cache miss and triggers async rebuild."""
         # Arrange - Use date with real messages in TestStore
         today = date(1905, 3, 3)  # March 3rd has real Einstein discussion
         einstein_id = self.physicist_ids["Einstein"]
-        generated_summaries = {einstein_id: "Einstein discussed photoelectric effect"}
 
         # Mock AI response for generating summaries
         self.mock_gemini_client.generate_content = AsyncMock(
@@ -1355,18 +1320,15 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
             mock_datetime.now.return_value = datetime(1905, 3, 3, 12, 0, tzinfo=timezone.utc)
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Act - Two calls should hit TTL cache on second call
-            result1 = await self.memory_manager._daily_summary(self.physics_guild_id, today)
-            result2 = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            # Act - First call returns empty (cold start)
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
 
-            # Assert
-            self.assertEqual(result1, generated_summaries)
-            self.assertEqual(result2, generated_summaries)
-            self.mock_gemini_client.generate_content.assert_called_once()  # Only one LLM call due to TTL cache
+            # Assert - Returns empty immediately
+            self.assertEqual(result, {})
 
-            # Verify database was not used for current day - no summaries should be saved there
-            db_summaries = await self.test_store.get_daily_summaries(self.physics_guild_id, today)
-            self.assertEqual(db_summaries, {})  # Should be empty - current day uses TTL cache, not database
+            # Wait for async rebuild to populate Redis
+            await asyncio.sleep(0.1)
+            self.mock_gemini_client.generate_content.assert_called_once()
 
     async def test_database_persistence_integration(self):
         """Test that summaries are properly saved and retrieved from database via Store."""
@@ -1409,6 +1371,7 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
+        self.redis_cache = NullRedisCache()
         self.mock_gemini_client = Mock(spec=AIClient)
         self.mock_gemma_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
@@ -1417,361 +1380,297 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.mock_gemini_client,
             gemma_client=self.mock_gemma_client,
             user_resolver=self.user_resolver,
+            redis_cache=self.redis_cache,
         )
         self.physics_guild_id = self.user_resolver.physics_guild_id
         self.physicist_ids = self.user_resolver.physicist_ids
+        self.today = date(1905, 3, 3)
+        self.einstein_id = self.physicist_ids["Einstein"]
+
+    async def _populate_cache_via_rebuild(self, mock_datetime, at_time, ai_response):
+        """Populate Redis cache using the memory manager's own async rebuild mechanism."""
+        mock_datetime.now.return_value = at_time
+        self.mock_gemini_client.generate_content = AsyncMock(return_value=ai_response)
+        await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+        await asyncio.sleep(0.1)
+
+    def _make_summaries_response(self, summaries: dict[int, str]) -> DailySummaries:
+        return DailySummaries(
+            summaries=[UserSummary(user_id=uid, summary=text) for uid, text in summaries.items()]
+        )
 
     async def test_fresh_cache_returns_immediately_no_rebuild(self):
         """Test that cache less than 1 hour old returns immediately without triggering rebuild."""
-        # Arrange - Create cache entry 30 minutes old
-        today = date(1905, 3, 3)
-        cache_key = (self.physics_guild_id, today)
-        einstein_id = self.physicist_ids["Einstein"]
-        cached_summaries = {einstein_id: "Einstein discussed photoelectric effect"}
-
         with patch("memory_manager.datetime") as mock_datetime:
-            # Cache was created 30 minutes ago
-            cache_time = datetime(1905, 3, 3, 10, 0, tzinfo=timezone.utc)
-            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
-
-            # Pre-populate cache
-            from memory_manager import CachedDailySummary
-
-            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
-                summaries=cached_summaries, created_at=cache_time
-            )
-
-            mock_datetime.now.return_value = current_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Act
-            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            # Populate cache at 10:00 via async rebuild
+            await self._populate_cache_via_rebuild(
+                mock_datetime,
+                at_time=datetime(1905, 3, 3, 10, 0, tzinfo=timezone.utc),
+                ai_response=self._make_summaries_response(
+                    {self.einstein_id: "Einstein discussed photoelectric effect"}
+                ),
+            )
+            self.mock_gemini_client.generate_content.reset_mock()
 
-            # Assert
-            self.assertEqual(result, cached_summaries)
+            # Act - Call at 10:30 (30 min later, still fresh)
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+
+            # Assert - Returns cached data, no new AI call
+            self.assertEqual(result, {self.einstein_id: "Einstein discussed photoelectric effect"})
             self.mock_gemini_client.generate_content.assert_not_called()
-            # Verify no async rebuild was triggered
-            self.assertEqual(len(self.memory_manager._in_flight_rebuilds), 0)
 
     async def test_stale_cache_returns_immediately_triggers_async_rebuild(self):
-        """Test that cache 1-2 hours old returns stale data and triggers async rebuild."""
-        # Arrange - Create cache entry 1.5 hours old
-        today = date(1905, 3, 3)
-        cache_key = (self.physics_guild_id, today)
-        einstein_id = self.physicist_ids["Einstein"]
-        stale_summaries = {einstein_id: "Old summary"}
-        fresh_summaries = {einstein_id: "Fresh summary"}
-
+        """Test that cache >= 1 hour old returns stale data and triggers async rebuild."""
         with patch("memory_manager.datetime") as mock_datetime:
-            # Cache was created 1.5 hours ago
-            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
-            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
-
-            # Pre-populate cache with stale data
-            from memory_manager import CachedDailySummary
-
-            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
-                summaries=stale_summaries, created_at=cache_time
-            )
-
-            mock_datetime.now.return_value = current_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Mock AI client for async rebuild
-            self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=DailySummaries(summaries=[UserSummary(user_id=einstein_id, summary="Fresh summary")])
+            # Populate cache at 9:00
+            await self._populate_cache_via_rebuild(
+                mock_datetime,
+                at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
+                ai_response=self._make_summaries_response(
+                    {self.einstein_id: "Original summary"}
+                ),
             )
 
-            # Act
-            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            # Prepare fresh response for the rebuild
+            self.mock_gemini_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response(
+                    {self.einstein_id: "Fresh summary"}
+                )
+            )
+
+            # Act - Call at 10:30 (1.5h later, stale)
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
 
             # Assert - Returns stale data immediately
-            self.assertEqual(result, stale_summaries)
+            self.assertEqual(result, {self.einstein_id: "Original summary"})
 
-            # Verify async rebuild was triggered
-            self.assertIn(cache_key, self.memory_manager._in_flight_rebuilds)
+            # Wait for async rebuild, then verify fresh data is available
+            await asyncio.sleep(0.1)
+            self.mock_gemini_client.generate_content.assert_called_once()
+            fresh = await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+            self.assertEqual(fresh, {self.einstein_id: "Fresh summary"})
 
-            # Wait for async rebuild to complete
-            if cache_key in self.memory_manager._in_flight_rebuilds:
-                await self.memory_manager._in_flight_rebuilds[cache_key]
-
-            # Verify cache was updated with fresh data
-            self.assertEqual(self.memory_manager._current_day_batch_cache[cache_key].summaries, fresh_summaries)
-
-    async def test_too_stale_cache_forces_sync_rebuild(self):
-        """Test that cache older than 6 hours forces synchronous rebuild."""
-        # Arrange - Create cache entry 7 hours old
-        today = date(1905, 3, 3)
-        cache_key = (self.physics_guild_id, today)
-        einstein_id = self.physicist_ids["Einstein"]
-        stale_summaries = {einstein_id: "Very old summary"}
-        fresh_summaries = {einstein_id: "Fresh summary"}
-
+    async def test_very_stale_cache_still_returns_data_triggers_rebuild(self):
+        """Test that even very stale cache returns data and triggers rebuild (no sync blocking)."""
         with patch("memory_manager.datetime") as mock_datetime:
-            # Cache was created 7 hours ago
-            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
-            current_time = datetime(1905, 3, 3, 16, 0, tzinfo=timezone.utc)
-
-            # Pre-populate cache with very stale data
-            from memory_manager import CachedDailySummary
-
-            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
-                summaries=stale_summaries, created_at=cache_time
-            )
-
-            mock_datetime.now.return_value = current_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Mock AI client for sync rebuild
-            self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=DailySummaries(summaries=[UserSummary(user_id=einstein_id, summary="Fresh summary")])
+            # Populate cache at 9:00
+            await self._populate_cache_via_rebuild(
+                mock_datetime,
+                at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
+                ai_response=self._make_summaries_response(
+                    {self.einstein_id: "Very old summary"}
+                ),
             )
 
-            # Act
-            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            # Prepare fresh response for rebuild
+            self.mock_gemini_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response(
+                    {self.einstein_id: "Fresh summary"}
+                )
+            )
 
-            # Assert - Returns fresh data (sync rebuild)
-            self.assertEqual(result, fresh_summaries)
+            # Act - Call at 16:00 (7h later, very stale)
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 16, 0, tzinfo=timezone.utc)
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+
+            # Assert - Returns stale data immediately (no sync blocking)
+            self.assertEqual(result, {self.einstein_id: "Very old summary"})
+
+            await asyncio.sleep(0.1)
             self.mock_gemini_client.generate_content.assert_called_once()
 
-    async def test_duplicate_async_rebuild_prevention(self):
+    async def test_duplicate_async_rebuild_prevention_via_redis_lock(self):
         """Test that multiple concurrent requests don't trigger duplicate async rebuilds."""
-        # Arrange - Create cache entry 1.5 hours old
-        today = date(1905, 3, 3)
-        cache_key = (self.physics_guild_id, today)
-        einstein_id = self.physicist_ids["Einstein"]
-        stale_summaries = {einstein_id: "Stale summary"}
-
         with patch("memory_manager.datetime") as mock_datetime:
-            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
-            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
-
-            # Pre-populate cache with stale data
-            from memory_manager import CachedDailySummary
-
-            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
-                summaries=stale_summaries, created_at=cache_time
-            )
-
-            mock_datetime.now.return_value = current_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Mock AI client with slow response to test concurrency
+            # Populate cache at 9:00
+            await self._populate_cache_via_rebuild(
+                mock_datetime,
+                at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
+                ai_response=self._make_summaries_response(
+                    {self.einstein_id: "Stale summary"}
+                ),
+            )
+
+            # Slow AI response for rebuild to test concurrency
             async def slow_generate(*args, **kwargs):
-                await asyncio.sleep(0.1)
-                return DailySummaries(summaries=[UserSummary(user_id=einstein_id, summary="Fresh summary")])
+                await asyncio.sleep(0.2)
+                return self._make_summaries_response({self.einstein_id: "Fresh summary"})
 
             self.mock_gemini_client.generate_content = AsyncMock(side_effect=slow_generate)
 
-            # Act - Multiple concurrent calls
+            # Act - 3 concurrent calls at 10:30 (stale), each triggers rebuild attempt
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
             results = await asyncio.gather(
-                self.memory_manager._daily_summary(self.physics_guild_id, today),
-                self.memory_manager._daily_summary(self.physics_guild_id, today),
-                self.memory_manager._daily_summary(self.physics_guild_id, today),
+                self.memory_manager._daily_summary(self.physics_guild_id, self.today),
+                self.memory_manager._daily_summary(self.physics_guild_id, self.today),
+                self.memory_manager._daily_summary(self.physics_guild_id, self.today),
             )
 
             # Assert - All return stale data immediately
             for result in results:
-                self.assertEqual(result, stale_summaries)
+                self.assertEqual(result, {self.einstein_id: "Stale summary"})
 
-            # Wait for async rebuild to complete
-            if cache_key in self.memory_manager._in_flight_rebuilds:
-                await self.memory_manager._in_flight_rebuilds[cache_key]
-
-            # Only one AI call should have been made (deduplication)
+            # Wait for rebuild, only one AI call due to lock deduplication
+            await asyncio.sleep(0.3)
             self.assertEqual(self.mock_gemini_client.generate_content.call_count, 1)
 
-    async def test_async_rebuild_cleans_up_task_on_completion(self):
-        """Test that completed async rebuild tasks are cleaned up from tracking dict."""
-        # Arrange
-        today = date(1905, 3, 3)
-        cache_key = (self.physics_guild_id, today)
-        einstein_id = self.physicist_ids["Einstein"]
-        stale_summaries = {einstein_id: "Stale summary"}
-
+    async def test_async_rebuild_releases_lock_on_completion(self):
+        """Test that completed async rebuild releases the lock, allowing future rebuilds."""
         with patch("memory_manager.datetime") as mock_datetime:
-            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
-            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
-
-            # Pre-populate cache with stale data
-            from memory_manager import CachedDailySummary
-
-            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
-                summaries=stale_summaries, created_at=cache_time
-            )
-
-            mock_datetime.now.return_value = current_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Mock AI client
-            self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=DailySummaries(summaries=[UserSummary(user_id=einstein_id, summary="Fresh summary")])
+            # Populate cache at 9:00
+            await self._populate_cache_via_rebuild(
+                mock_datetime,
+                at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
+                ai_response=self._make_summaries_response(
+                    {self.einstein_id: "Original summary"}
+                ),
             )
 
-            # Act
-            await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            # First stale rebuild at 10:30
+            self.mock_gemini_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response(
+                    {self.einstein_id: "First refresh"}
+                )
+            )
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+            await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+            await asyncio.sleep(0.1)
 
-            # Verify task was added to tracking dict
-            self.assertIn(cache_key, self.memory_manager._in_flight_rebuilds)
+            # Second stale rebuild at 12:00 — should succeed (lock was released)
+            self.mock_gemini_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response(
+                    {self.einstein_id: "Second refresh"}
+                )
+            )
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 12, 0, tzinfo=timezone.utc)
+            await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+            await asyncio.sleep(0.1)
 
-            # Wait for async rebuild to complete
-            await self.memory_manager._in_flight_rebuilds[cache_key]
-
-            # Give callback time to execute
-            await asyncio.sleep(0.01)
-
-            # Assert - Task should be cleaned up
-            self.assertNotIn(cache_key, self.memory_manager._in_flight_rebuilds)
+            # Assert - Second rebuild ran (lock was released after first)
+            self.mock_gemini_client.generate_content.assert_called_once()
 
     async def test_async_rebuild_handles_blocked_exception(self):
-        """Test that async rebuild handles BlockedException gracefully."""
-        # Arrange
-        today = date(1905, 3, 3)
-        cache_key = (self.physics_guild_id, today)
-        einstein_id = self.physicist_ids["Einstein"]
-        stale_summaries = {einstein_id: "Stale summary"}
-
+        """Test that async rebuild handles BlockedException gracefully and releases lock."""
         with patch("memory_manager.datetime") as mock_datetime:
-            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
-            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
-
-            # Pre-populate cache with stale data
-            from memory_manager import CachedDailySummary
-
-            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
-                summaries=stale_summaries, created_at=cache_time
-            )
-
-            mock_datetime.now.return_value = current_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Mock AI client to raise BlockedException
+            # Populate cache at 9:00
+            await self._populate_cache_via_rebuild(
+                mock_datetime,
+                at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
+                ai_response=self._make_summaries_response(
+                    {self.einstein_id: "Stale summary"}
+                ),
+            )
+
+            # Rebuild will fail with BlockedException
             self.mock_gemini_client.generate_content = AsyncMock(
                 side_effect=BlockedException(reason="PROHIBITED_CONTENT")
             )
 
-            # Act
-            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            # Act - Stale call triggers rebuild that fails
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+            self.assertEqual(result, {self.einstein_id: "Stale summary"})
+            await asyncio.sleep(0.1)
 
-            # Assert - Returns stale data
-            self.assertEqual(result, stale_summaries)
-
-            # Wait for async rebuild to complete (with error)
-            if cache_key in self.memory_manager._in_flight_rebuilds:
-                try:
-                    await self.memory_manager._in_flight_rebuilds[cache_key]
-                except Exception:
-                    pass  # Expected to fail
-
-            # Give callback time to execute
-            await asyncio.sleep(0.01)
-
-            # Task should still be cleaned up
-            self.assertNotIn(cache_key, self.memory_manager._in_flight_rebuilds)
+            # Assert - Lock released despite error: a new rebuild can proceed
+            self.mock_gemini_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response(
+                    {self.einstein_id: "Recovered summary"}
+                )
+            )
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 11, 30, tzinfo=timezone.utc)
+            await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+            await asyncio.sleep(0.1)
+            self.mock_gemini_client.generate_content.assert_called_once()
 
     async def test_async_rebuild_handles_generic_exception(self):
-        """Test that async rebuild handles generic exceptions gracefully."""
-        # Arrange
-        today = date(1905, 3, 3)
-        cache_key = (self.physics_guild_id, today)
-        einstein_id = self.physicist_ids["Einstein"]
-        stale_summaries = {einstein_id: "Stale summary"}
-
+        """Test that async rebuild handles generic exceptions gracefully and releases lock."""
         with patch("memory_manager.datetime") as mock_datetime:
-            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
-            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
-
-            # Pre-populate cache with stale data
-            from memory_manager import CachedDailySummary
-
-            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
-                summaries=stale_summaries, created_at=cache_time
-            )
-
-            mock_datetime.now.return_value = current_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Mock AI client to raise generic exception
-            self.mock_gemini_client.generate_content = AsyncMock(side_effect=Exception("Network error"))
+            # Populate cache at 9:00
+            await self._populate_cache_via_rebuild(
+                mock_datetime,
+                at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
+                ai_response=self._make_summaries_response(
+                    {self.einstein_id: "Stale summary"}
+                ),
+            )
 
-            # Act
-            result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+            # Rebuild will fail with generic exception
+            self.mock_gemini_client.generate_content = AsyncMock(
+                side_effect=Exception("Network error")
+            )
 
-            # Assert - Returns stale data
-            self.assertEqual(result, stale_summaries)
+            # Act - Stale call triggers rebuild that fails
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+            result = await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+            self.assertEqual(result, {self.einstein_id: "Stale summary"})
+            await asyncio.sleep(0.1)
 
-            # Wait for async rebuild to complete (with error)
-            if cache_key in self.memory_manager._in_flight_rebuilds:
-                try:
-                    await self.memory_manager._in_flight_rebuilds[cache_key]
-                except Exception:
-                    pass  # Expected to fail
-
-            # Give callback time to execute
-            await asyncio.sleep(0.01)
-
-            # Task should still be cleaned up despite error
-            self.assertNotIn(cache_key, self.memory_manager._in_flight_rebuilds)
+            # Assert - Lock released despite error: a new rebuild can proceed
+            self.mock_gemini_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response(
+                    {self.einstein_id: "Recovered summary"}
+                )
+            )
+            mock_datetime.now.return_value = datetime(1905, 3, 3, 11, 30, tzinfo=timezone.utc)
+            await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+            await asyncio.sleep(0.1)
+            self.mock_gemini_client.generate_content.assert_called_once()
 
     async def test_async_rebuild_triggers_memory_recompute_for_affected_users(self):
         """Test that async rebuild calls get_memories to precompute merged contexts for affected users."""
-        # Arrange - Create cache entry 1.5 hours old
-        today = date(1905, 3, 3)
-        cache_key = (self.physics_guild_id, today)
-        einstein_id = self.physicist_ids["Einstein"]
         bohr_id = self.physicist_ids["Bohr"]
-        stale_summaries = {einstein_id: "Old summary", bohr_id: "Old Bohr summary"}
 
         with patch("memory_manager.datetime") as mock_datetime:
-            # Cache was created 1.5 hours ago
-            cache_time = datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc)
-            current_time = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
-
-            # Pre-populate cache with stale data
-            from memory_manager import CachedDailySummary
-
-            self.memory_manager._current_day_batch_cache[cache_key] = CachedDailySummary(
-                summaries=stale_summaries, created_at=cache_time
-            )
-
-            mock_datetime.now.return_value = current_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-            # Mock AI client for async rebuild
+            # Populate cache at 9:00
+            await self._populate_cache_via_rebuild(
+                mock_datetime,
+                at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
+                ai_response=self._make_summaries_response(
+                    {self.einstein_id: "Old summary", bohr_id: "Old Bohr summary"}
+                ),
+            )
+
+            # Prepare fresh response for rebuild
             self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=DailySummaries(
-                    summaries=[
-                        UserSummary(user_id=einstein_id, summary="Fresh summary"),
-                        UserSummary(user_id=bohr_id, summary="Fresh Bohr summary"),
-                    ]
+                return_value=self._make_summaries_response(
+                    {self.einstein_id: "Fresh summary", bohr_id: "Fresh Bohr summary"}
                 )
             )
 
-            # Mock get_memories to track calls
-            with patch.object(self.memory_manager, "get_memories", new_callable=AsyncMock) as mock_get_memories:
-                mock_get_memories.return_value = {
-                    einstein_id: "Merged context for Einstein",
-                    bohr_id: "Merged context for Bohr",
-                }
+            with patch.object(
+                self.memory_manager, "get_memories", new_callable=AsyncMock
+            ) as mock_get_memories:
+                mock_get_memories.return_value = {}
 
-                # Act
-                result = await self.memory_manager._daily_summary(self.physics_guild_id, today)
+                # Act - Stale call triggers rebuild
+                mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
+                await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
+                await asyncio.sleep(0.1)
 
-                # Assert - Returns stale data immediately
-                self.assertEqual(result, stale_summaries)
-
-                # Verify async rebuild was triggered
-                self.assertIn(cache_key, self.memory_manager._in_flight_rebuilds)
-
-                # Wait for async rebuild to complete
-                if cache_key in self.memory_manager._in_flight_rebuilds:
-                    await self.memory_manager._in_flight_rebuilds[cache_key]
-
-                # Verify get_memories was called with affected user IDs
+                # Assert - get_memories called with affected user IDs
                 mock_get_memories.assert_called_once()
                 call_args = mock_get_memories.call_args
-                self.assertEqual(call_args[0][0], self.physics_guild_id)  # guild_id
-                self.assertSetEqual(set(call_args[0][1]), {einstein_id, bohr_id})  # user_ids
+                self.assertEqual(call_args[0][0], self.physics_guild_id)
+                self.assertSetEqual(set(call_args[0][1]), {self.einstein_id, bohr_id})
 
 
 if __name__ == "__main__":

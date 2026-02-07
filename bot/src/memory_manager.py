@@ -5,13 +5,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, timezone
 
-from cachetools import LRUCache, TTLCache
-
 from ai_client import AIClient, BlockedException
 from conversation_formatter import ConversationFormatter
 from conversation_graph import ConversationMessage
 from message_node import MessageNode
 from open_telemetry import Telemetry
+from redis_cache import RedisCache
 from schemas import MemoryContext, DailySummaries
 from store import Store
 from user_resolver import UserResolver
@@ -50,9 +49,7 @@ Keep each summary in the third person.
 Return a list of summaries, one for each active user.
 """
 
-CURRENT_DAY_CACHE_TTL_SECONDS = (6 * 3600) + (10 * 60)
-FRESH_CACHE_MAX_AGE = timedelta(hours=1)
-STALE_CACHE_MAX_AGE = timedelta(hours=6)
+STALENESS_THRESHOLD = timedelta(hours=1)
 
 
 @dataclass
@@ -71,23 +68,14 @@ class MemoryManager:
         gemini_client: AIClient,
         gemma_client: AIClient,
         user_resolver: UserResolver,
+        redis_cache: RedisCache,
     ):
         self._telemetry = telemetry
         self._store = store
         self._gemini_client = gemini_client  # For batch daily summaries
         self._gemma_client = gemma_client  # For historical summaries and context merging
         self._user_resolver = user_resolver
-
-        # Caches
-        # TTL must exceed staleness threshold (6h) to allow stale-but-usable window
-        # Extra 10min buffer ensures entry survives long enough for async rebuild to complete
-        self._current_day_batch_cache = TTLCache(
-            maxsize=100, ttl=CURRENT_DAY_CACHE_TTL_SECONDS
-        )  # 6h 10min TTL for current day batch summaries
-        self._context_cache = LRUCache(maxsize=500)  # Final context cache
-
-        # Track in-flight async rebuilds to prevent duplicate API calls
-        self._in_flight_rebuilds: dict[tuple[int, date], asyncio.Task] = {}
+        self._redis_cache = redis_cache
 
     async def get_memories(self, guild_id: int, user_ids: list[int]) -> dict[int, str | None]:
         """Get memories for multiple users with concurrent processing."""
@@ -209,52 +197,33 @@ class MemoryManager:
             is_current_day = for_date == current_date
 
             if is_current_day:
-                # Current day: Staleness-based caching with async rebuild
-                cache_key = (guild_id, for_date)
-
-                # Check cache first
-                if cache_key in self._current_day_batch_cache:
-                    cached = self._current_day_batch_cache[cache_key]
+                # Current day: Redis-backed staleness caching with async rebuild
+                # Check Redis cache first
+                cached = await self._redis_cache.get_daily_summary(guild_id, for_date)
+                if cached is not None:
+                    summaries, created_at = cached
                     now = datetime.now(timezone.utc)
-                    age = now - cached.created_at
+                    age = now - created_at
 
-                    # Fresh cache (< 1 hour)
-                    if age < FRESH_CACHE_MAX_AGE:
+                    if age < STALENESS_THRESHOLD:
+                        # Fresh cache (< 1 hour)
                         span.set_attribute("cache_hit", True)
                         self._telemetry.metrics.daily_summary_jobs.add(
                             1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": outcome}
                         )
-                        return cached.summaries
+                        return summaries
 
-                    # Stale but usable (1-6 hours) - return + async rebuild
-                    elif age < STALE_CACHE_MAX_AGE:
-                        span.set_attribute("cache_hit", True)
-                        self._telemetry.metrics.daily_summary_jobs.add(
-                            1, {"guild_id": str(guild_id), "cache_outcome": "stale_hit", "outcome": outcome}
-                        )
-                        # Trigger fire-and-forget rebuild
-                        self._trigger_async_rebuild(guild_id, for_date, cache_key)
-                        return cached.summaries
-
-                    # Too stale (>= 6 hours) - force sync rebuild
-                    # Fall through to synchronous generation
+                    # Stale (>= 1 hour) - return stale + trigger async rebuild
+                    span.set_attribute("cache_hit", True)
+                    self._telemetry.metrics.daily_summary_jobs.add(
+                        1, {"guild_id": str(guild_id), "cache_outcome": "stale_hit", "outcome": outcome}
+                    )
+                    self._trigger_async_rebuild(guild_id, for_date)
+                    return summaries
 
                 span.set_attribute("cache_hit", False)
 
-                # Generate batch summaries and cache the result
-                try:
-                    batch_summaries = await self._create_daily_summaries(guild_id, for_date)
-                except BlockedException as blocked:
-                    outcome = "blocked"
-                    span.record_exception(blocked)
-                    span.set_attribute("blocked_reason", blocked.reason)
-                    logger.warning(
-                        "Daily summary blocked for guild %s on %s (current day): %s",
-                        guild_id,
-                        for_date,
-                        blocked.reason,
-                    )
-                    batch_summaries = {}
+                # Cache miss - return empty + trigger async rebuild
                 self._telemetry.metrics.daily_summary_jobs.add(
                     1,
                     {
@@ -263,12 +232,8 @@ class MemoryManager:
                         "outcome": outcome,
                     },
                 )
-
-                # Cache result with timestamp (success or blocked) and return
-                self._current_day_batch_cache[cache_key] = CachedDailySummary(
-                    summaries=batch_summaries, created_at=datetime.now(timezone.utc)
-                )
-                return batch_summaries
+                self._trigger_async_rebuild(guild_id, for_date)
+                return {}
             else:
                 # Historical day: Database-first approach (caching handled by Store)
 
@@ -319,44 +284,22 @@ class MemoryManager:
                 await self._store.save_daily_summaries(guild_id, for_date, batch_summaries)
                 return batch_summaries
 
-    def _trigger_async_rebuild(self, guild_id: int, for_date: date, cache_key: tuple[int, date]) -> None:
-        """Trigger fire-and-forget async rebuild of daily summary.
+    def _trigger_async_rebuild(self, guild_id: int, for_date: date) -> None:
+        """Trigger fire-and-forget async rebuild of daily summary using Redis lock for deduplication."""
+        asyncio.create_task(self._async_rebuild_daily_summary(guild_id, for_date))
 
-        Args:
-            guild_id: Discord guild ID
-            for_date: Date to rebuild summary for
-            cache_key: Cache key tuple for tracking in-flight rebuilds
-        """
-        # Check if rebuild already in progress
-        if cache_key in self._in_flight_rebuilds:
-            task = self._in_flight_rebuilds[cache_key]
-            if not task.done():
-                # Already rebuilding, don't start another
-                return
+    async def _async_rebuild_daily_summary(self, guild_id: int, for_date: date) -> None:
+        """Background task to rebuild daily summary asynchronously with Redis-based locking."""
+        acquired = await self._redis_cache.try_acquire_build_lock(guild_id, for_date)
+        if not acquired:
+            return
 
-        # Start new rebuild task
-        task = asyncio.create_task(self._async_rebuild_daily_summary(guild_id, for_date, cache_key))
-        self._in_flight_rebuilds[cache_key] = task
-
-        # Clean up when done (fire-and-forget)
-        task.add_done_callback(lambda t: self._in_flight_rebuilds.pop(cache_key, None))
-
-    async def _async_rebuild_daily_summary(self, guild_id: int, for_date: date, cache_key: tuple[int, date]) -> None:
-        """Background task to rebuild daily summary asynchronously.
-
-        Args:
-            guild_id: Discord guild ID
-            for_date: Date to rebuild summary for
-            cache_key: Cache key for storing result
-        """
         async with self._telemetry.async_create_span("async_rebuild_daily_summary") as span:
             try:
-                # Generate fresh summaries (callee instruments guild_id and for_date)
                 batch_summaries = await self._create_daily_summaries(guild_id, for_date)
 
-                # Update cache with fresh data
-                self._current_day_batch_cache[cache_key] = CachedDailySummary(
-                    summaries=batch_summaries, created_at=datetime.now(timezone.utc)
+                await self._redis_cache.set_daily_summary(
+                    guild_id, for_date, batch_summaries, datetime.now(timezone.utc)
                 )
 
                 # Rebuild memories for affected users to warm context cache
@@ -370,6 +313,8 @@ class MemoryManager:
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Async rebuild failed for guild {guild_id} on {for_date}: {e}", exc_info=True)
+            finally:
+                await self._redis_cache.release_build_lock(guild_id, for_date)
 
     async def _create_daily_summaries(self, guild_id: int, for_date: date) -> dict[int, str]:
         """Generate daily summaries for all active users in a single API call. Pure generation method - no caching."""
@@ -439,14 +384,14 @@ class MemoryManager:
             facts_hash = hashlib.md5((facts or "").encode()).hexdigest()
             summaries_concat = "".join(f"{date}:{summary}" for date, summary in sorted(daily_summaries.items()))
             summaries_hash = hashlib.md5(summaries_concat.encode()).hexdigest()
-            cache_key = (guild_id, user_id, facts_hash, summaries_hash)
 
-            if cache_key in self._context_cache:
+            cached = await self._redis_cache.get_context(guild_id, user_id, facts_hash, summaries_hash)
+            if cached is not None:
                 span.set_attribute("cache_hit", True)
                 self._telemetry.metrics.memory_merges.add(
                     1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"}
                 )
-                return self._context_cache[cache_key]
+                return cached
 
             span.set_attribute("cache_hit", False)
             user_nick = await self._user_resolver.get_display_name(guild_id, user_id)
@@ -482,7 +427,7 @@ class MemoryManager:
                 1, {"guild_id": str(guild_id), "cache_outcome": "miss", "outcome": "success"}
             )
 
-            self._context_cache[cache_key] = merged_context
+            await self._redis_cache.set_context(guild_id, user_id, facts_hash, summaries_hash, merged_context)
             return merged_context
 
     async def build_memory_prompt(self, guild_id: int, user_ids: set[int] | list[int]) -> str:

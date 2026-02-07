@@ -45,6 +45,10 @@ class AppConfig(BaseSettings):
     otel_service_name: str = Field(default="urmom-bot", env="OTEL_SERVICE_NAME")
     otel_exporter_otlp_endpoint: str = Field(default="localhost:4317", env="OTEL_EXPORTER_OTLP_ENDPOINT")
 
+    # Redis configuration
+    redis_host: str = Field(default="localhost", env="REDIS_HOST")
+    redis_port: int = Field(default=6379, env="REDIS_PORT")
+
     # Cobalt configuration
     cobalt_url: str = Field(default="http://cobalt:9000", env="COBALT_URL")
 

@@ -30,6 +30,19 @@ services:
     volumes:
       - pgadmin:/var/lib/pgadmin
 
+  redis:
+    image: redis:8-alpine
+    command: redis-server --save ""
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - redis_data:/data
+
   bot:
     build: bot
     env_file:
@@ -42,9 +55,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       SAMPLE_JOKES_COUNT: ${SAMPLE_JOKES_COUNT:-3}
       SAMPLE_JOKES_COEF: ${SAMPLE_JOKES_COEF:-1.3}
+      REDIS_HOST: redis
     restart: unless-stopped
     depends_on:
       - db
+      - redis
     volumes:
       - claude_auth:/root/.claude
       - codex_auth:/root/.codex
@@ -77,5 +92,6 @@ services:
 volumes:
     pgadmin:
     db:
+    redis_data:
     claude_auth:
     codex_auth:
