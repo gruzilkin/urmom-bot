@@ -13,7 +13,7 @@ from open_telemetry import Telemetry
 logger = logging.getLogger(__name__)
 
 SUBPROCESS_TIMEOUT_SECONDS = 300
-MIN_BPP = 0.01
+MIN_BPP = 0.05
 MIN_SCALE_SHORT_EDGE = 240
 _CROP_PATTERN = re.compile(r"crop=(\d+):(\d+):(\d+):(\d+)")
 
