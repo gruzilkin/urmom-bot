@@ -98,7 +98,7 @@ class VideoCompressor:
                     "-i",
                     input_path,
                     "-vf",
-                    "cropdetect=limit=24:round=2:reset=0",
+                    "cropdetect=limit=16:round=2:reset=0",
                     "-an",
                     "-f",
                     "null",
