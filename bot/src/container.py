@@ -42,6 +42,7 @@ class Container:
         self.redis_cache = RedisCache(
             host=self.config.redis_host,
             port=self.config.redis_port,
+            telemetry=self.telemetry,
         )
 
         self.cobalt_client = CobaltClient(
