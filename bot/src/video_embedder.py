@@ -171,45 +171,44 @@ class VideoEmbedder:
                 return None
 
     async def _download_video(self, url: str) -> bytes | None:
-        """
-        Download video from URL.
-
-        Args:
-            url: Direct video URL
-
-        Returns:
-            Video bytes or None if download fails
-        """
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    timeout=aiohttp.ClientTimeout(total=120),
-                ) as response:
-                    if response.status != 200:
-                        logger.warning(f"Video download returned status {response.status}")
-                        return None
-
-                    # Check Content-Length header to avoid downloading absurdly large files
-                    content_length = response.headers.get("Content-Length")
-                    if content_length and int(content_length) > MAX_DOWNLOAD_SIZE_BYTES:
-                        return None
-
-                    # Download with hard ceiling
-                    chunks = []
-                    total_size = 0
-                    async for chunk in response.content.iter_chunked(64 * 1024):
-                        total_size += len(chunk)
-                        if total_size > MAX_DOWNLOAD_SIZE_BYTES:
+        async with self.telemetry.async_create_span("video_embedder.download") as span:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        url,
+                        timeout=aiohttp.ClientTimeout(total=120),
+                    ) as response:
+                        if response.status != 200:
+                            logger.warning(f"Video download returned status {response.status}")
+                            span.set_attribute("outcome", "bad_status")
                             return None
-                        chunks.append(chunk)
 
-                    return b"".join(chunks)
+                        content_length = response.headers.get("Content-Length")
+                        if content_length and int(content_length) > MAX_DOWNLOAD_SIZE_BYTES:
+                            span.set_attribute("outcome", "too_large")
+                            return None
 
-        except aiohttp.ClientError:
-            return None
-        except Exception:
-            return None
+                        chunks = []
+                        total_size = 0
+                        async for chunk in response.content.iter_chunked(64 * 1024):
+                            total_size += len(chunk)
+                            if total_size > MAX_DOWNLOAD_SIZE_BYTES:
+                                span.set_attribute("outcome", "too_large")
+                                return None
+                            chunks.append(chunk)
+
+                        span.set_attribute("download_size", total_size)
+                        span.set_attribute("outcome", "success")
+                        return b"".join(chunks)
+
+            except aiohttp.ClientError as e:
+                logger.error(f"Video download failed for network error: {e}", exc_info=True)
+                span.set_attribute("outcome", "error")
+                return None
+            except Exception as e:
+                logger.error(f"Video download failed unexpectedly: {e}", exc_info=True)
+                span.set_attribute("outcome", "error")
+                return None
 
     async def process_message(self, text: str) -> list[VideoEmbed]:
         """
