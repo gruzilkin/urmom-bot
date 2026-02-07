@@ -179,24 +179,26 @@ class VideoCompressor:
 
                 info = await self._probe(input_path)
 
-                if crop is None:
-                    crop = await self._detect_crop(input_path, info)
-
-                effective_width = crop.w if crop else info.width
-                effective_height = crop.h if crop else info.height
-
                 video_kbps = max(
                     1,
                     int((self.target_size_bytes * 8 * 0.9 / info.duration) / 1000 - self.audio_bitrate_kbps),
                 )
                 span.set_attribute("video_bitrate_kbps", video_kbps)
 
-                bpp = video_kbps * 1000 / (effective_width * effective_height * info.fps)
-                span.set_attribute("bpp", round(bpp, 4))
-
-                if bpp < MIN_BPP:
+                uncropped_bpp = video_kbps * 1000 / (info.width * info.height * info.fps)
+                if uncropped_bpp < MIN_BPP:
+                    span.set_attribute("bpp", round(uncropped_bpp, 4))
                     span.set_attribute("outcome", "quality_too_low")
                     return None
+
+                if crop is None:
+                    crop = await self._detect_crop(input_path, info)
+
+                effective_width = crop.w if crop else info.width
+                effective_height = crop.h if crop else info.height
+
+                bpp = video_kbps * 1000 / (effective_width * effective_height * info.fps)
+                span.set_attribute("bpp", round(bpp, 4))
 
                 await self._run_encode_pass(1, input_path, "/dev/null", video_kbps, passlog_prefix, crop)
                 await self._run_encode_pass(2, input_path, output_path, video_kbps, passlog_prefix, crop)
