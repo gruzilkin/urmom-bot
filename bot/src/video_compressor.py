@@ -5,7 +5,6 @@ import os
 import re
 import shutil
 import tempfile
-from collections import Counter
 from dataclasses import dataclass
 
 from open_telemetry import Telemetry
@@ -120,11 +119,10 @@ class VideoCompressor:
                     return None
 
                 crop_tuples = [(int(w), int(h), int(x), int(y)) for w, h, x, y in matches]
-                top_crops = [crop for crop, _ in Counter(crop_tuples).most_common(3)]
-                x = min(x for _, _, x, _ in top_crops)
-                y = min(y for _, _, _, y in top_crops)
-                w = max(x + w for w, _, x, _ in top_crops) - x
-                h = max(y + h for _, h, _, y in top_crops) - y
+                x = min(x for _, _, x, _ in crop_tuples)
+                y = min(y for _, _, _, y in crop_tuples)
+                w = max(x + w for w, _, x, _ in crop_tuples) - x
+                h = max(y + h for _, h, _, y in crop_tuples) - y
                 w -= w % 2
                 h -= h % 2
 
