@@ -123,13 +123,12 @@ class VideoCompressor:
                 mode_crop = Counter(crop_tuples).most_common(1)[0][0]
                 w, h, x, y = mode_crop
 
-                if w <= 0 or h <= 0:
-                    span.set_attribute("outcome", "crop_skipped")
-                    return None
-                if x + w > info.width or y + h > info.height:
-                    span.set_attribute("outcome", "crop_skipped")
-                    return None
-                if w % 2 != 0 or h % 2 != 0:
+                is_empty = w <= 0 or h <= 0
+                is_out_of_bounds = x + w > info.width or y + h > info.height
+                is_odd = w % 2 != 0 or h % 2 != 0
+                is_full_frame = w == info.width and h == info.height
+
+                if is_empty or is_out_of_bounds or is_odd or is_full_frame:
                     span.set_attribute("outcome", "crop_skipped")
                     return None
 
@@ -139,7 +138,7 @@ class VideoCompressor:
                 span.set_attribute("crop_x", x)
                 span.set_attribute("crop_y", y)
                 span.set_attribute("crop_pixel_reduction", round(pixel_reduction, 4))
-                span.set_attribute("outcome", "crop_applied")
+                span.set_attribute("outcome", "crop_suggested")
                 return CropBox(w=w, h=h, x=x, y=y, pixel_reduction=round(pixel_reduction, 4))
 
             except Exception as e:
