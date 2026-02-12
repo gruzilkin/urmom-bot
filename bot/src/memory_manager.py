@@ -11,7 +11,7 @@ from conversation_graph import ConversationMessage
 from message_node import MessageNode
 from open_telemetry import Telemetry
 from redis_cache import RedisCache
-from schemas import MemoryContext, DailySummaries
+from schemas import MemoryContext, DailySummaries, UserAliases
 from store import Store
 from user_resolver import UserResolver
 
@@ -39,6 +39,10 @@ For each user, focus on:
 - Behavioral patterns they exhibited
 - Information revealed about them through their messages or messages from others
 
+Identity Resolution:
+- People in chat often address each other by real names, not Discord nicknames
+- Use <also_known_as> mappings to connect real names in messages to the correct Discord user
+
 Embeddings in Messages:
 - Messages may contain <embedding type="image"> tags with descriptions of images that users posted
 - These descriptions should be treated as if you saw the images yourself
@@ -47,6 +51,18 @@ Embeddings in Messages:
 
 Keep each summary in the third person.
 Return a list of summaries, one for each active user.
+"""
+
+EXTRACT_ALIASES_PROMPT = """
+Extract all known real names, nicknames, and alternative names for this user from their factual memory.
+
+Only extract names that clearly identify the same person. Do not extract generic descriptions, roles, or locations.
+
+Examples:
+- "He is Sergey" → ["Sergey"]
+- "Also known as Медвед, real name is Pierre" → ["Медвед", "Pierre"]
+- "Works at Google, lives in Berlin" → []
+- "Her name is Sarah, friends call her Saz" → ["Sarah", "Saz"]
 """
 
 STALENESS_THRESHOLD = timedelta(hours=1)
@@ -348,11 +364,24 @@ class MemoryManager:
             formatter = ConversationFormatter(self._user_resolver)
             formatted_messages = await formatter.format_to_xml(guild_id, conversation_messages)
 
-            # Create user list with names for context
+            # Fetch facts and extract aliases for identity resolution
+            user_facts = {}
+            for user_id in active_user_ids:
+                facts = await self._store.get_user_facts(guild_id, user_id)
+                if facts:
+                    user_facts[user_id] = facts
+
+            aliases_map = await self._extract_aliases(user_facts) if user_facts else {}
+
+            # Create user list with names and aliases for context
             user_list = []
             for user_id in active_user_ids:
                 user_name = await self._user_resolver.get_display_name(guild_id, user_id)
-                user_list.append(f"<user><user_id>{user_id}</user_id><nickname>{user_name}</nickname></user>")
+                aliases = aliases_map.get(user_id, [])
+                also_known_as = f"<also_known_as>{', '.join(aliases)}</also_known_as>" if aliases else ""
+                user_list.append(
+                    f"<user><user_id>{user_id}</user_id><nickname>{user_name}</nickname>{also_known_as}</user>"
+                )
 
             structured_prompt = f"""{BATCH_SUMMARIZE_DAILY_PROMPT}
 
@@ -429,6 +458,48 @@ class MemoryManager:
 
             await self._redis_cache.set_context(guild_id, user_id, facts_hash, summaries_hash, merged_context)
             return merged_context
+
+    async def _extract_aliases(self, user_facts: dict[int, str]) -> dict[int, list[str]]:
+        """Extract known names/aliases from factual memory for identity resolution.
+
+        Processes all users concurrently, each cached by hash(facts).
+        """
+        async with self._telemetry.async_create_span("extract_aliases") as span:
+            span.set_attribute("user_count", len(user_facts))
+
+            async def _extract_for_user(user_id: int, facts: str) -> tuple[int, list[str]]:
+                facts_hash = hashlib.md5(facts.encode()).hexdigest()
+
+                cached = await self._redis_cache.get_aliases(facts_hash)
+                if cached is not None:
+                    return user_id, cached
+
+                response = await self._gemma_client.generate_content(
+                    message=facts,
+                    prompt=EXTRACT_ALIASES_PROMPT,
+                    response_schema=UserAliases,
+                    temperature=0,
+                )
+                aliases = response.aliases
+
+                await self._redis_cache.set_aliases(facts_hash, aliases)
+                return user_id, aliases
+
+            results = await asyncio.gather(
+                *[_extract_for_user(uid, facts) for uid, facts in user_facts.items()],
+                return_exceptions=True,
+            )
+
+            aliases_map: dict[int, list[str]] = {}
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.warning(f"Alias extraction failed: {result}")
+                    span.record_exception(result)
+                else:
+                    uid, aliases = result
+                    aliases_map[uid] = aliases
+
+            return aliases_map
 
     async def build_memory_prompt(self, guild_id: int, user_ids: set[int] | list[int]) -> str:
         """Build formatted memory blocks for LLM prompts with outer tags.

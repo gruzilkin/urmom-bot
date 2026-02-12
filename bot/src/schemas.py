@@ -132,3 +132,9 @@ class DevilsAdvocateResponse(BaseModel):
     reason: str = Field(
         description="Explanation of the logical strategy and reasoning approach used for this counter-argument"
     )
+
+
+class UserAliases(BaseModel):
+    """Schema for extracting known names/aliases from factual memory."""
+
+    aliases: list[str] = Field(description="Known real names, nicknames, or alternative names for the user")
