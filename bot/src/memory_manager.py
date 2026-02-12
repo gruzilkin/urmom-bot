@@ -63,6 +63,8 @@ Examples:
 - "Also known as Медвед, real name is Pierre" → ["Медвед", "Pierre"]
 - "Works at Google, lives in Berlin" → []
 - "Her name is Sarah, friends call her Saz" → ["Sarah", "Saz"]
+- "His username on Steam is darkslayer99" → ["darkslayer99"]
+- "Его ник в плексе naruto" → ["naruto"]
 """
 
 STALENESS_THRESHOLD = timedelta(hours=1)
