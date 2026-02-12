@@ -26,6 +26,7 @@ from devils_advocate_generator import DevilsAdvocateGenerator
 from cobalt_client import CobaltClient
 from tinyurl_client import TinyURLClient
 from video_compressor import VideoCompressor
+from redis_cache import RedisCache
 from video_embedder import MAX_FILE_SIZE_BYTES, VideoEmbedder
 
 
@@ -36,6 +37,12 @@ class Container:
         self.telemetry = Telemetry(
             service_name=self.config.otel_service_name,
             endpoint=self.config.otel_exporter_otlp_endpoint,
+        )
+
+        self.redis_cache = RedisCache(
+            host=self.config.redis_host,
+            port=self.config.redis_port,
+            telemetry=self.telemetry,
         )
 
         self.cobalt_client = CobaltClient(
@@ -181,6 +188,7 @@ class Container:
         self.attachment_processor = AttachmentProcessor(
             ai_client=self.retrying_gemma,
             telemetry=self.telemetry,
+            redis_cache=self.redis_cache,
             max_file_size_mb=10,
         )
 
@@ -225,6 +233,7 @@ class Container:
             gemini_client=self.claude_kimi_flash_fallback,
             gemma_client=self.gemma_with_kimi_fallback,
             user_resolver=self.user_resolver,
+            redis_cache=self.redis_cache,
         )
 
         self.general_query_generator = GeneralQueryGenerator(

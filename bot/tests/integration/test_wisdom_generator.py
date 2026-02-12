@@ -14,6 +14,7 @@ from gemma_client import GemmaClient
 from grok_client import GrokClient
 from language_detector import LanguageDetector
 from memory_manager import MemoryManager
+from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
 from ollama_client import OllamaClient
 from response_summarizer import ResponseSummarizer
@@ -100,6 +101,7 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             gemini_client=self.gemma_client,
             gemma_client=self.gemma_client,
             user_resolver=self.mock_user_resolver,
+            redis_cache=NullRedisCache(),
         )
 
         self.conversation_formatter = ConversationFormatter(self.mock_user_resolver)
