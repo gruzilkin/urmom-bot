@@ -143,6 +143,34 @@ class RedisCache:
                 span.record_exception(e)
                 logger.warning(f"Redis set_attachment failed: {e}")
 
+    # ── aliases ───────────────────────────────────────────────────────
+
+    async def get_aliases(self, facts_hash: str) -> list[str] | None:
+        async with self._telemetry.async_create_span("redis.get_aliases") as span:
+            key = f"aliases:{facts_hash}"
+            span.set_attribute("key", key)
+            try:
+                raw = await self._redis.get(key)
+                if raw is None:
+                    span.set_attribute("hit", False)
+                    return None
+                span.set_attribute("hit", True)
+                return json.loads(raw)
+            except Exception as e:
+                span.record_exception(e)
+                logger.error(f"Redis get_aliases failed: {e}", exc_info=True)
+                return None
+
+    async def set_aliases(self, facts_hash: str, aliases: list[str]) -> None:
+        async with self._telemetry.async_create_span("redis.set_aliases") as span:
+            key = f"aliases:{facts_hash}"
+            span.set_attribute("key", key)
+            try:
+                await self._redis.set(key, json.dumps(aliases), ex=_SEVEN_DAYS)
+            except Exception as e:
+                span.record_exception(e)
+                logger.error(f"Redis set_aliases failed: {e}", exc_info=True)
+
     # ── build lock ──────────────────────────────────────────────────
 
     async def try_acquire_build_lock(self, guild_id: int, for_date: date) -> bool:

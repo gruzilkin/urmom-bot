@@ -6,7 +6,7 @@ import asyncio
 from memory_manager import MemoryManager
 from ai_client import AIClient, BlockedException
 from message_node import MessageNode
-from schemas import MemoryContext, DailySummaries, UserSummary
+from schemas import MemoryContext, DailySummaries, UserSummary, UserAliases
 from store import Store
 from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
@@ -1671,6 +1671,158 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
                 call_args = mock_get_memories.call_args
                 self.assertEqual(call_args[0][0], self.physics_guild_id)
                 self.assertSetEqual(set(call_args[0][1]), {self.einstein_id, bohr_id})
+
+
+class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
+    """Test alias extraction from factual memory for identity resolution."""
+
+    def setUp(self):
+        self.telemetry = NullTelemetry()
+        self.test_store = TestStore()
+        self.user_resolver = self.test_store.user_resolver
+        self.redis_cache = NullRedisCache()
+        self.mock_gemini_client = Mock(spec=AIClient)
+        self.mock_gemma_client = Mock(spec=AIClient)
+        self.memory_manager = MemoryManager(
+            telemetry=self.telemetry,
+            store=self.test_store,
+            gemini_client=self.mock_gemini_client,
+            gemma_client=self.mock_gemma_client,
+            user_resolver=self.user_resolver,
+            redis_cache=self.redis_cache,
+        )
+        self.physics_guild_id = self.user_resolver.physics_guild_id
+        self.physicist_ids = self.user_resolver.physicist_ids
+
+    async def test_extract_aliases_returns_aliases_for_each_user(self):
+        """Test that aliases are extracted concurrently for all users with facts."""
+        einstein_id = self.physicist_ids["Einstein"]
+        bohr_id = self.physicist_ids["Bohr"]
+
+        async def gemma_side_effect(message, **kwargs):
+            if "Albert" in message:
+                return UserAliases(aliases=["Albert"])
+            return UserAliases(aliases=["Niels"])
+
+        self.mock_gemma_client.generate_content = AsyncMock(side_effect=gemma_side_effect)
+
+        user_facts = {
+            einstein_id: "He is Albert, a theoretical physicist",
+            bohr_id: "He is Niels, works on atomic structure",
+        }
+        result = await self.memory_manager._extract_aliases(user_facts)
+
+        self.assertEqual(result[einstein_id], ["Albert"])
+        self.assertEqual(result[bohr_id], ["Niels"])
+        self.assertEqual(self.mock_gemma_client.generate_content.call_count, 2)
+
+    async def test_extract_aliases_caches_by_facts_hash(self):
+        """Test that repeated extraction with same facts hits cache."""
+        einstein_id = self.physicist_ids["Einstein"]
+        facts = "He is Albert, a theoretical physicist"
+
+        self.mock_gemma_client.generate_content = AsyncMock(
+            return_value=UserAliases(aliases=["Albert"])
+        )
+
+        await self.memory_manager._extract_aliases({einstein_id: facts})
+        await self.memory_manager._extract_aliases({einstein_id: facts})
+
+        self.mock_gemma_client.generate_content.assert_called_once()
+
+    async def test_extract_aliases_cache_invalidates_on_facts_change(self):
+        """Test that different facts produce a cache miss."""
+        einstein_id = self.physicist_ids["Einstein"]
+
+        self.mock_gemma_client.generate_content = AsyncMock(
+            return_value=UserAliases(aliases=["Albert"])
+        )
+
+        await self.memory_manager._extract_aliases({einstein_id: "He is Albert"})
+        await self.memory_manager._extract_aliases({einstein_id: "He is Albert Einstein, also known as Al"})
+
+        self.assertEqual(self.mock_gemma_client.generate_content.call_count, 2)
+
+    async def test_extract_aliases_empty_input_returns_empty(self):
+        """Test that empty user_facts returns empty dict."""
+        result = await self.memory_manager._extract_aliases({})
+        self.assertEqual(result, {})
+        self.mock_gemma_client.generate_content.assert_not_called()
+
+    async def test_extract_aliases_partial_failure_returns_successful(self):
+        """Test that one user's extraction failure doesn't block others."""
+        einstein_id = self.physicist_ids["Einstein"]
+        bohr_id = self.physicist_ids["Bohr"]
+
+        call_count = 0
+
+        async def gemma_side_effect(message, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if "fails" in message:
+                raise ValueError("AI service unavailable")
+            return UserAliases(aliases=["Albert"])
+
+        self.mock_gemma_client.generate_content = AsyncMock(side_effect=gemma_side_effect)
+
+        user_facts = {
+            einstein_id: "He is Albert",
+            bohr_id: "This one fails",
+        }
+        result = await self.memory_manager._extract_aliases(user_facts)
+
+        self.assertIn(einstein_id, result)
+        self.assertEqual(result[einstein_id], ["Albert"])
+        self.assertNotIn(bohr_id, result)
+
+    async def test_daily_summaries_include_aliases_in_prompt(self):
+        """Test that _create_daily_summaries injects aliases into the target_users XML."""
+        einstein_id = self.physicist_ids["Einstein"]
+        test_date = date(1905, 3, 3)
+
+        # Pre-populate facts for Einstein
+        self.test_store._user_facts[einstein_id] = "He is Albert, a theoretical physicist"
+
+        # Mock alias extraction
+        self.mock_gemma_client.generate_content = AsyncMock(
+            return_value=UserAliases(aliases=["Albert"])
+        )
+
+        # Mock daily summary generation
+        self.mock_gemini_client.generate_content = AsyncMock(
+            return_value=DailySummaries(
+                summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed physics")]
+            )
+        )
+
+        await self.memory_manager._create_daily_summaries(self.physics_guild_id, test_date)
+
+        # Check that the Gemini prompt contains the also_known_as tag
+        gemini_call_args = self.mock_gemini_client.generate_content.call_args
+        prompt = gemini_call_args[1]["message"]
+        self.assertIn("<also_known_as>Albert</also_known_as>", prompt)
+
+    async def test_extract_aliases_concurrent_processing(self):
+        """Test that alias extraction for multiple users happens concurrently."""
+
+        async def slow_extract(message, **kwargs):
+            await asyncio.sleep(0.1)
+            return UserAliases(aliases=["Name"])
+
+        self.mock_gemma_client.generate_content = AsyncMock(side_effect=slow_extract)
+
+        user_facts = {
+            self.physicist_ids["Einstein"]: "Facts A",
+            self.physicist_ids["Bohr"]: "Facts B",
+            self.physicist_ids["Planck"]: "Facts C",
+        }
+
+        start_time = asyncio.get_event_loop().time()
+        await self.memory_manager._extract_aliases(user_facts)
+        elapsed = asyncio.get_event_loop().time() - start_time
+
+        self.assertEqual(self.mock_gemma_client.generate_content.call_count, 3)
+        self.assertLess(elapsed, 0.2)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ class NullRedisCache:
         self._contexts: dict[str, str] = {}
         self._articles: dict[str, str] = {}
         self._attachments: dict[int, str] = {}
+        self._aliases: dict[str, list[str]] = {}
         self._locks: set[str] = set()
 
     async def get_daily_summary(self, guild_id: int, for_date: date) -> tuple[dict[int, str], datetime] | None:
@@ -42,6 +43,12 @@ class NullRedisCache:
 
     async def set_attachment(self, attachment_id: int, embedding_text: str) -> None:
         self._attachments[attachment_id] = embedding_text
+
+    async def get_aliases(self, facts_hash: str) -> list[str] | None:
+        return self._aliases.get(facts_hash)
+
+    async def set_aliases(self, facts_hash: str, aliases: list[str]) -> None:
+        self._aliases[facts_hash] = aliases
 
     async def try_acquire_build_lock(self, guild_id: int, for_date: date) -> bool:
         key = f"{guild_id}:{for_date}"
