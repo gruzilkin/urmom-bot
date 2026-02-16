@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections import Counter
 from dataclasses import dataclass
 
 from open_telemetry import Telemetry
@@ -17,6 +18,7 @@ PROCESS_KILL_TIMEOUT_SECONDS = 5
 MIN_BPP = 0.05
 MIN_SCALE_SHORT_EDGE = 240
 _CROP_PATTERN = re.compile(r"crop=(\d+):(\d+):(\d+):(\d+)")
+_CROP_MIN_FRAMES = 10
 
 
 @dataclass
@@ -40,6 +42,21 @@ class CropBox:
 class ScaleParams:
     w: int
     h: int
+
+
+def _filter_crop_outliers(
+    crop_tuples: list[tuple[int, int, int, int]],
+) -> list[tuple[int, int, int, int]]:
+    """Remove crop values that appear in fewer than _CROP_MIN_FRAMES frames.
+
+    Brief anomalies like opening flashes produce crop values that only appear
+    in a handful of frames.  Dropping them before the union prevents a single
+    bright transition from expanding the crop to the full frame.
+
+    Legitimate content — including both modes of a bimodal video — will have
+    high frame counts and survive the filter.
+    """
+    return [val for val, count in Counter(crop_tuples).items() if count >= _CROP_MIN_FRAMES]
 
 
 async def _kill_process(process: asyncio.subprocess.Process) -> None:
@@ -119,7 +136,7 @@ class VideoCompressor:
                     "-i",
                     input_path,
                     "-vf",
-                    "cropdetect=limit=16:round=2:reset=0",
+                    "cropdetect=limit=16:round=2:reset=1",
                     "-an",
                     "-f",
                     "null",
@@ -145,6 +162,11 @@ class VideoCompressor:
                     return None
 
                 crop_tuples = [(int(w), int(h), int(x), int(y)) for w, h, x, y in matches]
+                crop_tuples = _filter_crop_outliers(crop_tuples)
+                if not crop_tuples:
+                    span.set_attribute("outcome", "crop_skipped")
+                    return None
+
                 x = min(x for _, _, x, _ in crop_tuples)
                 y = min(y for _, _, _, y in crop_tuples)
                 w = max(x + w for w, _, x, _ in crop_tuples) - x
