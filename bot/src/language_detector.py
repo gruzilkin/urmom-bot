@@ -57,8 +57,18 @@ class LanguageDetector:
 Text: "{text}"
 
 IMPORTANT INSTRUCTIONS:
-1.  If the text uses Cyrillic letters and is ambiguous, gravitate towards Russian ('ru').
-2.  If the text uses Latin letters and is ambiguous (e.g., "ok", "ciao"), gravitate towards English ('en') or the most common language (e.g., Italian 'it' for "ciao").
+1.  Determine language by the SENTENCE STRUCTURE (grammar, function words, word order),
+    not by embedded foreign words, proper nouns, or non-Latin terms.
+    A sentence written in one language may contain words or names
+    from another language or script — the surrounding grammar defines the language.
+2.  When the text contains a quote or reference in another language,
+    the OUTER sentence determines the language, not the quoted content.
+3.  If the sentence structure is in a Cyrillic-script language but ambiguous
+    between Cyrillic-based languages (e.g., Russian, Ukrainian, Bulgarian),
+    gravitate towards Russian ('ru').
+4.  If the text uses Latin letters and is ambiguous (e.g., "ok", "ciao"),
+    gravitate towards English ('en') or the most common language
+    (e.g., Italian 'it' for "ciao").
 """
 
             response = await self.ai_client.generate_content(

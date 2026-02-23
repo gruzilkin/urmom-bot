@@ -98,6 +98,28 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
                 detected_lang = await detector.detect_language(text)
                 self.assertEqual(detected_lang, expected_lang)
 
+    async def test_english_with_embedded_non_latin_script(self):
+        test_cases = [
+            ("are 舞茸 and 黒アワビ茸 related?", "en"),
+            ("what is the difference between 寿司 and 刺身?", "en"),
+            ("how do you pronounce Привет?", "en"),
+            ("is 北京 the same as Beijing?", "en"),
+            (
+                "explain what Bulgakov meant: "
+                "'Никогда и ничего не просите! Никогда и ничего, "
+                "и в особенности у тех, кто сильнее вас. "
+                "Сами предложат и сами всё дадут!'",
+                "en",
+            ),
+        ]
+
+        for profile in self.profiles:
+            detector = self._build_detector(profile)
+            for text, expected_lang in test_cases:
+                with self.subTest(profile=profile.name, text=text):
+                    detected_lang = await detector.detect_language(text)
+                    self.assertEqual(detected_lang, expected_lang)
+
     async def test_comprehensive_language_detection(self):
         test_cases = [
             ("Hello, how are you today? This is a longer English text.", "en"),
