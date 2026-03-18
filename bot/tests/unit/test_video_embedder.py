@@ -32,7 +32,7 @@ class TestFindVideoUrls(unittest.TestCase):
         urls = self.embedder.find_video_urls(
             "https://www.reddit.com/r/PublicFreakout/comments/1qwl6es/loud_fck_ice_chants/"
         )
-        self.assertEqual(urls, ["https://www.reddit.com/r/PublicFreakout/comments/1qwl6es/loud_fck_ice_chants"])
+        self.assertEqual(urls, ["https://www.reddit.com/r/PublicFreakout/comments/1qwl6es/loud_fck_ice_chants/"])
 
     def test_find_ignores_non_video_twitter(self):
         urls = self.embedder.find_video_urls("https://twitter.com/user")

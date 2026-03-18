@@ -17,12 +17,14 @@ logger = logging.getLogger(__name__)
 
 # Patterns for supported video URLs
 URL_PATTERNS = [
-    # X/Twitter: https://x.com/user/status/123 or https://twitter.com/user/status/123
+    # X/Twitter: https://x.com/user/status/123
     re.compile(r"https?://(?:www\.)?(?:x|twitter)\.com/\w+/status/\d+"),
     # Instagram Reels: https://www.instagram.com/reel/ABC123/
     re.compile(r"https?://(?:www\.)?instagram\.com/reel/[\w-]+"),
-    # Reddit: https://www.reddit.com/r/subreddit/comments/id/title/
-    re.compile(r"https?://(?:www\.)?reddit\.com/r/\w+/comments/\w+/\w+"),
+    # Reddit: https://www.reddit.com/r/subreddit/...
+    re.compile(r"https?://(?:www\.)?reddit\.com/r/[\w/]+"),
+    # Reddit short links: https://redd.it/id
+    re.compile(r"https?://redd\.it/\w+"),
 ]
 
 # 10MB limit for Discord attachments (non-Nitro)
