@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import AsyncMock, Mock
 from joke_generator import JokeGenerator
 from language_detector import LanguageDetector
+from conversation_formatter import ConversationFormatter
+from memory_manager import MemoryManager
 from null_telemetry import NullTelemetry
 from schemas import YesNo
 
@@ -37,6 +39,8 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
             store=store,
             telemetry=telemetry,
             language_detector=language_detector,
+            conversation_formatter=Mock(spec=ConversationFormatter),
+            memory_manager=Mock(spec=MemoryManager),
         )
 
         result = await joke_generator.is_joke("original message", "funny response")
@@ -60,6 +64,8 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
             store=store,
             telemetry=telemetry,
             language_detector=language_detector,
+            conversation_formatter=Mock(spec=ConversationFormatter),
+            memory_manager=Mock(spec=MemoryManager),
         )
 
         result = await joke_generator.is_joke("original message", "serious response")
@@ -83,6 +89,8 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
             store=store,
             telemetry=telemetry,
             language_detector=language_detector,
+            conversation_formatter=Mock(spec=ConversationFormatter),
+            memory_manager=Mock(spec=MemoryManager),
         )
 
         # First call should hit the AI
@@ -117,6 +125,8 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
             store=store,
             telemetry=telemetry,
             language_detector=language_detector,
+            conversation_formatter=Mock(spec=ConversationFormatter),
+            memory_manager=Mock(spec=MemoryManager),
         )
         
         await joke_generator.save_joke(
@@ -148,16 +158,23 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         mock_language_ai = Mock()
         mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
         language_detector = LanguageDetector(ai_client=mock_language_ai, telemetry=telemetry)
+        mock_formatter = Mock(spec=ConversationFormatter)
+        mock_formatter.format_to_xml = AsyncMock(return_value="")
+        mock_memory = Mock(spec=MemoryManager)
+        mock_memory.build_memory_prompt = AsyncMock(return_value="")
         joke_generator = JokeGenerator(
             joke_writer_client=ai_client,
             joke_classifier_client=ai_client,
             store=store,
             telemetry=telemetry,
             language_detector=language_detector,
+            conversation_formatter=mock_formatter,
+            memory_manager=mock_memory,
         )
-        
-        result = await joke_generator.generate_joke("test message", "en")
-        
+
+        conversation_fetcher = AsyncMock(return_value=[])
+        result = await joke_generator.generate_joke("test message", "en", conversation_fetcher, guild_id=1)
+
         self.assertEqual(result, "Test joke response")
 
     async def test_generate_country_joke_still_works(self):
@@ -177,6 +194,8 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
             store=store,
             telemetry=telemetry,
             language_detector=language_detector,
+            conversation_formatter=Mock(spec=ConversationFormatter),
+            memory_manager=Mock(spec=MemoryManager),
         )
         
         result = await joke_generator.generate_country_joke("test message", "USA")

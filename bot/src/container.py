@@ -146,7 +146,7 @@ class Container:
 
         # Shuffled composite for wisdom - gives both clients equal chance
         self.shuffled_grok_kimi = CompositeAIClient(
-            [self.retrying_grok, self.ollama_kimi],
+            [self.retrying_grok, self.ollama_kimi_long_timeout],
             telemetry=self.telemetry,
             shuffle=True,
         )
@@ -192,18 +192,6 @@ class Container:
             max_file_size_mb=10,
         )
 
-        self.joke_generator = JokeGenerator(
-            joke_writer_client=self.retrying_grok,
-            joke_classifier_client=CompositeAIClient(
-                [self.ollama_kimi, self.retrying_grok],
-                telemetry=self.telemetry,
-            ),
-            store=self.store,
-            telemetry=self.telemetry,
-            language_detector=self.language_detector,
-            sample_count=self.config.sample_jokes_count,
-        )
-
         # UserResolver is initialized here but needs bot client to be set later
         self.user_resolver = UserResolver(self.telemetry)
 
@@ -234,6 +222,20 @@ class Container:
             gemma_client=self.gemma_with_kimi_fallback,
             user_resolver=self.user_resolver,
             redis_cache=self.redis_cache,
+        )
+
+        self.joke_generator = JokeGenerator(
+            joke_writer_client=self.shuffled_grok_kimi,
+            joke_classifier_client=CompositeAIClient(
+                [self.ollama_kimi, self.retrying_grok],
+                telemetry=self.telemetry,
+            ),
+            store=self.store,
+            telemetry=self.telemetry,
+            language_detector=self.language_detector,
+            conversation_formatter=self.conversation_formatter,
+            memory_manager=self.memory_manager,
+            sample_count=self.config.sample_jokes_count,
         )
 
         self.general_query_generator = GeneralQueryGenerator(

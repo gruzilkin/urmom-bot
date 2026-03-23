@@ -1,10 +1,14 @@
 import logging
+from collections.abc import Callable, Awaitable
+
 from ai_client import AIClient
+from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from store import Store
 from language_detector import LanguageDetector
+from memory_manager import MemoryManager
+from conversation_formatter import ConversationFormatter
 from schemas import YesNo
-from typing import Dict
 from opentelemetry.trace import SpanKind
 
 
@@ -19,6 +23,8 @@ class JokeGenerator:
         store: Store,
         telemetry: Telemetry,
         language_detector: LanguageDetector,
+        conversation_formatter: ConversationFormatter,
+        memory_manager: MemoryManager,
         sample_count: int = 10,
     ):
         self._joke_writer_client = joke_writer_client
@@ -27,14 +33,29 @@ class JokeGenerator:
         self.sample_count = sample_count
         self.telemetry = telemetry
         self.language_detector = language_detector
-        self._joke_cache: Dict[int, bool] = {}  # message_id -> bool cache
+        self._conversation_formatter = conversation_formatter
+        self._memory_manager = memory_manager
+        self._joke_cache: dict[int, bool] = {}  # message_id -> bool cache
 
-    async def generate_joke(self, content: str, language: str) -> str:
+    def _extract_unique_user_ids(self, conversation: list[ConversationMessage]) -> set[int]:
+        user_ids = set()
+        for msg in conversation:
+            user_ids.add(msg.author_id)
+            user_ids.update(msg.mentioned_user_ids)
+        return user_ids
+
+    async def generate_joke(
+        self,
+        content: str,
+        language: str,
+        conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
+        guild_id: int,
+    ) -> str:
         # Convert language code to language name
         language_name = await self.language_detector.get_language_name(language)
-        
+
         sample_jokes = await self.store.get_random_jokes(self.sample_count)
-        
+
         # Format sample jokes as XML examples
         examples_xml = ""
         if sample_jokes:
@@ -42,19 +63,27 @@ class JokeGenerator:
             for message, joke in sample_jokes:
                 examples_xml += f"<example><message>{message}</message><joke>{joke}</joke></example>"
             examples_xml += "</examples>"
-        
+
+        conversation = await conversation_fetcher()
+        conversation_block = await self._conversation_formatter.format_to_xml(guild_id, conversation)
+        user_ids = self._extract_unique_user_ids(conversation)
+        memories_block = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
+
         # Create the prompt using format string
         russian_note = " In Russian, use the slang form 'твоя мамка'." if language == "ru" else ""
-        prompt = f"""You are a chatbot that receives a message and you should generate a ur mom joke.        
+        prompt = f"""You are a chatbot that receives a message and you should generate a ur mom joke.
         Extract the most interesting or funny concept from the message and create a punchy one-liner around it. Don't echo back entire sentences - distill the message into its most essential, impactful element for maximum comedic effect.
-        ur mom joke follows the pattern of replacing the subject or the object with "ur mom".{russian_note}
-        Make it as lewd and preposterous as possible, carefully replace the subject and/or some objects in order to achieve the most outrageous result.
-        Make sure that the joke is grammatically correct, check for subject-verb agreement, update pronouns after replacing subjects and objects.
-        
+        Make it as lewd and preposterous as possible.{russian_note}
+        Make sure that the joke is grammatically correct.
+
         Reply in {language_name}. Return only the joke, no meta commentary or explanation.
-        
-        {examples_xml}"""
-        
+
+        {examples_xml}
+
+        {memories_block}
+
+        {conversation_block}"""
+
         async with self.telemetry.async_create_span("generate_joke"):
             response = await self._joke_writer_client.generate_content(
                 message=content,

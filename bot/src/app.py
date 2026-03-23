@@ -531,7 +531,12 @@ async def process_joke_request(payload: nextcord.RawReactionActionEvent, country
     if country:
         joke = await container.joke_generator.generate_country_joke(message.content, country)
     else:
-        joke = await container.joke_generator.generate_joke(message.content, language)
+        fetch_conversation = create_conversation_fetcher(message)
+        joke = await container.joke_generator.generate_joke(
+            message.content, language,
+            conversation_fetcher=fetch_conversation,
+            guild_id=payload.guild_id,
+        )
 
     # Send direct reply
     reply_message = await traced_reply(message, joke)
