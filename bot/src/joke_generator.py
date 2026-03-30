@@ -71,8 +71,13 @@ class JokeGenerator:
 
         # Create the prompt using format string
         russian_note = " In Russian, use the slang form 'твоя мамка'." if language == "ru" else ""
-        prompt = f"""You are a chatbot that receives a message and you should generate a ur mom joke.
-        Extract the most interesting or funny concept from the message and create a punchy one-liner around it. Don't echo back entire sentences - distill the message into its most essential, impactful element for maximum comedic effect.
+        prompt = f"""You are a chatbot that generates ur mom jokes in response to messages.
+        Extract the key concept from the message and twist it into a ur mom joke.
+        Rework the message structure by replacing subjects or objects with "ur mom"
+        and cranking traits to absurd extremes — "ur mom so [TRAIT] that [CONSEQUENCE]".
+        Use wordplay, double meanings, and vivid imagery for maximum comedic effect.
+        Focus on the message itself, but weave in references from conversation
+        context or user memories when it adds to the humor.
         Make it as lewd and preposterous as possible.{russian_note}
         Make sure that the joke is grammatically correct.
 
