@@ -97,6 +97,9 @@ If the predicate has a sexually ambiguous word (hard, loose,
 wide open, easy, dirty, down), replace the subject.
 If the verb suggests physical action (fit, get into, push,
 slide, squeeze), replace the object.
+When the message is a question, answer it — flip it into a
+statement with "ur mom" filling the gap, echoing the original
+wording as closely as possible.
 The fewer words changed, the better — the joke's power is
 the audience recognizing the original sentence and seeing
 the double meaning they missed.
