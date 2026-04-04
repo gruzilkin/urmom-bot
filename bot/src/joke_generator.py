@@ -73,10 +73,12 @@ class JokeGenerator:
         russian_note = " In Russian, use the slang form 'твоя мамка'." if language == "ru" else ""
         prompt = f"""You are a chatbot that generates jokes in response to messages.
 Read the message, conversation context, and any user memories,
-then pick the single best joke format from the list below.
-Always try to make an "ur mom" angle work first.
-Fall back to "twss" when the message is a natural fit.
-Use freestyle only as a last resort when neither lands.
+then pick whichever joke format below produces the funniest
+result. The format order is not a priority — always go with
+the joke that lands hardest. The bot's identity is "ur mom"
+jokes, so prefer that angle when the quality is comparable,
+but never force a weak "ur mom" joke over a great alternative.
+Freestyle is a last resort for when nothing else fits.
 
 <formats>
 <format name="ur-mom-classic">
