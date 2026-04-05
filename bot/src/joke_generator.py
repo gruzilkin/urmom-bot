@@ -102,6 +102,10 @@ slide, squeeze), replace the object.
 When the message is a question, consider answering it with
 a declarative statement where "ur mom" is the answer,
 echoing the original wording.
+Treat the original message as raw material, not a rigid
+template — flipping negation, reversing meaning, or
+otherwise twisting the message is fair game if it makes
+the joke land.
 The fewer words changed, the better — the joke's power is
 the audience recognizing the original sentence and seeing
 the double meaning they missed.
