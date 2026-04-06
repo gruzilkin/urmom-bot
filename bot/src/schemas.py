@@ -27,7 +27,10 @@ class FamousParams(BaseModel):
     )
     language_name: str | None = Field(
         default=None,
-        description="Full name of the detected language (e.g., 'English', 'Russian', 'German') - populated after parameter extraction",
+        description=(
+            "Full name of the detected language (e.g., 'English', 'Russian', 'German')"
+            " - populated after parameter extraction"
+        ),
     )
 
 
@@ -35,10 +38,16 @@ class GeneralParams(BaseModel):
     """Parameters for general AI query requests."""
 
     ai_backend: Literal["gemini_flash", "grok", "claude", "gemma", "codex"] = Field(
-        description="AI backend to use: gemini_flash for general questions, grok for creative tasks, claude for technical work, codex for research, gemma only if explicitly requested"
+        description=(
+            "AI backend to use: gemini_flash for general questions, grok for creative tasks,"
+            " claude for technical work, codex for research, gemma only if explicitly requested"
+        )
     )
     temperature: float = Field(
-        description="Response creativity level: 0.1-0.3 for factual/precise, 0.4-0.6 for balanced, 0.7-0.9 for creative",
+        description=(
+            "Response creativity level: 0.1-0.3 for factual/precise,"
+            " 0.4-0.6 for balanced, 0.7-0.9 for creative"
+        ),
         ge=0.0,
         le=1.0,
     )
@@ -49,7 +58,10 @@ class GeneralParams(BaseModel):
     )
     language_name: str | None = Field(
         default=None,
-        description="Full name of the detected language (e.g., 'English', 'Russian', 'German') - populated after parameter extraction",
+        description=(
+            "Full name of the detected language (e.g., 'English', 'Russian', 'German')"
+            " - populated after parameter extraction"
+        ),
     )
 
 
@@ -69,7 +81,10 @@ class FactParams(BaseModel):
     )
     language_name: str | None = Field(
         default=None,
-        description="Full name of the detected language (e.g., 'English', 'Russian', 'German') - populated after parameter extraction",
+        description=(
+            "Full name of the detected language (e.g., 'English', 'Russian', 'German')"
+            " - populated after parameter extraction"
+        ),
     )
 
 

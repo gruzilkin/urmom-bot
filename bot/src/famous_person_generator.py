@@ -27,7 +27,8 @@ class FamousPersonGenerator:
         FAMOUS: For celebrity/character impersonation and roleplay requests
         - ONLY for explicit hypothetical scenarios asking what someone WOULD say/do
         - Must have clear impersonation intent with words like "would", "if", "how would"
-        - Examples: "What would Trump say about this?", "How would Darth Vader respond?", "What if Einstein explained this?"
+        - Examples: "What would Trump say about this?", "How would Darth Vader respond?", \
+"What if Einstein explained this?"
         - WARNING: Simply mentioning a famous person is NOT enough for this route
         - NOT for: factual questions, riddles, wordplay, statements about people, commands about people
         - NOT for: "What did X say?", "X said something", "X wouldn't say that", "praise X"
@@ -79,7 +80,8 @@ Use earlier messages to resolve references like "he", "she", "they" to the actua
             str | None: The name of the famous person if it's a request, None otherwise
         """
         # Use AI client's generate_content method with specialized prompt
-        prompt = """You need to check if the user message is asking to impersonate a famous person and reply with the person's name.
+        prompt = """You need to check if the user message is asking to impersonate \
+a famous person and reply with the person's name.
 
         Example 1:
         Input: What would Trump say?
@@ -154,11 +156,14 @@ Use earlier messages to resolve references like "he", "she", "they" to the actua
             Keep your response length similar to the average message length in the conversation.
             Feel free to tease and poke fun at the message authors, especially Florent.
             The user specifically asked: '{extracted_message}'
-            Your response should be in the form of direct speech - exactly as if {person} is speaking directly, without quotation marks or attributions.
+            Your response should be in the form of direct speech - exactly as if {person} is speaking directly, \
+without quotation marks or attributions.
             
-            **Always respond in {language_name} unless the user specifically requests a different language or translation.**
+            **Always respond in {language_name} unless the user specifically requests \
+a different language or translation.**
             
-            Keep responses under 2000 characters due to Discord's message limit but no need to report on the length of the response.
+            Keep responses under 2000 characters due to Discord's message limit \
+but no need to report on the length of the response.
             
 {conversation_block}"""
 

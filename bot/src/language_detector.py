@@ -15,31 +15,35 @@ logger = logging.getLogger(__name__)
 
 class LanguageCode(BaseModel):
     """Schema for language code detection."""
+
     language_code: str = Field(description="ISO 639-1 language code (e.g., 'en', 'ru', 'de')")
 
 
 class LanguageName(BaseModel):
     """Schema for language name resolution."""
-    language_name: str = Field(description="Full name of the language in English (e.g., 'English', 'Russian', 'German')")
+
+    language_name: str = Field(
+        description="Full name of the language in English (e.g., 'English', 'Russian', 'German')"
+    )
 
 
 class LanguageDetector:
     """AI-powered language detection using Gemma LLM for accurate results."""
-    
+
     def __init__(self, ai_client: AIClient, telemetry: Telemetry):
         self.ai_client = ai_client
         self.telemetry = telemetry
-        
+
         # Cache for language code to name mapping (10 most spoken languages)
         self._language_names = {
             "en": "English",
-            "zh": "Chinese", 
+            "zh": "Chinese",
             "es": "Spanish",
             "fr": "French",
             "ru": "Russian",
-            "ja": "Japanese"
+            "ja": "Japanese",
         }
-    
+
     async def _detect_language_with_llm(self, text: str) -> str:
         """
         Detects language using only the LLM, with enhanced prompting for ambiguity.
@@ -72,22 +76,19 @@ IMPORTANT INSTRUCTIONS:
 """
 
             response = await self.ai_client.generate_content(
-                message=text,
-                prompt=prompt,
-                temperature=0.0,
-                response_schema=LanguageCode
+                message=text, prompt=prompt, temperature=0.0, response_schema=LanguageCode
             )
 
             detected_lang = response.language_code.strip().lower()
-            
+
             # Basic validation - should be at least 2 chars and follow language code patterns
             # Supports: "en", "eng", "en-us", "zh-cn", etc.
-            if not re.match(r'^[a-z]{2,3}(-[a-z]{2,4})?$', detected_lang):
+            if not re.match(r"^[a-z]{2,3}(-[a-z]{2,4})?$", detected_lang):
                 logger.warning(f"Invalid language code from LLM: {detected_lang}, defaulting to 'en'")
                 span.set_attribute("detected_language", "en")
                 span.set_attribute("validation_failed", True)
                 return "en"
-            
+
             span.set_attribute("detected_language", detected_lang)
             return detected_lang
 
@@ -124,39 +125,39 @@ IMPORTANT INSTRUCTIONS:
     async def get_language_name(self, language_code: str) -> str:
         """
         Get full language name from language code.
-        
+
         Args:
             language_code: ISO 639-1 language code (e.g., 'en', 'ru')
-            
+
         Returns:
             Full language name (e.g., 'English', 'Russian')
         """
         async with self.telemetry.async_create_span("get_language_name") as span:
             span.set_attribute("language_code", language_code)
-            
+
             # Check cache first
             if language_code in self._language_names:
                 language_name = self._language_names[language_code]
                 span.set_attribute("language_name", language_name)
                 span.set_attribute("cache_hit", True)
                 return language_name
-            
+
             span.set_attribute("cache_hit", False)
-            
+
             prompt = f"""What is the full name of the language with ISO 639-1 code '{language_code}'?
                         Provide the language name in English (e.g., 'German' for 'de', 'Russian' for 'ru')."""
-            
+
             try:
                 response = await self.ai_client.generate_content(
                     message=f"Language code: {language_code}",
                     prompt=prompt,
                     temperature=0.0,
-                    response_schema=LanguageName
+                    response_schema=LanguageName,
                 )
-                
+
                 language_name = response.language_name.strip().title()
-                
-                self._language_names[language_code] = language_name            
+
+                self._language_names[language_code] = language_name
                 return language_name
             except Exception as e:
                 logger.error(f"Failed to resolve language name for code {language_code}: {e}", exc_info=True)

@@ -39,7 +39,7 @@ class MemoryTestContext:
     memory_manager: MemoryManager
     store: TestStore
 
- 
+
 class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
     """Shared setup utilities for MemoryManager integration tests."""
 
@@ -59,9 +59,7 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             temperature=0.1,
         )
 
-        self.summary_profiles: list[Profile] = [
-            Profile(name="gemini_flash", client=self.gemini_client)
-        ]
+        self.summary_profiles: list[Profile] = [Profile(name="gemini_flash", client=self.gemini_client)]
         self.merge_profiles: list[Profile] = []
 
         gemma_api_key = os.getenv("GEMMA_API_KEY")
@@ -88,9 +86,7 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             self.summary_profiles.append(Profile(name="ollama_kimi", client=kimi_client))
 
         if not self.merge_profiles:
-            self.skipTest(
-                "No merge-capable AI clients configured (Gemma or Kimi required)."
-            )
+            self.skipTest("No merge-capable AI clients configured (Gemma or Kimi required).")
         self.default_merge_profile = self.merge_profiles[0]
 
     def _build_context(self, profile: Profile) -> MemoryTestContext:
@@ -134,18 +130,12 @@ class TestMemoryManagerIntegration(MemoryManagerTestBase):
         for summary_profile in self.summary_profiles:
             with self.subTest(summary_client=summary_profile.name):
                 ctx = self._build_summary_manager(summary_profile)
-                result = await ctx.memory_manager._create_daily_summaries(
-                    ctx.store.physics_guild_id, test_date
-                )
+                result = await ctx.memory_manager._create_daily_summaries(ctx.store.physics_guild_id, test_date)
 
-                self.assertGreater(
-                    len(result), 0, "Should generate summaries for active physicists"
-                )
+                self.assertGreater(len(result), 0, "Should generate summaries for active physicists")
 
                 einstein_id = ctx.store.physicist_ids["Einstein"]
-                self.assertIn(
-                    einstein_id, result, "Einstein should have a summary for Monday"
-                )
+                self.assertIn(einstein_id, result, "Einstein should have a summary for Monday")
 
                 einstein_summary = result[einstein_id].lower()
                 physics_terms = [
@@ -163,9 +153,7 @@ class TestMemoryManagerIntegration(MemoryManagerTestBase):
 
                 expected_physicists = {"Einstein", "Planck", "Bohr", "Heisenberg"}
                 actual_physicist_names = {
-                    name
-                    for name, user_id in ctx.store.physicist_ids.items()
-                    if user_id in result
+                    name for name, user_id in ctx.store.physicist_ids.items() if user_id in result
                 }
                 overlap = expected_physicists.intersection(actual_physicist_names)
                 self.assertGreaterEqual(
@@ -191,12 +179,8 @@ class TestMemoryManagerIntegration(MemoryManagerTestBase):
                     ctx.store.physics_guild_id, einstein_id, facts, daily_summaries
                 )
 
-                self.assertIsNotNone(
-                    result, "Should generate multi-day context for Einstein"
-                )
-                self.assertGreater(
-                    len(result), 50, "Multi-day context should be substantial"
-                )
+                self.assertIsNotNone(result, "Should generate multi-day context for Einstein")
+                self.assertGreater(len(result), 50, "Multi-day context should be substantial")
 
                 result_lower = result.lower()
                 einstein_themes = [
@@ -228,21 +212,13 @@ class TestMemoryManagerIntegration(MemoryManagerTestBase):
             with self.subTest(profile=profile.name):
                 ctx = self._build_context(profile)
                 einstein_id = ctx.store.physicist_ids["Einstein"]
-                ctx.store.set_user_facts(
-                    ctx.store.physics_guild_id, einstein_id, einstein_facts
-                )
+                ctx.store.set_user_facts(ctx.store.physics_guild_id, einstein_id, einstein_facts)
 
                 with patch("memory_manager.datetime") as mock_datetime:
-                    mock_datetime.now.return_value = datetime(
-                        1905, 3, 6, 14, 30, tzinfo=timezone.utc
-                    )
-                    mock_datetime.side_effect = lambda *args, **kw: datetime(
-                        *args, **kw
-                    )
+                    mock_datetime.now.return_value = datetime(1905, 3, 6, 14, 30, tzinfo=timezone.utc)
+                    mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-                    result = await ctx.memory_manager.get_memory(
-                        ctx.store.physics_guild_id, einstein_id
-                    )
+                    result = await ctx.memory_manager.get_memory(ctx.store.physics_guild_id, einstein_id)
 
                 self.assertIsNotNone(result, "Should generate complete memory context")
                 self.assertGreater(len(result), 100, "Complete memory should be substantial")
@@ -301,18 +277,14 @@ class TestMemoryManagerBatchIntegration(MemoryManagerTestBase):
                     ctx.store.physicist_ids["Planck"],
                 ]
 
-                results = await ctx.memory_manager.get_memories(
-                    ctx.store.physics_guild_id, user_ids
-                )
+                results = await ctx.memory_manager.get_memories(ctx.store.physics_guild_id, user_ids)
 
                 self.assertEqual(len(results), 3)
                 for user_id in user_ids:
                     self.assertIn(user_id, results)
                     if results[user_id] is not None:
                         self.assertIsInstance(results[user_id], str)
-                        self.assertGreater(
-                            len(results[user_id]), 50
-                        )  # Ensure a meaningful summary
+                        self.assertGreater(len(results[user_id]), 50)  # Ensure a meaningful summary
 
 
 class TestMemoryManagerLargeBatchIntegration(MemoryManagerTestBase):
@@ -325,9 +297,7 @@ class TestMemoryManagerLargeBatchIntegration(MemoryManagerTestBase):
                 ctx = self._build_context(profile)
                 all_user_ids = list(ctx.store.physicist_ids.values())
 
-                results = await ctx.memory_manager.get_memories(
-                    ctx.store.physics_guild_id, all_user_ids
-                )
+                results = await ctx.memory_manager.get_memories(ctx.store.physics_guild_id, all_user_ids)
 
                 self.assertEqual(len(results), len(all_user_ids))
                 for user_id in all_user_ids:
@@ -345,15 +315,11 @@ class TestMemoryManagerLargeBatchIntegration(MemoryManagerTestBase):
                 ]
 
                 start_time_first = time.time()
-                results1 = await ctx.memory_manager.get_memories(
-                    ctx.store.physics_guild_id, user_ids
-                )
+                results1 = await ctx.memory_manager.get_memories(ctx.store.physics_guild_id, user_ids)
                 duration_first = time.time() - start_time_first
 
                 start_time_second = time.time()
-                results2 = await ctx.memory_manager.get_memories(
-                    ctx.store.physics_guild_id, user_ids
-                )
+                results2 = await ctx.memory_manager.get_memories(ctx.store.physics_guild_id, user_ids)
                 duration_second = time.time() - start_time_second
 
                 self.assertEqual(results1, results2)
@@ -370,12 +336,8 @@ class TestMemoryManagerLargeBatchIntegration(MemoryManagerTestBase):
                 ctx = self._build_context(profile)
                 test_user_id = ctx.store.physicist_ids["Einstein"]
 
-                individual_result = await ctx.memory_manager.get_memory(
-                    ctx.store.physics_guild_id, test_user_id
-                )
-                batch_results = await ctx.memory_manager.get_memories(
-                    ctx.store.physics_guild_id, [test_user_id]
-                )
+                individual_result = await ctx.memory_manager.get_memory(ctx.store.physics_guild_id, test_user_id)
+                batch_results = await ctx.memory_manager.get_memories(ctx.store.physics_guild_id, [test_user_id])
                 batch_result = batch_results.get(test_user_id)
 
                 self.assertEqual(individual_result, batch_result)
@@ -400,9 +362,7 @@ class TestMemoryManagerRealExceptionHandling(MemoryManagerTestBase):
                     side_effect=Exception("AI quota exceeded")
                 )
 
-                result = await ctx.memory_manager.get_memory(
-                    ctx.store.physics_guild_id, einstein_id
-                )
+                result = await ctx.memory_manager.get_memory(ctx.store.physics_guild_id, einstein_id)
 
                 self.assertEqual(result, facts)
 
@@ -420,19 +380,12 @@ class TestMemoryManagerRealExceptionHandling(MemoryManagerTestBase):
 
                 ctx.memory_manager._summary_client.generate_content = AsyncMock(
                     return_value=DailySummaries(
-                        summaries=[
-                            UserSummary(user_id=uid, summary=f"Daily summary for {uid}")
-                            for uid in user_ids
-                        ]
+                        summaries=[UserSummary(user_id=uid, summary=f"Daily summary for {uid}") for uid in user_ids]
                     )
                 )
-                ctx.memory_manager._merge_client.generate_content = AsyncMock(
-                    side_effect=Exception("Merge AI failed")
-                )
+                ctx.memory_manager._merge_client.generate_content = AsyncMock(side_effect=Exception("Merge AI failed"))
 
-                results = await ctx.memory_manager.get_memories(
-                    ctx.store.physics_guild_id, user_ids
-                )
+                results = await ctx.memory_manager.get_memories(ctx.store.physics_guild_id, user_ids)
 
                 self.assertEqual(len(results), 2)
                 for user_id in user_ids:
@@ -452,13 +405,11 @@ class TestMemoryManagerRealExceptionHandling(MemoryManagerTestBase):
                 )
 
                 user_ids = [ctx.store.physicist_ids["Einstein"]]
-                results = await ctx.memory_manager.get_memories(
-                    ctx.store.physics_guild_id, user_ids
-                )
+                results = await ctx.memory_manager.get_memories(ctx.store.physics_guild_id, user_ids)
 
                 self.assertEqual(len(results), 1)
                 self.assertIn(ctx.store.physicist_ids["Einstein"], results)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

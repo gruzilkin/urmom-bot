@@ -8,7 +8,7 @@ web search/grounding, and multimodal (vision) capabilities.
 import base64
 import json
 import logging
-from typing import Any, List, Tuple, Type, TypeVar
+from typing import Any, TypeVar
 
 import httpx
 from ollama import AsyncClient
@@ -52,9 +52,7 @@ class OllamaClient(AIClient):
         self.service = "OLLAMA"
         self.timeout = timeout
 
-    def _track_completion_metrics(
-        self, response: dict, method_name: str, **additional_attributes
-    ):
+    def _track_completion_metrics(self, response: dict, method_name: str, **additional_attributes):
         """Track metrics from Ollama response with detailed attributes"""
         try:
             # Ollama response structure may vary, handle gracefully
@@ -89,9 +87,9 @@ class OllamaClient(AIClient):
         self,
         message: str,
         prompt: str | None = None,
-        samples: List[Tuple[str, str]] | None = None,
+        samples: list[tuple[str, str]] | None = None,
         enable_grounding: bool = False,
-        response_schema: Type[T] | None = None,
+        response_schema: type[T] | None = None,
         temperature: float | None = None,
         image_data: bytes | None = None,
         image_mime_type: str | None = None,
@@ -150,18 +148,14 @@ class OllamaClient(AIClient):
                 # Ollama expects images as base64-encoded strings
                 encoded_image = base64.b64encode(image_data).decode("utf-8")
                 user_message["images"] = [encoded_image]
-                logger.info(
-                    f"Ollama multimodal request with image ({image_mime_type}): {message}"
-                )
+                logger.info(f"Ollama multimodal request with image ({image_mime_type}): {message}")
             else:
                 logger.info(f"Ollama text request: {message}")
 
             messages.append(user_message)
 
             # Prepare options
-            actual_temperature = (
-                temperature if temperature is not None else self.temperature
-            )
+            actual_temperature = temperature if temperature is not None else self.temperature
             options: dict[str, Any] = {"temperature": actual_temperature}
 
             # Prepare chat parameters
@@ -174,14 +168,10 @@ class OllamaClient(AIClient):
             # Add structured output format if requested
             if response_schema:
                 chat_params["format"] = response_schema.model_json_schema()
-                logger.info(
-                    f"Structured output enabled with schema: {response_schema.__name__}"
-                )
+                logger.info(f"Structured output enabled with schema: {response_schema.__name__}")
 
             if enable_grounding:
-                logger.warning(
-                    "Grounding requested but tool support is disabled for OllamaClient."
-                )
+                logger.warning("Grounding requested but tool support is disabled for OllamaClient.")
 
             max_validation_retries = 2
             validation_retry = 0
@@ -195,9 +185,7 @@ class OllamaClient(AIClient):
                         if "enum" in field_schema:
                             enum_values = field_schema["enum"]
                             values_list = ", ".join(f'"{v}"' for v in enum_values)
-                            error_parts.append(
-                                f"Field '{field_name}' must be EXACTLY one of: {values_list}"
-                            )
+                            error_parts.append(f"Field '{field_name}' must be EXACTLY one of: {values_list}")
                 error_parts.append(f"\nOriginal error: {error}")
                 return "\n".join(error_parts)
 
@@ -224,9 +212,7 @@ class OllamaClient(AIClient):
                     self.telemetry.metrics.llm_requests.add(1, attrs)
                     raise
 
-                logger.info(
-                    f"Ollama response (validation_retry={validation_retry}): {response}"
-                )
+                logger.info(f"Ollama response (validation_retry={validation_retry}): {response}")
                 self._track_completion_metrics(
                     response,
                     method_name="generate_content",
@@ -237,9 +223,7 @@ class OllamaClient(AIClient):
 
                 if response_schema:
                     try:
-                        return self._parse_structured_response(
-                            response, response_schema
-                        )
+                        return self._parse_structured_response(response, response_schema)
                     except ValueError as error:
                         self.telemetry.metrics.structured_output_failures.add(
                             1,
@@ -269,7 +253,10 @@ class OllamaClient(AIClient):
                         messages.append(
                             {
                                 "role": "user",
-                                "content": f"{build_validation_error(error)}\n\nPlease fix and respond with valid JSON.",
+                                "content": (
+                                    f"{build_validation_error(error)}"
+                                    "\n\nPlease fix and respond with valid JSON."
+                                ),
                             }
                         )
                         continue
@@ -301,7 +288,7 @@ class OllamaClient(AIClient):
 
         return content.strip()
 
-    def _parse_structured_response(self, response: dict, response_schema: Type[T]) -> T:
+    def _parse_structured_response(self, response: dict, response_schema: type[T]) -> T:
         """
         Parse structured response from Ollama.
 

@@ -10,18 +10,18 @@ from schemas import YesNo
 
 class MockStore:
     """Mock store for testing"""
+
     def __init__(self):
         self.saved_jokes = []
-        
+
     async def save(self, **kwargs):
         self.saved_jokes.append(kwargs)
-        
+
     async def get_random_jokes(self, count):
         return [("test message", "test joke")]
 
 
 class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
-    
     async def test_is_joke_returns_true_for_positive_response(self):
         """Test that is_joke returns True when AI responds 'YES'"""
         ai_client = Mock()
@@ -114,7 +114,7 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         ai_client.generate_content = AsyncMock(return_value="Test joke response")
         store = MockStore()
         telemetry = NullTelemetry()
-        
+
         # Use real LanguageDetector with mock AI client that raises error if accessed
         mock_language_ai = Mock()
         mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
@@ -128,15 +128,15 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
             conversation_formatter=Mock(spec=ConversationFormatter),
             memory_manager=Mock(spec=MemoryManager),
         )
-        
+
         await joke_generator.save_joke(
             source_message_id=123,
             source_message_content="original message",
             joke_message_id=456,
             joke_message_content="funny joke",
-            reaction_count=5
+            reaction_count=5,
         )
-        
+
         self.assertEqual(len(store.saved_jokes), 1)
         saved = store.saved_jokes[0]
         self.assertEqual(saved["source_message_id"], 123)
@@ -153,7 +153,7 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         ai_client.generate_content = AsyncMock(return_value="Test joke response")
         store = MockStore()
         telemetry = NullTelemetry()
-        
+
         # Use real LanguageDetector with mock AI client that raises error if accessed
         mock_language_ai = Mock()
         mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
@@ -183,7 +183,7 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         ai_client.generate_content = AsyncMock(return_value="Test joke response")
         store = MockStore()
         telemetry = NullTelemetry()
-        
+
         # Use real LanguageDetector with mock AI client that raises error if accessed
         mock_language_ai = Mock()
         mock_language_ai.generate_content = AsyncMock(side_effect=Exception("AI should not be called in tests"))
@@ -197,11 +197,11 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
             conversation_formatter=Mock(spec=ConversationFormatter),
             memory_manager=Mock(spec=MemoryManager),
         )
-        
+
         result = await joke_generator.generate_country_joke("test message", "USA")
-        
+
         self.assertEqual(result, "Test joke response")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

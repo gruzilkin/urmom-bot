@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager, contextmanager
 from types import SimpleNamespace
 
+
 class NullTelemetry:
     """A no-op implementation of Telemetry for testing"""
-    
+
     def __init__(self):
         def _counter():
             return SimpleNamespace(add=lambda *args, **kwargs: None)
@@ -36,32 +37,28 @@ class NullTelemetry:
             llm_requests=_counter(),
             llm_latency=_histogram(),
             structured_output_failures=_counter(),
-            timer=_timer
+            timer=_timer,
         )
-    
+
     @contextmanager
     def create_span(self, name, kind=None, attributes=None):
         """No-op span for synchronous code"""
         yield SimpleNamespace(
-            set_attribute=lambda *args: None, 
-            set_status=lambda *args: None,
-            record_exception=lambda *args: None
+            set_attribute=lambda *args: None, set_status=lambda *args: None, record_exception=lambda *args: None
         )
-    
+
     @asynccontextmanager
     async def async_create_span(self, name, kind=None, attributes=None):
         """No-op span for async code"""
         yield SimpleNamespace(
-            set_attribute=lambda *args: None, 
-            set_status=lambda *args: None,
-            record_exception=lambda *args: None
+            set_attribute=lambda *args: None, set_status=lambda *args: None, record_exception=lambda *args: None
         )
-    
+
     def increment_message_counter(self, *args, **kwargs):
         pass
-        
+
     def increment_reaction_counter(self, *args, **kwargs):
         pass
-        
+
     def track_token_usage(self, *args, **kwargs):
         pass

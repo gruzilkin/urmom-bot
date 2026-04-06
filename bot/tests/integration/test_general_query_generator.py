@@ -65,9 +65,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.mock_store.get_user_facts = AsyncMock(return_value=None)
         self.mock_user_resolver = Mock()
         self.mock_user_resolver.get_display_name = AsyncMock(return_value="TestUser")
-        self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(
-            side_effect=lambda text, guild_id: text
-        )
+        self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda text, guild_id: text)
 
         self.mock_bot_user = Mock()
         self.mock_bot_user.name = "urmom-bot"
@@ -187,9 +185,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(len(result), 0)
 
         contains_cyrillic = bool(re.search(r"[а-яё]", result.lower()))
-        self.assertTrue(
-            contains_cyrillic, f"Response should contain Russian text but got: {result}"
-        )
+        self.assertTrue(contains_cyrillic, f"Response should contain Russian text but got: {result}")
 
 
 if __name__ == "__main__":

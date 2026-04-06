@@ -155,7 +155,8 @@ class Container:
 
         # Initialize language detector early since it's needed by multiple components
         self.language_detector = LanguageDetector(
-            ai_client=self.lightweight_fallback, telemetry=self.telemetry,
+            ai_client=self.lightweight_fallback,
+            telemetry=self.telemetry,
         )
 
         self.attachment_processor = AttachmentProcessor(

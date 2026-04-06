@@ -55,9 +55,7 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
             self.profiles.append(DetectorProfile(name="ollama_kimi", client=kimi_client))
 
         if not self.profiles:
-            self.skipTest(
-                "No language detector AI clients configured; ensure Gemma or Ollama credentials are set."
-            )
+            self.skipTest("No language detector AI clients configured; ensure Gemma or Ollama credentials are set.")
 
     def _build_detector(self, profile: DetectorProfile) -> LanguageDetector:
         """Return a fresh LanguageDetector per profile to avoid cache sharing."""

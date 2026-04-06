@@ -47,14 +47,14 @@ class ClaudeClient(AIClient):
             attributes=base_attrs,
         ):
             samples = samples or []
-            
+
             # Build conversation context
             conversation_parts = []
-            
+
             # Add system prompt if provided
             if prompt:
                 conversation_parts.append(f"System: {prompt}")
-            
+
             # Add samples as conversation history
             for user_msg, assistant_msg in samples:
                 conversation_parts.append(f"Human: {user_msg}")
@@ -62,45 +62,56 @@ class ClaudeClient(AIClient):
 
             # Add the main message
             conversation_parts.append(f"Human: {message}")
-            
+
             # If structured output is requested, modify the message
             if response_schema:
-                schema_instruction = f"\n\nPlease respond with a valid JSON object that matches this schema: {response_schema.model_json_schema()}"
+                schema_instruction = (
+                    "\n\nPlease respond with a valid JSON object that matches this schema:"
+                    f" {response_schema.model_json_schema()}"
+                )
                 conversation_parts[-1] += schema_instruction
-            
+
             full_conversation = "\n\n".join(conversation_parts)
-            
+
             logger.info(f"Claude CLI input: {full_conversation}")
-            
+
             # Log unsupported features
             if enable_grounding:
                 logger.warning("Grounding not supported by Claude CLI")
-            
+
             # Build Claude CLI command
             claude_cmd = [
                 "claude",
                 "--print",
-                "--output-format", "text",
-                "--allowedTools", "WebSearch", "WebFetch",
-                "--disallowedTools", "Bash", "Edit", "Write", "Create", "Read",
+                "--output-format",
+                "text",
+                "--allowedTools",
+                "WebSearch",
+                "WebFetch",
+                "--disallowedTools",
+                "Bash",
+                "Edit",
+                "Write",
+                "Create",
+                "Read",
             ]
             if self.model_name:
                 claude_cmd.extend(["--model", self.model_name])
-            
+
             logger.info(f"Running Claude CLI command: {' '.join(claude_cmd)}")
-            
+
             # Run the Claude CLI command with input via stdin
             timer = self.telemetry.metrics.timer()
             process = await asyncio.create_subprocess_exec(
                 *claude_cmd,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
-            
+
             # Send the conversation through stdin
-            stdout, stderr = await process.communicate(input=full_conversation.encode('utf-8'))
-            
+            stdout, stderr = await process.communicate(input=full_conversation.encode("utf-8"))
+
             if process.returncode != 0:
                 error_msg = stderr.decode().strip() if stderr else "Unknown error"
                 logger.error(f"Claude CLI command failed with return code {process.returncode}: {error_msg}")
@@ -108,14 +119,14 @@ class ClaudeClient(AIClient):
                 self.telemetry.metrics.llm_latency.record(timer(), attrs_err)
                 self.telemetry.metrics.llm_requests.add(1, attrs_err)
                 raise RuntimeError(f"Claude CLI failed: {error_msg}")
-            
+
             response_text = stdout.decode().strip()
             logger.info(f"Claude CLI response: {response_text}")
 
             attrs = {**base_attrs, "outcome": "success"}
             self.telemetry.metrics.llm_latency.record(timer(), attrs)
             self.telemetry.metrics.llm_requests.add(1, attrs)
-            
+
             # Parse structured response if schema was provided
             if response_schema:
                 try:
@@ -125,13 +136,17 @@ class ClaudeClient(AIClient):
                         start = json_str.find("```json") + 7
                         end = json_str.find("```", start)
                         json_str = json_str[start:end].strip()
-                    
+
                     response_data = json.loads(json_str)
                     parsed_result = response_schema.model_validate(response_data)
                     return parsed_result
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.error(f"Failed to parse structured response: {e}")
-                    self.telemetry.metrics.structured_output_failures.add(1, {"service": self.service, "model": self.model_name})
-                    raise ValueError(f"Failed to parse response with schema {response_schema.__name__}: {response_text}")
-            
+                    self.telemetry.metrics.structured_output_failures.add(
+                        1, {"service": self.service, "model": self.model_name}
+                    )
+                    raise ValueError(
+                        f"Failed to parse response with schema {response_schema.__name__}: {response_text}"
+                    )
+
             return response_text

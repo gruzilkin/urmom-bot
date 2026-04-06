@@ -40,7 +40,8 @@ class AttachmentProcessor:
     IMAGE_ANALYSIS_MESSAGE = (
         "First, identify and list all unique text visible in this image, showing each distinct text only once. "
         "Organize the text logically (e.g., product names, prices, signs, labels). Then describe what you see "
-        "in a natural, comprehensive way as if explaining to a blind person who will need to answer questions about it later."
+        "in a natural, comprehensive way as if explaining to a blind person"
+        " who will need to answer questions about it later."
     )
 
     IMAGE_ANALYSIS_PROMPT = (
@@ -88,7 +89,10 @@ class AttachmentProcessor:
             try:
                 async with aiohttp.ClientSession() as session:
                     headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                            " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        )
                     }
                     async with session.get(url, headers=headers) as response:
                         if response.status != 200:
