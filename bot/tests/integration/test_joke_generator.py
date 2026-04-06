@@ -10,6 +10,8 @@ from gemma_client import GemmaClient
 from grok_client import GrokClient
 from joke_generator import JokeGenerator
 from language_detector import LanguageDetector
+from conversation_formatter import ConversationFormatter
+from memory_manager import MemoryManager
 from null_telemetry import NullTelemetry
 from ollama_client import OllamaClient
 from store import Store
@@ -114,12 +116,19 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
         store = Mock(spec=Store)
         store.get_random_jokes = AsyncMock(return_value=list(self.joke_seed_data))
 
+        mock_formatter = Mock(spec=ConversationFormatter)
+        mock_formatter.format_to_xml = AsyncMock(return_value="")
+        mock_memory = Mock(spec=MemoryManager)
+        mock_memory.build_memory_prompt = AsyncMock(return_value="")
+
         return JokeGenerator(
             joke_writer_client=ai_client,
             joke_classifier_client=ai_client,
             store=store,
             telemetry=self.telemetry,
             language_detector=self.language_detector,
+            conversation_formatter=mock_formatter,
+            memory_manager=mock_memory,
         )
 
     async def test_generate_joke(self):
@@ -128,7 +137,7 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 joke_generator = self._build_joke_generator(profile.client)
-                result = await joke_generator.generate_joke(test_message, "en")
+                result = await joke_generator.generate_joke(test_message, "en", AsyncMock(return_value=[]), guild_id=1)
                 self.assertIsInstance(result, str)
                 self.assertGreater(len(result), 0)
                 print(f"[{profile.name}] Generated joke: {result}")
