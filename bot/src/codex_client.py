@@ -25,7 +25,7 @@ class CodexClient(AIClient):
     def __init__(
         self,
         telemetry: Telemetry,
-        model_name: str = "gpt-5.2",
+        model_name: str = "gpt-5.4",
         enable_web_search: bool = True,
     ):
         self.model_name = model_name
@@ -107,7 +107,9 @@ class CodexClient(AIClient):
             schema_file = None
             if response_schema:
                 schema_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
-                json.dump(response_schema.model_json_schema(), schema_file)
+                schema = response_schema.model_json_schema()
+                schema["additionalProperties"] = False
+                json.dump(schema, schema_file)
                 schema_file.close()
                 codex_cmd.extend(["--output-schema", schema_file.name])
 

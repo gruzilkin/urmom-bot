@@ -26,15 +26,17 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         self.redis_cache = NullRedisCache()
 
         # Mock AI clients
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
 
         # Component under test
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=self.redis_cache,
         )
@@ -62,7 +64,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         await test_store.save_daily_summaries(self.physics_guild_id, historical_date, expected_summaries)
 
         # Ensure the AI client mock is clean before the test action
-        self.mock_gemini_client.generate_content.reset_mock()
+        self.mock_summary_client.generate_content.reset_mock()
 
         with patch("memory_manager.datetime") as mock_datetime:
             # Set current time to be after the historical date
@@ -76,7 +78,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertEqual(result, expected_summary)
         # The key assertion: The database cache was hit, so no AI call was made
-        self.mock_gemini_client.generate_content.assert_not_called()
+        self.mock_summary_client.generate_content.assert_not_called()
 
     async def test_context_cache_hit_identical_content(self):
         """Test that context merge cache hits when content is identical."""
@@ -86,7 +88,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         historical = "Einstein has been developing revolutionary theories about space, time, and energy"
 
         # Mock returns handled by TestUserResolver automatically
-        self.mock_gemma_client.generate_content = AsyncMock(
+        self.mock_merge_client.generate_content = AsyncMock(
             return_value=MemoryContext(
                 context=(
                     "Einstein is a revolutionary physicist who challenges classical physics"
@@ -108,7 +110,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result1, expected_context)
         self.assertEqual(result2, expected_context)
-        self.mock_gemma_client.generate_content.assert_called_once()  # Only one AI call
+        self.mock_merge_client.generate_content.assert_called_once()  # Only one AI call
 
     async def test_context_cache_miss_changed_facts(self):
         """Test that context merge cache misses when facts change."""
@@ -121,7 +123,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         historical = "Bohr has been developing new atomic theories that explain spectral lines"
 
         # Mock returns handled by TestUserResolver automatically
-        self.mock_gemma_client.generate_content = AsyncMock(
+        self.mock_merge_client.generate_content = AsyncMock(
             return_value=MemoryContext(context="Bohr is revolutionizing atomic physics with quantum orbital theory")
         )
 
@@ -133,7 +135,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         await self.memory_manager._merge_context(self.physics_guild_id, bohr_id, updated_facts, daily_summaries_upd)
 
         # Assert
-        self.assertEqual(self.mock_gemma_client.generate_content.call_count, 2)  # Two AI calls
+        self.assertEqual(self.mock_merge_client.generate_content.call_count, 2)  # Two AI calls
 
     async def test_empty_messages_returns_empty_dict(self):
         """Test that batch generation with no messages returns empty dict."""
@@ -145,7 +147,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.assertEqual(result, {})
-        self.mock_gemini_client.generate_content.assert_not_called()
+        self.mock_summary_client.generate_content.assert_not_called()
 
 
 class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
@@ -159,15 +161,17 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
 
         # Mock AI clients and store
         self.mock_store = Mock(spec=Store)
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
 
         # Component under test
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.mock_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -383,15 +387,17 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         self.user_resolver = self.test_store.user_resolver
 
         # Mock AI clients
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
 
         # Component under test
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -406,7 +412,7 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         # Arrange
         einstein_id = self.physicist_ids["Einstein"]
 
-        self.mock_gemini_client.generate_content = AsyncMock(
+        self.mock_summary_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[
                     UserSummary(user_id=einstein_id, summary="Einstein discussed quantum hypothesis with Planck")
@@ -418,7 +424,7 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         await self.memory_manager._create_daily_summaries(self.physics_guild_id, self.test_date)
 
         # Assert - Check that the prompt contains properly formatted XML
-        call_args = self.mock_gemini_client.generate_content.call_args
+        call_args = self.mock_summary_client.generate_content.call_args
         prompt = call_args[1]["message"]  # keyword argument
 
         self.assertIn("<message>", prompt)
@@ -442,7 +448,7 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         einstein_id = self.physicist_ids["Einstein"]
         bohr_id = self.physicist_ids["Bohr"]
 
-        self.mock_gemini_client.generate_content = AsyncMock(
+        self.mock_summary_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[
                     UserSummary(user_id=einstein_id, summary="Einstein discussed quantum theory"),
@@ -455,7 +461,7 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         await self.memory_manager._create_daily_summaries(self.physics_guild_id, self.test_date)
 
         # Assert - Check that AI prompt contains deduplicated user list
-        call_args = self.mock_gemini_client.generate_content.call_args
+        call_args = self.mock_summary_client.generate_content.call_args
         prompt = call_args[1]["message"]
 
         # Should contain each user only once in the target_users section
@@ -516,13 +522,15 @@ class TestMemoryManagerBatchProcessing(unittest.IsolatedAsyncioTestCase):
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
 
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -561,8 +569,8 @@ class TestMemoryManagerBatchProcessing(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.assertEqual(result, {})
-        self.mock_gemini_client.generate_content.assert_not_called()
-        self.mock_gemma_client.generate_content.assert_not_called()
+        self.mock_summary_client.generate_content.assert_not_called()
+        self.mock_alias_client.generate_content.assert_not_called()
 
     async def test_daily_summary_blocked_returns_empty(self):
         """Daily summary should return empty dict when AI blocks the request."""
@@ -570,12 +578,12 @@ class TestMemoryManagerBatchProcessing(unittest.IsolatedAsyncioTestCase):
         blocked_reason = "PROHIBITED_CONTENT"
 
         # Gemini client refuses to generate content
-        self.mock_gemini_client.generate_content = AsyncMock(side_effect=BlockedException(reason=blocked_reason))
+        self.mock_summary_client.generate_content = AsyncMock(side_effect=BlockedException(reason=blocked_reason))
 
         result = await self.memory_manager._daily_summary(self.physics_guild_id, historical_date)
 
         self.assertEqual(result, {}, "Blocked summaries should return empty dict")
-        self.mock_gemini_client.generate_content.assert_awaited_once()
+        self.mock_summary_client.generate_content.assert_awaited_once()
         # Store should persist the empty result to avoid retries
         stored = await self.test_store.get_daily_summaries(self.physics_guild_id, historical_date)
         self.assertEqual(stored, {})
@@ -588,13 +596,15 @@ class TestMemoryManagerExceptionIsolation(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         self.user_resolver = TestUserResolver()
         self.mock_store = Mock(spec=Store)
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.mock_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -712,13 +722,15 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
         self.user_resolver = self.test_store.user_resolver
         self.redis_cache = NullRedisCache()
 
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=self.redis_cache,
         )
@@ -731,7 +743,7 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
         yesterday = date(1905, 3, 5)
         einstein_id = self.physicist_ids["Einstein"]
 
-        self.mock_gemini_client.generate_content = AsyncMock(
+        self.mock_summary_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed physics")]
             )
@@ -764,14 +776,14 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
         daily_summaries = {date(1905, 3, 5): "Summary A", date(1905, 3, 4): "Summary B"}
         facts = "Test facts"
         user_id = self.physicist_ids["Einstein"]
-        self.mock_gemma_client.generate_content.return_value = MemoryContext(context="Merged Summary")
+        self.mock_merge_client.generate_content.return_value = MemoryContext(context="Merged Summary")
 
         # Act
         await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)
         await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)  # Same content
 
         # Assert
-        self.mock_gemma_client.generate_content.assert_called_once()
+        self.mock_merge_client.generate_content.assert_called_once()
 
     async def test_context_cache_with_content_hashing(self):
         """Test that context merge cache uses content-based keys."""
@@ -780,7 +792,7 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
         current_day = "Current Day"
         historical = "Historical"
         user_id = self.physicist_ids["Einstein"]
-        self.mock_gemma_client.generate_content.return_value = MemoryContext(context="Merged Context")
+        self.mock_merge_client.generate_content.return_value = MemoryContext(context="Merged Context")
 
         # Act
         daily_summaries = {
@@ -791,7 +803,7 @@ class TestMemoryManagerCacheArchitecture(unittest.IsolatedAsyncioTestCase):
         await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)
 
         # Assert
-        self.mock_gemma_client.generate_content.assert_called_once()
+        self.mock_merge_client.generate_content.assert_called_once()
 
 
 class TestMemoryManagerSmartFallback(unittest.IsolatedAsyncioTestCase):
@@ -801,13 +813,15 @@ class TestMemoryManagerSmartFallback(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         self.user_resolver = TestUserResolver()
         self.mock_store = Mock(spec=Store)
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.mock_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -825,7 +839,7 @@ class TestMemoryManagerSmartFallback(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.assertEqual(result, facts)
-        self.mock_gemma_client.generate_content.assert_not_called()
+        self.mock_merge_client.generate_content.assert_not_called()
 
     async def test_merge_failure_cascading_fallback_priority(self):
         """Test fallback hierarchy: facts -> most recent daily summary -> None."""
@@ -835,7 +849,7 @@ class TestMemoryManagerSmartFallback(unittest.IsolatedAsyncioTestCase):
         recent_summary = "Recent daily summary"
         older_summary = "Older daily summary"
 
-        self.mock_gemma_client.generate_content.side_effect = Exception("AI merge failed")
+        self.mock_merge_client.generate_content.side_effect = Exception("AI merge failed")
 
         # Test case 1: Facts present, should fall back to facts regardless of daily summaries
         daily_summaries = {date(2025, 1, 3): recent_summary, date(2025, 1, 1): older_summary}
@@ -861,13 +875,15 @@ class TestMemoryManagerConcurrency(unittest.IsolatedAsyncioTestCase):
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
 
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -931,13 +947,15 @@ class TestMemoryManagerDatabaseConcurrency(unittest.IsolatedAsyncioTestCase):
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
 
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -1014,13 +1032,15 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         self.user_resolver = self.test_store.user_resolver
         self.redis_cache = NullRedisCache()
 
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=self.redis_cache,
         )
@@ -1031,7 +1051,7 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         """Test that repeated daily summary requests hit Redis cache instead of making AI calls."""
         test_date = date(1905, 3, 3)
 
-        self.mock_gemini_client.generate_content = AsyncMock(
+        self.mock_summary_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[
                     UserSummary(
@@ -1049,10 +1069,10 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
             mock_datetime.now.return_value = datetime(1905, 3, 3, 11, 0, tzinfo=timezone.utc)
             await self.memory_manager._daily_summary(self.physics_guild_id, test_date)
             await asyncio.sleep(0.1)
-            self.mock_gemini_client.generate_content.assert_called_once()
+            self.mock_summary_client.generate_content.assert_called_once()
 
             # Reset mock to track subsequent calls
-            self.mock_gemini_client.generate_content.reset_mock()
+            self.mock_summary_client.generate_content.reset_mock()
 
             # Act - Multiple calls within fresh window, all should hit cache
             mock_datetime.now.return_value = datetime(1905, 3, 3, 11, 30, tzinfo=timezone.utc)
@@ -1061,7 +1081,7 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
             await self.memory_manager._daily_summary(self.physics_guild_id, test_date)
 
             # Assert - No AI calls after initial rebuild
-            self.mock_gemini_client.generate_content.assert_not_called()
+            self.mock_summary_client.generate_content.assert_not_called()
 
     async def test_context_merge_cache_prevents_redundant_ai_calls(self):
         """Test that identical context merge requests hit cache."""
@@ -1071,7 +1091,7 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         historical = "Historical summary"
         user_id = self.physicist_ids["Einstein"]
 
-        self.mock_gemma_client.generate_content = AsyncMock(return_value=MemoryContext(context="Merged context"))
+        self.mock_merge_client.generate_content = AsyncMock(return_value=MemoryContext(context="Merged context"))
 
         # Act - Make multiple identical merge requests
         daily_summaries = {
@@ -1083,7 +1103,7 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         await self.memory_manager._merge_context(self.physics_guild_id, user_id, facts, daily_summaries)
 
         # Assert - Should only make one AI call due to content-based caching
-        self.mock_gemma_client.generate_content.assert_called_once()
+        self.mock_merge_client.generate_content.assert_called_once()
 
     async def test_cache_invalidation_on_content_change(self):
         """Test that cache properly invalidates when content changes."""
@@ -1094,7 +1114,7 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         current_day = "Current day summary"
         historical = "Historical summary"
 
-        self.mock_gemma_client.generate_content = AsyncMock(return_value=MemoryContext(context="Merged context"))
+        self.mock_merge_client.generate_content = AsyncMock(return_value=MemoryContext(context="Merged context"))
 
         # Act - Make calls with different content
         daily_summaries = {
@@ -1105,7 +1125,7 @@ class TestMemoryManagerCacheEffectiveness(unittest.IsolatedAsyncioTestCase):
         await self.memory_manager._merge_context(self.physics_guild_id, user_id, updated_facts, daily_summaries)
 
         # Assert - Should make two AI calls since content changed
-        self.assertEqual(self.mock_gemma_client.generate_content.call_count, 2)
+        self.assertEqual(self.mock_merge_client.generate_content.call_count, 2)
 
 
 class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
@@ -1119,13 +1139,15 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
         self.user_resolver = self.test_store.user_resolver
         self.redis_cache = NullRedisCache()
 
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=self.redis_cache,
         )
@@ -1139,7 +1161,7 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
         einstein_id = self.physicist_ids["Einstein"]
         expected_summaries = {einstein_id: "Einstein discussed relativity and mass-energy equivalence"}
 
-        self.mock_gemini_client.generate_content = AsyncMock(
+        self.mock_summary_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[
                     UserSummary(
@@ -1164,7 +1186,7 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(redis_data)
             self.assertEqual(redis_data[0], expected_summaries)
 
-            self.mock_gemini_client.generate_content.reset_mock()
+            self.mock_summary_client.generate_content.reset_mock()
 
             # Second call after midnight — date is now "historical", goes through DB path
             mock_datetime.now.return_value = datetime(1905, 3, 5, 0, 1, tzinfo=timezone.utc)
@@ -1172,7 +1194,7 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result2, expected_summaries)
 
             # Historical path makes exactly one AI call for this date
-            self.mock_gemini_client.generate_content.assert_called_once()
+            self.mock_summary_client.generate_content.assert_called_once()
 
             # Verify data persisted to DB via historical path
             db_data = await self.test_store.get_daily_summaries(self.physics_guild_id, transition_date)
@@ -1186,7 +1208,7 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
         # Act & Assert - Should handle empty date list gracefully
         result = await self.memory_manager._fetch_all_daily_summaries(self.physics_guild_id, empty_dates)
         self.assertEqual(result, {})
-        self.mock_gemini_client.generate_content.assert_not_called()
+        self.mock_summary_client.generate_content.assert_not_called()
 
     async def test_future_date_handling(self):
         """Test behavior when requesting summaries for future dates."""
@@ -1202,7 +1224,7 @@ class TestMemoryManagerDateBoundaries(unittest.IsolatedAsyncioTestCase):
 
             # Assert - Should handle future dates gracefully (no messages = empty summary)
             self.assertEqual(result, {})
-            self.mock_gemini_client.generate_content.assert_not_called()
+            self.mock_summary_client.generate_content.assert_not_called()
 
 
 class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
@@ -1216,15 +1238,17 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
         self.user_resolver = self.test_store.user_resolver
 
         # Mock AI clients only
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
 
         # Component under test
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -1252,7 +1276,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
 
             # Assert
             self.assertEqual(result, expected_summaries)
-            self.mock_gemini_client.generate_content.assert_not_called()  # No LLM call needed
+            self.mock_summary_client.generate_content.assert_not_called()  # No LLM call needed
 
     async def test_historical_date_database_miss_generates_and_saves(self):
         """Test that historical dates generate summaries and save to database when missing."""
@@ -1262,7 +1286,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
         generated_summaries = {einstein_id: "Einstein discussed photoelectric effect"}
 
         # Mock AI response for generating summaries
-        self.mock_gemini_client.generate_content = AsyncMock(
+        self.mock_summary_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed photoelectric effect")]
             )
@@ -1277,7 +1301,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
 
             # Assert
             self.assertEqual(result, generated_summaries)
-            self.mock_gemini_client.generate_content.assert_called_once()  # LLM call made
+            self.mock_summary_client.generate_content.assert_called_once()  # LLM call made
 
             # Verify summaries were saved to TestStore and can be retrieved
             saved_summaries = await self.test_store.get_daily_summaries(self.physics_guild_id, physics_discussion_date)
@@ -1297,7 +1321,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
 
             # Assert
             self.assertEqual(result, {})
-            self.mock_gemini_client.generate_content.assert_not_called()  # Skip LLM
+            self.mock_summary_client.generate_content.assert_not_called()  # Skip LLM
 
             # Verify TestStore correctly reports no messages for this date
             has_messages = await self.test_store.has_chat_messages_for_date(self.physics_guild_id, historical_date)
@@ -1310,7 +1334,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
         einstein_id = self.physicist_ids["Einstein"]
 
         # Mock AI response for generating summaries
-        self.mock_gemini_client.generate_content = AsyncMock(
+        self.mock_summary_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed photoelectric effect")]
             )
@@ -1328,7 +1352,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
 
             # Wait for async rebuild to populate Redis
             await asyncio.sleep(0.1)
-            self.mock_gemini_client.generate_content.assert_called_once()
+            self.mock_summary_client.generate_content.assert_called_once()
 
     async def test_database_persistence_integration(self):
         """Test that summaries are properly saved and retrieved from database via Store."""
@@ -1338,7 +1362,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
         generated_summaries = {einstein_id: "Einstein discussed photoelectric effect"}
 
         # Mock AI response for generating summaries
-        self.mock_gemini_client.generate_content = AsyncMock(
+        self.mock_summary_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed photoelectric effect")]
             )
@@ -1357,7 +1381,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
             # Assert
             self.assertEqual(result1, generated_summaries)
             self.assertEqual(result2, generated_summaries)
-            self.mock_gemini_client.generate_content.assert_called_once()  # Only one AI call
+            self.mock_summary_client.generate_content.assert_called_once()  # Only one AI call
 
             # Verify persistence integration - summaries stored and retrievable
             stored_summaries = await self.test_store.get_daily_summaries(self.physics_guild_id, physics_date)
@@ -1372,13 +1396,15 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
         self.redis_cache = NullRedisCache()
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=self.redis_cache,
         )
@@ -1390,14 +1416,12 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
     async def _populate_cache_via_rebuild(self, mock_datetime, at_time, ai_response):
         """Populate Redis cache using the memory manager's own async rebuild mechanism."""
         mock_datetime.now.return_value = at_time
-        self.mock_gemini_client.generate_content = AsyncMock(return_value=ai_response)
+        self.mock_summary_client.generate_content = AsyncMock(return_value=ai_response)
         await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
         await asyncio.sleep(0.1)
 
     def _make_summaries_response(self, summaries: dict[int, str]) -> DailySummaries:
-        return DailySummaries(
-            summaries=[UserSummary(user_id=uid, summary=text) for uid, text in summaries.items()]
-        )
+        return DailySummaries(summaries=[UserSummary(user_id=uid, summary=text) for uid, text in summaries.items()])
 
     async def test_fresh_cache_returns_immediately_no_rebuild(self):
         """Test that cache less than 1 hour old returns immediately without triggering rebuild."""
@@ -1412,7 +1436,7 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
                     {self.einstein_id: "Einstein discussed photoelectric effect"}
                 ),
             )
-            self.mock_gemini_client.generate_content.reset_mock()
+            self.mock_summary_client.generate_content.reset_mock()
 
             # Act - Call at 10:30 (30 min later, still fresh)
             mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
@@ -1420,7 +1444,7 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
 
             # Assert - Returns cached data, no new AI call
             self.assertEqual(result, {self.einstein_id: "Einstein discussed photoelectric effect"})
-            self.mock_gemini_client.generate_content.assert_not_called()
+            self.mock_summary_client.generate_content.assert_not_called()
 
     async def test_stale_cache_returns_immediately_triggers_async_rebuild(self):
         """Test that cache >= 1 hour old returns stale data and triggers async rebuild."""
@@ -1431,16 +1455,12 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             await self._populate_cache_via_rebuild(
                 mock_datetime,
                 at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
-                ai_response=self._make_summaries_response(
-                    {self.einstein_id: "Original summary"}
-                ),
+                ai_response=self._make_summaries_response({self.einstein_id: "Original summary"}),
             )
 
             # Prepare fresh response for the rebuild
-            self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=self._make_summaries_response(
-                    {self.einstein_id: "Fresh summary"}
-                )
+            self.mock_summary_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response({self.einstein_id: "Fresh summary"})
             )
 
             # Act - Call at 10:30 (1.5h later, stale)
@@ -1452,7 +1472,7 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
 
             # Wait for async rebuild, then verify fresh data is available
             await asyncio.sleep(0.1)
-            self.mock_gemini_client.generate_content.assert_called_once()
+            self.mock_summary_client.generate_content.assert_called_once()
             fresh = await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
             self.assertEqual(fresh, {self.einstein_id: "Fresh summary"})
 
@@ -1465,16 +1485,12 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             await self._populate_cache_via_rebuild(
                 mock_datetime,
                 at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
-                ai_response=self._make_summaries_response(
-                    {self.einstein_id: "Very old summary"}
-                ),
+                ai_response=self._make_summaries_response({self.einstein_id: "Very old summary"}),
             )
 
             # Prepare fresh response for rebuild
-            self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=self._make_summaries_response(
-                    {self.einstein_id: "Fresh summary"}
-                )
+            self.mock_summary_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response({self.einstein_id: "Fresh summary"})
             )
 
             # Act - Call at 16:00 (7h later, very stale)
@@ -1485,7 +1501,7 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result, {self.einstein_id: "Very old summary"})
 
             await asyncio.sleep(0.1)
-            self.mock_gemini_client.generate_content.assert_called_once()
+            self.mock_summary_client.generate_content.assert_called_once()
 
     async def test_duplicate_async_rebuild_prevention_via_redis_lock(self):
         """Test that multiple concurrent requests don't trigger duplicate async rebuilds."""
@@ -1496,9 +1512,7 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             await self._populate_cache_via_rebuild(
                 mock_datetime,
                 at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
-                ai_response=self._make_summaries_response(
-                    {self.einstein_id: "Stale summary"}
-                ),
+                ai_response=self._make_summaries_response({self.einstein_id: "Stale summary"}),
             )
 
             # Slow AI response for rebuild to test concurrency
@@ -1506,7 +1520,7 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0.2)
                 return self._make_summaries_response({self.einstein_id: "Fresh summary"})
 
-            self.mock_gemini_client.generate_content = AsyncMock(side_effect=slow_generate)
+            self.mock_summary_client.generate_content = AsyncMock(side_effect=slow_generate)
 
             # Act - 3 concurrent calls at 10:30 (stale), each triggers rebuild attempt
             mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
@@ -1522,7 +1536,7 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
 
             # Wait for rebuild, only one AI call due to lock deduplication
             await asyncio.sleep(0.3)
-            self.assertEqual(self.mock_gemini_client.generate_content.call_count, 1)
+            self.assertEqual(self.mock_summary_client.generate_content.call_count, 1)
 
     async def test_async_rebuild_releases_lock_on_completion(self):
         """Test that completed async rebuild releases the lock, allowing future rebuilds."""
@@ -1533,33 +1547,27 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             await self._populate_cache_via_rebuild(
                 mock_datetime,
                 at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
-                ai_response=self._make_summaries_response(
-                    {self.einstein_id: "Original summary"}
-                ),
+                ai_response=self._make_summaries_response({self.einstein_id: "Original summary"}),
             )
 
             # First stale rebuild at 10:30
-            self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=self._make_summaries_response(
-                    {self.einstein_id: "First refresh"}
-                )
+            self.mock_summary_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response({self.einstein_id: "First refresh"})
             )
             mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
             await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
             await asyncio.sleep(0.1)
 
             # Second stale rebuild at 12:00 — should succeed (lock was released)
-            self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=self._make_summaries_response(
-                    {self.einstein_id: "Second refresh"}
-                )
+            self.mock_summary_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response({self.einstein_id: "Second refresh"})
             )
             mock_datetime.now.return_value = datetime(1905, 3, 3, 12, 0, tzinfo=timezone.utc)
             await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
             await asyncio.sleep(0.1)
 
             # Assert - Second rebuild ran (lock was released after first)
-            self.mock_gemini_client.generate_content.assert_called_once()
+            self.mock_summary_client.generate_content.assert_called_once()
 
     async def test_async_rebuild_handles_blocked_exception(self):
         """Test that async rebuild handles BlockedException gracefully and releases lock."""
@@ -1570,13 +1578,11 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             await self._populate_cache_via_rebuild(
                 mock_datetime,
                 at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
-                ai_response=self._make_summaries_response(
-                    {self.einstein_id: "Stale summary"}
-                ),
+                ai_response=self._make_summaries_response({self.einstein_id: "Stale summary"}),
             )
 
             # Rebuild will fail with BlockedException
-            self.mock_gemini_client.generate_content = AsyncMock(
+            self.mock_summary_client.generate_content = AsyncMock(
                 side_effect=BlockedException(reason="PROHIBITED_CONTENT")
             )
 
@@ -1587,15 +1593,13 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.1)
 
             # Assert - Lock released despite error: a new rebuild can proceed
-            self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=self._make_summaries_response(
-                    {self.einstein_id: "Recovered summary"}
-                )
+            self.mock_summary_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response({self.einstein_id: "Recovered summary"})
             )
             mock_datetime.now.return_value = datetime(1905, 3, 3, 11, 30, tzinfo=timezone.utc)
             await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
             await asyncio.sleep(0.1)
-            self.mock_gemini_client.generate_content.assert_called_once()
+            self.mock_summary_client.generate_content.assert_called_once()
 
     async def test_async_rebuild_handles_generic_exception(self):
         """Test that async rebuild handles generic exceptions gracefully and releases lock."""
@@ -1606,15 +1610,11 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             await self._populate_cache_via_rebuild(
                 mock_datetime,
                 at_time=datetime(1905, 3, 3, 9, 0, tzinfo=timezone.utc),
-                ai_response=self._make_summaries_response(
-                    {self.einstein_id: "Stale summary"}
-                ),
+                ai_response=self._make_summaries_response({self.einstein_id: "Stale summary"}),
             )
 
             # Rebuild will fail with generic exception
-            self.mock_gemini_client.generate_content = AsyncMock(
-                side_effect=Exception("Network error")
-            )
+            self.mock_summary_client.generate_content = AsyncMock(side_effect=Exception("Network error"))
 
             # Act - Stale call triggers rebuild that fails
             mock_datetime.now.return_value = datetime(1905, 3, 3, 10, 30, tzinfo=timezone.utc)
@@ -1623,15 +1623,13 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.1)
 
             # Assert - Lock released despite error: a new rebuild can proceed
-            self.mock_gemini_client.generate_content = AsyncMock(
-                return_value=self._make_summaries_response(
-                    {self.einstein_id: "Recovered summary"}
-                )
+            self.mock_summary_client.generate_content = AsyncMock(
+                return_value=self._make_summaries_response({self.einstein_id: "Recovered summary"})
             )
             mock_datetime.now.return_value = datetime(1905, 3, 3, 11, 30, tzinfo=timezone.utc)
             await self.memory_manager._daily_summary(self.physics_guild_id, self.today)
             await asyncio.sleep(0.1)
-            self.mock_gemini_client.generate_content.assert_called_once()
+            self.mock_summary_client.generate_content.assert_called_once()
 
     async def test_async_rebuild_triggers_memory_recompute_for_affected_users(self):
         """Test that async rebuild calls get_memories to precompute merged contexts for affected users."""
@@ -1650,15 +1648,13 @@ class TestMemoryManagerStalenessLogic(unittest.IsolatedAsyncioTestCase):
             )
 
             # Prepare fresh response for rebuild
-            self.mock_gemini_client.generate_content = AsyncMock(
+            self.mock_summary_client.generate_content = AsyncMock(
                 return_value=self._make_summaries_response(
                     {self.einstein_id: "Fresh summary", bohr_id: "Fresh Bohr summary"}
                 )
             )
 
-            with patch.object(
-                self.memory_manager, "get_memories", new_callable=AsyncMock
-            ) as mock_get_memories:
+            with patch.object(self.memory_manager, "get_memories", new_callable=AsyncMock) as mock_get_memories:
                 mock_get_memories.return_value = {}
 
                 # Act - Stale call triggers rebuild
@@ -1681,13 +1677,15 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
         self.test_store = TestStore()
         self.user_resolver = self.test_store.user_resolver
         self.redis_cache = NullRedisCache()
-        self.mock_gemini_client = Mock(spec=AIClient)
-        self.mock_gemma_client = Mock(spec=AIClient)
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_merge_client = Mock(spec=AIClient)
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.mock_gemini_client,
-            gemma_client=self.mock_gemma_client,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=self.mock_merge_client,
             user_resolver=self.user_resolver,
             redis_cache=self.redis_cache,
         )
@@ -1704,7 +1702,7 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
                 return UserAliases(aliases=["Albert"])
             return UserAliases(aliases=["Niels"])
 
-        self.mock_gemma_client.generate_content = AsyncMock(side_effect=gemma_side_effect)
+        self.mock_alias_client.generate_content = AsyncMock(side_effect=gemma_side_effect)
 
         user_facts = {
             einstein_id: "He is Albert, a theoretical physicist",
@@ -1714,40 +1712,36 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result[einstein_id], ["Albert"])
         self.assertEqual(result[bohr_id], ["Niels"])
-        self.assertEqual(self.mock_gemma_client.generate_content.call_count, 2)
+        self.assertEqual(self.mock_alias_client.generate_content.call_count, 2)
 
     async def test_extract_aliases_caches_by_facts_hash(self):
         """Test that repeated extraction with same facts hits cache."""
         einstein_id = self.physicist_ids["Einstein"]
         facts = "He is Albert, a theoretical physicist"
 
-        self.mock_gemma_client.generate_content = AsyncMock(
-            return_value=UserAliases(aliases=["Albert"])
-        )
+        self.mock_alias_client.generate_content = AsyncMock(return_value=UserAliases(aliases=["Albert"]))
 
         await self.memory_manager._extract_aliases({einstein_id: facts})
         await self.memory_manager._extract_aliases({einstein_id: facts})
 
-        self.mock_gemma_client.generate_content.assert_called_once()
+        self.mock_alias_client.generate_content.assert_called_once()
 
     async def test_extract_aliases_cache_invalidates_on_facts_change(self):
         """Test that different facts produce a cache miss."""
         einstein_id = self.physicist_ids["Einstein"]
 
-        self.mock_gemma_client.generate_content = AsyncMock(
-            return_value=UserAliases(aliases=["Albert"])
-        )
+        self.mock_alias_client.generate_content = AsyncMock(return_value=UserAliases(aliases=["Albert"]))
 
         await self.memory_manager._extract_aliases({einstein_id: "He is Albert"})
         await self.memory_manager._extract_aliases({einstein_id: "He is Albert Einstein, also known as Al"})
 
-        self.assertEqual(self.mock_gemma_client.generate_content.call_count, 2)
+        self.assertEqual(self.mock_alias_client.generate_content.call_count, 2)
 
     async def test_extract_aliases_empty_input_returns_empty(self):
         """Test that empty user_facts returns empty dict."""
         result = await self.memory_manager._extract_aliases({})
         self.assertEqual(result, {})
-        self.mock_gemma_client.generate_content.assert_not_called()
+        self.mock_alias_client.generate_content.assert_not_called()
 
     async def test_extract_aliases_partial_failure_returns_successful(self):
         """Test that one user's extraction failure doesn't block others."""
@@ -1763,7 +1757,7 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
                 raise ValueError("AI service unavailable")
             return UserAliases(aliases=["Albert"])
 
-        self.mock_gemma_client.generate_content = AsyncMock(side_effect=gemma_side_effect)
+        self.mock_alias_client.generate_content = AsyncMock(side_effect=gemma_side_effect)
 
         user_facts = {
             einstein_id: "He is Albert",
@@ -1784,12 +1778,10 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
         self.test_store._user_facts[einstein_id] = "He is Albert, a theoretical physicist"
 
         # Mock alias extraction
-        self.mock_gemma_client.generate_content = AsyncMock(
-            return_value=UserAliases(aliases=["Albert"])
-        )
+        self.mock_alias_client.generate_content = AsyncMock(return_value=UserAliases(aliases=["Albert"]))
 
         # Mock daily summary generation
-        self.mock_gemini_client.generate_content = AsyncMock(
+        self.mock_summary_client.generate_content = AsyncMock(
             return_value=DailySummaries(
                 summaries=[UserSummary(user_id=einstein_id, summary="Einstein discussed physics")]
             )
@@ -1798,7 +1790,7 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
         await self.memory_manager._create_daily_summaries(self.physics_guild_id, test_date)
 
         # Check that the Gemini prompt contains the also_known_as tag
-        gemini_call_args = self.mock_gemini_client.generate_content.call_args
+        gemini_call_args = self.mock_summary_client.generate_content.call_args
         prompt = gemini_call_args[1]["message"]
         self.assertIn("<also_known_as>Albert</also_known_as>", prompt)
 
@@ -1809,7 +1801,7 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.1)
             return UserAliases(aliases=["Name"])
 
-        self.mock_gemma_client.generate_content = AsyncMock(side_effect=slow_extract)
+        self.mock_alias_client.generate_content = AsyncMock(side_effect=slow_extract)
 
         user_facts = {
             self.physicist_ids["Einstein"]: "Facts A",
@@ -1821,7 +1813,7 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
         await self.memory_manager._extract_aliases(user_facts)
         elapsed = asyncio.get_event_loop().time() - start_time
 
-        self.assertEqual(self.mock_gemma_client.generate_content.call_count, 3)
+        self.assertEqual(self.mock_alias_client.generate_content.call_count, 3)
         self.assertLess(elapsed, 0.2)
 
 

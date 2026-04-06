@@ -98,8 +98,9 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.gemma_client,
-            gemma_client=self.gemma_client,
+            summary_client=self.gemma_client,
+            alias_client=self.gemma_client,
+            merge_client=self.gemma_client,
             user_resolver=self.mock_user_resolver,
             redis_cache=NullRedisCache(),
         )

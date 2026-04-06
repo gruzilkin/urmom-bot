@@ -21,7 +21,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class ClaudeClient(AIClient):
-    def __init__(self, telemetry: Telemetry, model_name: str = "claude_code"):
+    def __init__(self, telemetry: Telemetry, model_name: str | None = None):
         self.model_name = model_name
         self.telemetry = telemetry
         self.service = "CLAUDE"
@@ -29,7 +29,7 @@ class ClaudeClient(AIClient):
     async def generate_content(
         self,
         message: str,
-        prompt: str = None,
+        prompt: str | None = None,
         samples: list[tuple[str, str]] | None = None,
         enable_grounding: bool = False,
         response_schema: type[T] | None = None,
@@ -82,8 +82,10 @@ class ClaudeClient(AIClient):
                 "--print",
                 "--output-format", "text",
                 "--allowedTools", "WebSearch", "WebFetch",
-                "--disallowedTools", "Bash", "Edit", "Write", "Create", "Read"
+                "--disallowedTools", "Bash", "Edit", "Write", "Create", "Read",
             ]
+            if self.model_name:
+                claude_cmd.extend(["--model", self.model_name])
             
             logger.info(f"Running Claude CLI command: {' '.join(claude_cmd)}")
             

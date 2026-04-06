@@ -98,8 +98,9 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
         memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=store,
-            gemini_client=self.gemini_client,
-            gemma_client=profile.client,
+            summary_client=self.gemini_client,
+            alias_client=profile.client,
+            merge_client=profile.client,
             user_resolver=store.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -114,8 +115,9 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
         memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=store,
-            gemini_client=summary_profile.client,
-            gemma_client=self.default_merge_profile.client,
+            summary_client=summary_profile.client,
+            alias_client=self.default_merge_profile.client,
+            merge_client=self.default_merge_profile.client,
             user_resolver=store.user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -391,10 +393,10 @@ class TestMemoryManagerRealExceptionHandling(MemoryManagerTestBase):
                 facts = "Einstein is a theoretical physicist who developed relativity theory"
                 ctx.store.set_user_facts(ctx.store.physics_guild_id, einstein_id, facts)
 
-                ctx.memory_manager._gemini_client.generate_content = AsyncMock(
+                ctx.memory_manager._summary_client.generate_content = AsyncMock(
                     side_effect=Exception("AI quota exceeded")
                 )
-                ctx.memory_manager._gemma_client.generate_content = AsyncMock(
+                ctx.memory_manager._merge_client.generate_content = AsyncMock(
                     side_effect=Exception("AI quota exceeded")
                 )
 
@@ -416,7 +418,7 @@ class TestMemoryManagerRealExceptionHandling(MemoryManagerTestBase):
                     ctx.store.physicist_ids["Bohr"],
                 ]
 
-                ctx.memory_manager._gemini_client.generate_content = AsyncMock(
+                ctx.memory_manager._summary_client.generate_content = AsyncMock(
                     return_value=DailySummaries(
                         summaries=[
                             UserSummary(user_id=uid, summary=f"Daily summary for {uid}")
@@ -424,7 +426,7 @@ class TestMemoryManagerRealExceptionHandling(MemoryManagerTestBase):
                         ]
                     )
                 )
-                ctx.memory_manager._gemma_client.generate_content = AsyncMock(
+                ctx.memory_manager._merge_client.generate_content = AsyncMock(
                     side_effect=Exception("Merge AI failed")
                 )
 
@@ -445,7 +447,7 @@ class TestMemoryManagerRealExceptionHandling(MemoryManagerTestBase):
         for profile in self.merge_profiles:
             with self.subTest(profile=profile.name):
                 ctx = self._build_context(profile)
-                ctx.memory_manager._gemini_client.generate_content = AsyncMock(
+                ctx.memory_manager._summary_client.generate_content = AsyncMock(
                     return_value=DailySummaries(summaries=[])
                 )
 
