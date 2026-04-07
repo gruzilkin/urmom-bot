@@ -130,6 +130,13 @@ class Container:
             telemetry=self.telemetry,
         )
 
+        # Shuffled composite for jokes - gives both clients equal chance
+        self.shuffled_grok_gemini = CompositeAIClient(
+            [self.retrying_grok, self.gemini_flash],
+            telemetry=self.telemetry,
+            shuffle=True,
+        )
+
         # Shuffled composite for wisdom - gives both clients equal chance
         self.shuffled_grok_kimi = CompositeAIClient(
             [self.retrying_grok, self.ollama_kimi_long_timeout],
@@ -203,7 +210,7 @@ class Container:
         )
 
         self.joke_generator = JokeGenerator(
-            joke_writer_client=self.shuffled_grok_kimi,
+            joke_writer_client=self.shuffled_grok_gemini,
             joke_classifier_client=self.lightweight_fallback,
             store=self.store,
             telemetry=self.telemetry,
