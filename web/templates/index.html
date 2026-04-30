@@ -18,11 +18,11 @@
         {% include 'partials/_tabs.html' %}
 
         <div class="controls">
-            <form method="get" class="search-form">
+            <form method="get" action="/jokes" class="search-form">
                 <input type="text" name="search" placeholder="Search jokes..." value="{{ search }}" />
                 <button type="submit">Search</button>
                 {% if search %}
-                    <a href="/" class="clear-search">Clear</a>
+                    <a href="/jokes" class="clear-search">Clear</a>
                 {% endif %}
             </form>
             
@@ -96,7 +96,7 @@
         <div class="no-results">
             {% if search %}
                 <p>No jokes found matching "{{ search }}"</p>
-                <a href="/">View all jokes</a>
+                <a href="/jokes">View all jokes</a>
             {% else %}
                 <p>No jokes found in the database.</p>
             {% endif %}

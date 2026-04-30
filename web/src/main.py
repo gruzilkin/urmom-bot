@@ -1,7 +1,7 @@
 import os
 import logging
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -49,8 +49,13 @@ app.mount("/static", StaticFiles(directory=os.path.join(app_root, "static")), na
 templates = Jinja2Templates(directory=os.path.join(app_root, "templates"))
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request, page: int = 1, search: str = ""):
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/jokes", status_code=308)
+
+
+@app.get("/jokes", response_class=HTMLResponse)
+async def jokes(request: Request, page: int = 1, search: str = ""):
     """Main joke management page with pagination and search"""
     try:
         page_size = 20
