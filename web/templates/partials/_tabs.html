@@ -1,4 +1,6 @@
-<nav class="tabs">
-    <a href="/" class="tab {% if active == 'jokes' %}tab-active{% endif %}">Jokes</a>
-    <a href="/users" class="tab {% if active == 'users' %}tab-active{% endif %}">User Facts</a>
-</nav>
+<div class="tabs">
+    <nav class="tabs-pill" role="tablist">
+        <a href="/" class="tab {% if active == 'jokes' %}tab-active{% endif %}" {% if active == 'jokes' %}aria-current="page"{% endif %}>Jokes</a>
+        <a href="/users" class="tab {% if active == 'users' %}tab-active{% endif %}" {% if active == 'users' %}aria-current="page"{% endif %}>User Facts</a>
+    </nav>
+</div>
