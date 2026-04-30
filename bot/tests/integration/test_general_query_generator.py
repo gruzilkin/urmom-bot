@@ -65,13 +65,15 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.mock_store.get_user_facts = AsyncMock(return_value=None)
         self.mock_user_resolver = Mock()
         self.mock_user_resolver.get_display_name = AsyncMock(return_value="TestUser")
-        self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(
-            side_effect=lambda text, guild_id: text
-        )
+        self.mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda text, guild_id: text)
 
         self.mock_bot_user = Mock()
         self.mock_bot_user.name = "urmom-bot"
         self.mock_bot_user.id = 99999
+
+        self.mock_requesting_user = Mock()
+        self.mock_requesting_user.id = 1000
+        self.mock_requesting_user.display_name = "TestUser"
 
         self.conversation_formatter = ConversationFormatter(self.mock_user_resolver)
 
@@ -122,6 +124,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=12345,
             bot_user=self.mock_bot_user,
+            requesting_user=self.mock_requesting_user,
         )
 
         self.assertIsInstance(result, str)
@@ -152,6 +155,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=12345,
             bot_user=self.mock_bot_user,
+            requesting_user=self.mock_requesting_user,
         )
 
         self.assertIsInstance(result, str)
@@ -181,15 +185,14 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=12345,
             bot_user=self.mock_bot_user,
+            requesting_user=self.mock_requesting_user,
         )
 
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
 
         contains_cyrillic = bool(re.search(r"[а-яё]", result.lower()))
-        self.assertTrue(
-            contains_cyrillic, f"Response should contain Russian text but got: {result}"
-        )
+        self.assertTrue(contains_cyrillic, f"Response should contain Russian text but got: {result}")
 
 
 if __name__ == "__main__":

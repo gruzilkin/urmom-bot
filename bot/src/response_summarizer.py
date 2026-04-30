@@ -29,9 +29,7 @@ class ResponseSummarizer:
         self.telemetry = telemetry
         self.summarization_temperature = 0.1
 
-    async def process_response(
-        self, original_response: str, max_length: int = 2000
-    ) -> str:
+    async def process_response(self, original_response: str, max_length: int = 2000) -> str:
         """
         Process a response, summarizing if too long, or truncating as fallback.
 
@@ -52,16 +50,12 @@ class ResponseSummarizer:
             f"Response length {len(original_response)} exceeds limit of {max_length}, attempting summarization"
         )
 
-        async with self.telemetry.async_create_span(
-            "summarize_long_response", kind=SpanKind.CLIENT
-        ) as span:
+        async with self.telemetry.async_create_span("summarize_long_response", kind=SpanKind.CLIENT) as span:
             span.set_attribute("original_length", len(original_response))
             span.set_attribute("max_length", max_length)
 
             try:
-                summarized_response = await self._summarize_with_llm(
-                    original_response, target_length
-                )
+                summarized_response = await self._summarize_with_llm(original_response, target_length)
 
                 if len(summarized_response) <= max_length:
                     logger.info(
@@ -71,7 +65,8 @@ class ResponseSummarizer:
                     return summarized_response
                 else:
                     logger.warning(
-                        f"Summarization still too long: {len(summarized_response)} characters, falling back to truncation"
+                        f"Summarization still too long: {len(summarized_response)} characters,"
+                        " falling back to truncation"
                     )
 
             except Exception as e:
@@ -79,15 +74,11 @@ class ResponseSummarizer:
 
             # Fallback to truncation
             truncated_response = self._truncate_response(original_response, max_length)
-            logger.info(
-                f"Falling back to truncation: {len(original_response)} → {len(truncated_response)} characters"
-            )
+            logger.info(f"Falling back to truncation: {len(original_response)} → {len(truncated_response)} characters")
             span.set_attribute("final_length", len(truncated_response))
             return truncated_response
 
-    async def _summarize_with_llm(
-        self, original_response: str, target_length: int
-    ) -> str:
+    async def _summarize_with_llm(self, original_response: str, target_length: int) -> str:
         """
         Summarize the response using the configured AI client.
 
@@ -102,8 +93,13 @@ class ResponseSummarizer:
             Exception: If summarization fails
         """
         # Create system prompt with instructions only
-        prompt = f"""Summarize the following content so the response stays comfortably under {target_length} characters while preserving the key points, conclusions, tone, and any Markdown formatting that still matters.
-        Trim repeated or low-value details, keep the original language, and avoid meta-commentary about the summarization."""
+        prompt = (
+            f"Summarize the following content so the response stays comfortably under"
+            f" {target_length} characters while preserving the key points, conclusions,"
+            " tone, and any Markdown formatting that still matters."
+            " Trim repeated or low-value details, keep the original language,"
+            " and avoid meta-commentary about the summarization."
+        )
 
         summarized = await self._ai_client.generate_content(
             message=original_response,

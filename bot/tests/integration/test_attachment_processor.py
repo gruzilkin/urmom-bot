@@ -81,9 +81,7 @@ class TestAttachmentProcessorIntegration(unittest.IsolatedAsyncioTestCase):
             )
 
         if not self.profiles:
-            self.skipTest(
-                "No attachment processor profiles configured; ensure Gemma or Ollama credentials are set."
-            )
+            self.skipTest("No attachment processor profiles configured; ensure Gemma or Ollama credentials are set.")
 
     async def test_process_image_attachment_from_url(self):
         """Test processing a real image from a URL."""
@@ -98,9 +96,7 @@ class TestAttachmentProcessorIntegration(unittest.IsolatedAsyncioTestCase):
                 mock_attachment.url = image_url
                 mock_attachment.id = f"{profile.name}_image"
 
-                embeddings = await profile.processor._process_attachments(
-                    [mock_attachment]
-                )
+                embeddings = await profile.processor._process_attachments([mock_attachment])
 
                 self.assertEqual(len(embeddings), 1)
                 embedding_text = embeddings[0]
@@ -109,9 +105,7 @@ class TestAttachmentProcessorIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(embedding_text.endswith("</embedding>"))
 
                 description = embedding_text.split(">", 1)[1].rsplit("<", 1)[0].lower()
-                self.assertGreater(
-                    len(description), 100, "Description should be substantial."
-                )
+                self.assertGreater(len(description), 100, "Description should be substantial.")
 
     async def test_process_article_embed_from_url(self):
         """Test processing a real article from a URL."""
@@ -131,9 +125,7 @@ class TestAttachmentProcessorIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(embedding_text.endswith("</embedding>"))
 
                 article_content = embedding_text.split(">", 1)[1].rsplit("<", 1)[0].lower()
-                self.assertGreater(
-                    len(article_content), 1000, "Article content should be substantial."
-                )
+                self.assertGreater(len(article_content), 1000, "Article content should be substantial.")
                 keywords = [
                     "tokyo",
                     "capital",

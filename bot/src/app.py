@@ -533,7 +533,8 @@ async def process_joke_request(payload: nextcord.RawReactionActionEvent, country
     else:
         fetch_conversation = create_conversation_fetcher(message)
         joke = await container.joke_generator.generate_joke(
-            message.content, language,
+            message.content,
+            language,
             conversation_fetcher=fetch_conversation,
             guild_id=payload.guild_id,
         )
@@ -579,7 +580,7 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
     if wisdom is None:
         return
 
-    reply_message = await traced_reply(message, wisdom)
+    await traced_reply(message, wisdom)
 
     container.telemetry.metrics.wisdom_generated.add(1, {"guild_id": str(payload.guild_id)})
 
@@ -612,7 +613,7 @@ async def process_devils_advocate_request(payload: nextcord.RawReactionActionEve
     if counter_argument is None:
         return
 
-    reply_message = await traced_reply(message, counter_argument)
+    await traced_reply(message, counter_argument)
 
     container.telemetry.metrics.devils_advocate_generated.add(1, {"guild_id": str(payload.guild_id)})
 

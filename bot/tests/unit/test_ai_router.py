@@ -170,19 +170,16 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         ]
         mock_fetcher = AsyncMock(return_value=mock_conversation)
 
-        route, params = await self.router.route_request(
-            "explain more", mock_fetcher, self.default_guild_id
-        )
+        route, params = await self.router.route_request("explain more", mock_fetcher, self.default_guild_id)
 
         self.assertEqual(route, "GENERAL")
         mock_fetcher.assert_called_once()
-        self.conversation_formatter.format_to_xml.assert_called_once_with(
-            self.default_guild_id, mock_conversation
-        )
+        self.conversation_formatter.format_to_xml.assert_called_once_with(self.default_guild_id, mock_conversation)
         # Verify context is passed to parameter extraction
         self.general_generator.get_parameter_extraction_prompt.assert_called_once_with(
             "<conversation_history></conversation_history>"
         )
+
 
 if __name__ == "__main__":
     unittest.main()

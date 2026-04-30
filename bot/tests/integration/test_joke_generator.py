@@ -37,13 +37,9 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
         gemma_api_key = os.getenv("GEMMA_API_KEY")
         gemma_model = os.getenv("GEMMA_MODEL")
         if not gemma_api_key:
-            self.skipTest(
-                "GEMMA_API_KEY environment variable not set (needed for language detection)"
-            )
+            self.skipTest("GEMMA_API_KEY environment variable not set (needed for language detection)")
         if not gemma_model:
-            self.skipTest(
-                "GEMMA_MODEL environment variable not set (needed for language detection)"
-            )
+            self.skipTest("GEMMA_MODEL environment variable not set (needed for language detection)")
 
         self.gemma_client = GemmaClient(
             api_key=gemma_api_key,
@@ -84,9 +80,7 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
                 temperature=0.1,
                 telemetry=self.telemetry,
             )
-            self.profiles.append(
-                JokeClientProfile(name="gemini_flash", client=gemini_client)
-            )
+            self.profiles.append(JokeClientProfile(name="gemini_flash", client=gemini_client))
 
         ollama_api_key = os.getenv("OLLAMA_API_KEY")
         if ollama_api_key:
@@ -97,9 +91,7 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
                 telemetry=self.telemetry,
                 temperature=0.1,
             )
-            self.profiles.append(
-                JokeClientProfile(name="ollama_kimi", client=kimi_client)
-            )
+            self.profiles.append(JokeClientProfile(name="ollama_kimi", client=kimi_client))
 
         if not self.profiles:
             self.skipTest("No joke generator AI clients configured for integration tests")
@@ -149,9 +141,7 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 joke_generator = self._build_joke_generator(profile.client)
-                result = await joke_generator.generate_country_joke(
-                    test_message, country
-                )
+                result = await joke_generator.generate_country_joke(test_message, country)
                 self.assertIsInstance(result, str)
                 self.assertGreater(len(result), 0)
                 print(f"[{profile.name}] Generated country joke: {result}")

@@ -144,10 +144,7 @@ Reply in {language_name}. Return only the joke, no meta commentary or explanatio
 {conversation_block}"""
 
         async with self.telemetry.async_create_span("generate_joke"):
-            response = await self._joke_writer_client.generate_content(
-                message=content,
-                prompt=prompt
-            )
+            response = await self._joke_writer_client.generate_content(message=content, prompt=prompt)
             return response
 
     async def generate_country_joke(self, message: str, country: str) -> str:
@@ -157,9 +154,7 @@ Response should be fully in the language of the user message
 which includes translating the country name into the user's language.
 Apply stereotypes and cliches about the country."""
         async with self.telemetry.async_create_span("generate_country_joke"):
-            response = await self._joke_writer_client.generate_content(
-                message=message, prompt=prompt
-            )
+            response = await self._joke_writer_client.generate_content(message=message, prompt=prompt)
             return response
 
     async def is_joke(self, original_message: str, response_message: str, message_id: int = None) -> bool:
@@ -190,9 +185,7 @@ playful or witty, should be NO."""
             logger.info(f"Response: {response_message}")
 
             response = await self._joke_classifier_client.generate_content(
-                message=message,
-                prompt=prompt,
-                response_schema=YesNo
+                message=message, prompt=prompt, response_schema=YesNo
             )
 
             result = response.answer == "YES"
@@ -205,9 +198,14 @@ playful or witty, should be NO."""
             logger.info(f"Is joke: {result}")
             return result
 
-    async def save_joke(self, source_message_id: int, source_message_content: str, 
-                                    joke_message_id: int, joke_message_content: str, 
-                                    reaction_count: int) -> None:
+    async def save_joke(
+        self,
+        source_message_id: int,
+        source_message_content: str,
+        joke_message_id: int,
+        joke_message_content: str,
+        reaction_count: int,
+    ) -> None:
         """
         Save a joke to the store with language detection.
         """
@@ -215,7 +213,7 @@ playful or witty, should be NO."""
             # Detect languages using the language detection service
             source_lang = await self.language_detector.detect_language(source_message_content)
             joke_lang = await self.language_detector.detect_language(joke_message_content)
-            
+
             await self.store.save(
                 source_message_id=source_message_id,
                 joke_message_id=joke_message_id,
@@ -223,7 +221,7 @@ playful or witty, should be NO."""
                 joke_message_content=joke_message_content,
                 reaction_count=reaction_count,
                 source_language=source_lang,
-                joke_language=joke_lang
+                joke_language=joke_lang,
             )
-            
+
             logger.info(f"Saved joke: {joke_message_content} (reactions: {reaction_count})")

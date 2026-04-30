@@ -4,6 +4,7 @@ import os
 import unittest
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from unittest.mock import MagicMock
 
 from dotenv import load_dotenv
 
@@ -98,8 +99,9 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.test_store,
-            gemini_client=self.gemma_client,
-            gemma_client=self.gemma_client,
+            summary_client=self.gemma_client,
+            alias_client=self.gemma_client,
+            merge_client=self.gemma_client,
             user_resolver=self.mock_user_resolver,
             redis_cache=NullRedisCache(),
         )
@@ -135,7 +137,10 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             for msg in physics_messages
         ]
 
-        trigger_message = "God does not play dice with the universe"
+        trigger_message = MagicMock()
+        trigger_message.content = "God does not play dice with the universe"
+        trigger_message.author.id = self.test_store._messages[0].user_id
+        trigger_message.author.display_name = "Albert Einstein"
 
         async def mock_conversation_fetcher():
             return conversation_messages
@@ -144,7 +149,7 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             with self.subTest(profile=profile.name):
                 generator = self._build_wisdom_generator(profile.client)
                 result = await generator.generate_wisdom(
-                    trigger_message_content=trigger_message,
+                    trigger_message=trigger_message,
                     conversation_fetcher=mock_conversation_fetcher,
                     guild_id=self.test_store.physics_guild_id,
                 )

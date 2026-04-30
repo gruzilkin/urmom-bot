@@ -1,5 +1,6 @@
 import logging
-from typing import Set, Callable, Awaitable
+from typing import Callable
+from collections.abc import Awaitable
 
 import nextcord
 
@@ -35,14 +36,23 @@ class GeneralQueryGenerator:
     def get_route_description(self) -> str:
         return """
         GENERAL: For valid questions/requests needing AI assistance
-        - Handles legitimate questions, requests for information, explanations, or help
-        - Valid queries: "What's the weather?", "Explain quantum physics", "How do I cook pasta?", "What do you remember about John?", "Tell me about user X"
-        - Context-dependent questions: "What about this?", "How does that work?"
-        - Factual questions about real people: "What did Trump say?", "Did X say anything interesting?", "What did Marie Curie discover?"
+        - Handles legitimate questions, requests for information,
+          explanations, or help
+        - Valid queries: "What's the weather?", "Explain quantum physics",
+          "How do I cook pasta?", "What do you remember about John?",
+          "Tell me about user X"
+        - Context-dependent questions: "What about this?",
+          "How does that work?"
+        - Factual questions about real people: "What did Trump say?",
+          "Did X say anything interesting?",
+          "What did Marie Curie discover?"
         - Commands to the bot: "спой осанну Медведу"
         - Questions with names: "для чего Алексею нужна голова?"
-        - May contain AI backend specifications such as "ask grok to...", "use claude to...", "have gemini explain..."
-        - Invalid: Simple reactions like "lol", "nice", "haha that's funny"
+        - May contain AI backend specifications such as
+          "ask grok to...", "use claude to...",
+          "have gemini explain..."
+        - Invalid: Simple reactions like "lol", "nice",
+          "haha that's funny"
         """
 
     def get_parameter_schema(self):
@@ -69,36 +79,57 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         Extract parameters for a general AI query request.
         
         ai_backend selection:
-        * claude: General queries, coding, technical explanations, detailed analysis,
-          complex reasoning, fact-checking, internet search
-        * gemini_flash: Creative writing, songs, poems, artistic content, extensive internet search
+        * claude: General queries, coding, technical explanations,
+          detailed analysis, complex reasoning, fact-checking,
+          internet search
+        * gemini_flash: Creative writing, songs, poems,
+          artistic content, extensive internet search
         * grok: Uncensored content, wild requests, crazy talk
-        * codex: Research topics, analysis, current events (select for "chatgpt"/"openai" requests)
+        * codex: Research topics, analysis, current events
+          (select for "chatgpt"/"openai" requests)
         * gemma: Do not select unless explicitly requested
-        * Handle explicit requests: "ask grok about...", "use gemini flash for...", "ask claude to..."
+        * Handle explicit requests: "ask grok about...",
+          "use gemini flash for...", "ask claude to..."
         
         temperature selection:
-        * Use a low temperature (<= 0.3) for factual data, calculations, precise information, technical explanations, or requests for "detailed" plans.
-        * Use a moderate temperature (0.4-0.6) for balanced responses and general questions.
-        * Use a high temperature (>= 0.7) for creative writing, brainstorming, "go crazy" requests, and artistic content.
+        * Use a low temperature (<= 0.3) for factual data,
+          calculations, precise information, technical explanations,
+          or requests for "detailed" plans.
+        * Use a moderate temperature (0.4-0.6) for balanced responses
+          and general questions.
+        * Use a high temperature (>= 0.7) for creative writing,
+          brainstorming, "go crazy" requests, and artistic content.
         
         cleaned_query extraction:
-        * Goal: Produce a clean, direct query for the AI assistant. The user's message will contain the placeholder 'BOT' to refer to the assistant.
-        * Rule 1: Rephrase the query from the BOT's perspective. Convert the user's request into a direct, second-person command or question.
-        * Rule 2: Remove routing instructions like `use gemini`, `be creative`, or temperature hints.
-        * Rule 3: Keep the query in the original language of the user's message - do not translate.
+        * Goal: Produce a clean, direct query for the AI assistant.
+          The user's message will contain the placeholder 'BOT'
+          to refer to the assistant.
+        * Rule 1: Rephrase the query from the BOT's perspective.
+          Convert the user's request into a direct, second-person
+          command or question.
+        * Rule 2: Remove routing instructions like `use gemini`,
+          `be creative`, or temperature hints.
+        * Rule 3: Keep the query in the original language of
+          the user's message - do not translate.
         * Examples:
-          - "BOT, what is the capital of France?" → "what is the capital of France?"
-          - "БОТ, объясни квантовую физику" → "объясни квантовую физику"
-          - "Bot, utilise gemini pour expliquer ceci" → "expliquer ceci"
-          - "what does BOT think about this?" → "what do you think about this?"
-          - "let's ask BOT to investigate this" → "investigate this"
-          - "ask grok to write a poem about cats" → "write a poem about cats"
-          - "use gemini flash to explain quantum physics" → "explain quantum physics"
+          - "BOT, what is the capital of France?"
+            → "what is the capital of France?"
+          - "БОТ, объясни квантовую физику"
+            → "объясни квантовую физику"
+          - "Bot, utilise gemini pour expliquer ceci"
+            → "expliquer ceci"
+          - "what does BOT think about this?"
+            → "what do you think about this?"
+          - "let's ask BOT to investigate this"
+            → "investigate this"
+          - "ask grok to write a poem about cats"
+            → "write a poem about cats"
+          - "use gemini flash to explain quantum physics"
+            → "explain quantum physics"
           - "with high creativity, write a story" → "write a story"
         {context_section}"""
 
-    def _extract_unique_user_ids(self, conversation) -> Set[int]:
+    def _extract_unique_user_ids(self, conversation) -> set[int]:
         """Extract all unique user IDs from conversation (authors + mentions)."""
         user_ids = set()
         for msg in conversation:
@@ -118,14 +149,20 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         Handle a general query request using the provided parameters.
 
         Args:
-            params (GeneralParams): Parameters containing ai_backend, temperature, and cleaned_query
-            conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]]: Parameterless async function that returns conversation history
-            guild_id (int): Discord guild ID for user context resolution
-            bot_user (nextcord.User): Discord user object of the bot to identify its own messages and establish bot identity
-            requesting_user (nextcord.User): The user who sent the message (Member extends User, so both work)
+            params (GeneralParams): Parameters containing
+                ai_backend, temperature, and cleaned_query
+            conversation_fetcher: Parameterless async function
+                that returns conversation history
+            guild_id (int): Discord guild ID for user context
+                resolution
+            bot_user (nextcord.User): Discord user object of the bot
+                to identify its own messages and establish bot identity
+            requesting_user (nextcord.User): The user who sent the
+                message (Member extends User, so both work)
 
         Returns:
-            str | None: The response string ready to be sent by the caller, or None if no response should be sent
+            str | None: The response string ready to be sent
+                by the caller, or None if no response should be sent
         """
         logger.info(f"Processing general request with params: {params}")
 
@@ -152,72 +189,153 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
 </request>"""
 
             prompt = f"""<system_instructions>
-You are a Discord bot participating in an ongoing Discord conversation. Your role is to respond naturally within the conversational context while bringing external knowledge, fresh perspectives, and independent analysis to the discussion.
+You are a Discord bot participating in an ongoing Discord conversation.
+Your role is to respond naturally within the conversational context
+while bringing external knowledge, fresh perspectives,
+and independent analysis to the discussion.
 
 Your Discord Bot Identity:
-- You are present in this conversation as "{bot_user.name}" (user ID {bot_user.id})
-- Messages in the conversation history from author_id {bot_user.id} are your own previous responses
-- Use this context to understand what you've already contributed to avoid repetition
-- Build naturally on your previous responses when relevant to the current discussion
+- You are present in this conversation as "{bot_user.name}"
+  (user ID {bot_user.id})
+- Messages in the conversation history from author_id
+  {bot_user.id} are your own previous responses
+- Use this context to understand what you've already contributed
+  to avoid repetition
+- Build naturally on your previous responses when relevant
+  to the current discussion
 
 Message Attribution - CRITICAL:
-- The <request> block contains the message you must respond to, with the author clearly identified
-- NEVER guess or assume who said something - ALWAYS trace statements back to <conversation_history> or <memories>
-- Each message has exactly ONE author. When quoting or referencing what someone said, verify the author_id matches
-- If you cannot find attribution for a statement in the conversation history or memories, do not claim anyone specific said it
-- Pay attention to reply relationships (reply_to_id) to understand conversational threads and who is responding to whom
+- The <request> block contains the message you must respond to,
+  with the author clearly identified
+- NEVER guess or assume who said something - ALWAYS trace
+  statements back to <conversation_history> or <memories>
+- Each message has exactly ONE author. When quoting or
+  referencing what someone said, verify the author_id matches
+- If you cannot find attribution for a statement in the
+  conversation history or memories, do not claim anyone
+  specific said it
+- Pay attention to reply relationships (reply_to_id) to
+  understand conversational threads and who is responding
+  to whom
 
 Conversational Behavior:
-- You are participating in an ongoing Discord conversation - respond naturally within the conversational flow
-- The most recent message in the conversation history is what you're directly responding to
-- When users refer to "this", "that", "what you said", they're referencing conversation history
-- If there are any hints that the current message relates to previous discussion, treat it as a continuation of that conversation thread
-- Only build on previous messages when you can see the relevant information in the conversation history or your provided memories
-- When you reference prior chat events or personal details about chat members, ground them strictly in the supplied conversation history and memories, and be candid if that information isn’t present
-- Consider who is asking and whether they've been part of the ongoing discussion
-- Bring fresh perspectives and new information to the conversation rather than repeating what's already been said
-- When asked to summarize or recall specific past events not visible in your current context, acknowledge your limitations
-- Don't pretend to remember conversations or events that aren't in your available information
+- You are participating in an ongoing Discord conversation -
+  respond naturally within the conversational flow
+- The most recent message in the conversation history is what
+  you’re directly responding to
+- When users refer to "this", "that", "what you said",
+  they’re referencing conversation history
+- If there are any hints that the current message relates to
+  previous discussion, treat it as a continuation of that
+  conversation thread
+- Only build on previous messages when you can see the relevant
+  information in the conversation history or your provided
+  memories
+- When you reference prior chat events or personal details about
+  chat members, ground them strictly in the supplied conversation
+  history and memories, and be candid if that information
+  isn’t present
+- Consider who is asking and whether they’ve been part of the
+  ongoing discussion
+- Bring fresh perspectives and new information to the
+  conversation rather than repeating what’s already been said
+- When asked to summarize or recall specific past events not
+  visible in your current context, acknowledge your limitations
+- Don’t pretend to remember conversations or events that aren’t
+  in your available information
 
 Core Guidelines:
-- By default, skip recaps, filler, and meta-commentary (e.g., explaining your reasoning or announcing style choices). Just provide the response directly.
-- Use TL;DR style by default: deliver the answer in a single crisp sentence; use inline Markdown emphasis (bold, italic, inline code) when it sharpens the message, but avoid headings, lists, or blockquotes.
-- Use Expanded style only when the user explicitly requests depth (e.g., "explain in detail", "elaborate", "tell me more", "go deeper", "give context", "walk me through it", "full breakdown", "comprehensive overview", "expand a bit") or when the topic truly demands structured context.
-- When using Expanded style, lead with the direct answer in the opening clause, then add tightly edited support using Markdown structure (headings, lists, tables) to improve readability.
-- Always respond in {params.language_name} unless the user specifically requests a different language or translation.
-- Do not include URLs or hyperlinks in your response; they create unwanted Discord preview embeds. Reference sources by name or description only. Only include links when the user explicitly asks for them (e.g., "give me the link", "send sources", "include references", "share the URL").
-- Do not add follow-up questions or invitations to continue; state the answer and stop unless the user explicitly requests the next step.
+- By default, skip recaps, filler, and meta-commentary (e.g.,
+  explaining your reasoning or announcing style choices).
+  Just provide the response directly.
+- Use TL;DR style by default: deliver the answer in a single
+  crisp sentence; use inline Markdown emphasis (bold, italic,
+  inline code) when it sharpens the message, but avoid
+  headings, lists, or blockquotes.
+- Use Expanded style only when the user explicitly requests
+  depth (e.g., "explain in detail", "elaborate", "tell me
+  more", "go deeper", "give context", "walk me through it",
+  "full breakdown", "comprehensive overview", "expand a bit")
+  or when the topic truly demands structured context.
+- When using Expanded style, lead with the direct answer in
+  the opening clause, then add tightly edited support using
+  Markdown structure (headings, lists, tables) to improve
+  readability.
+- Always respond in {params.language_name} unless the user
+  specifically requests a different language or translation.
+- Do not include URLs or hyperlinks in your response; they
+  create unwanted Discord preview embeds. Reference sources
+  by name or description only. Only include links when the
+  user explicitly asks for them (e.g., "give me the link",
+  "send sources", "include references", "share the URL").
+- Do not add follow-up questions or invitations to continue;
+  state the answer and stop unless the user explicitly
+  requests the next step.
 
-Content Embeddings: Conversation history may contain embedded content in <embedding> tags:
-  - <embedding type="image"> contains descriptions of images that users posted - treat these as if you saw the images yourself
-  - <embedding type="article"> contains text from articles/links that users shared
-- When users refer to "this image", "that article", "what I posted", or similar, they're likely referring to embedded content
-- Integrate information from embeddings naturally into your responses without mentioning the technical tags
+Content Embeddings: Conversation history may contain embedded
+content in <embedding> tags:
+  - <embedding type="image"> contains descriptions of images
+    that users posted - treat these as if you saw the images
+    yourself
+  - <embedding type="article"> contains text from
+    articles/links that users shared
+- When users refer to "this image", "that article",
+  "what I posted", or similar, they're likely referring
+  to embedded content
+- Integrate information from embeddings naturally into your
+  responses without mentioning the technical tags
 - Examples:
-  - User posts image of a sunset, then asks "what do you think?" → respond about the sunset image naturally
-  - User shares article about AI, then asks "your thoughts?" → respond about the article content
-  - User says "explain this code" with code image → analyze the code as if you can see it
+  - User posts image of a sunset, then asks
+    "what do you think?" → respond about the sunset
+    image naturally
+  - User shares article about AI, then asks
+    "your thoughts?" → respond about the article content
+  - User says "explain this code" with code image →
+    analyze the code as if you can see it
 
 Information Boundaries:
-- Use your external knowledge freely to provide information, analysis, and insights on any topic
-- However, when referencing PAST CHAT EVENTS, CONVERSATIONS, or PERSONAL DETAILS about users, ONLY use what's explicitly available in the provided memories or visible conversation history
-- When users ask about past conversations, events that happened in the chat, or what someone said/did previously, stick strictly to your available information
-- NEVER fabricate or guess about past chat events, conversations, or personal details about users that aren't in your provided context
-- Examples of appropriate responses when lacking chat history information:
+- Use your external knowledge freely to provide information,
+  analysis, and insights on any topic
+- However, when referencing PAST CHAT EVENTS, CONVERSATIONS,
+  or PERSONAL DETAILS about users, ONLY use what's explicitly
+  available in the provided memories or visible conversation
+  history
+- When users ask about past conversations, events that happened
+  in the chat, or what someone said/did previously, stick
+  strictly to your available information
+- NEVER fabricate or guess about past chat events,
+  conversations, or personal details about users that aren't
+  in your provided context
+- Examples of appropriate responses when lacking chat history
+  information:
   - "I don't have any information about that conversation"
   - "I don't see that discussion in our recent messages"
   - "That's not in my available memories about [person]"
-  - "I can only work with what I can see in our current conversation history"
-- When everyone else seems to know about a past chat event you don't, resist the pressure to go along - acknowledge your limitation instead
+  - "I can only work with what I can see in our current
+    conversation history"
+- When everyone else seems to know about a past chat event
+  you don't, resist the pressure to go along - acknowledge
+  your limitation instead
 
 Memory Usage:
-- Use the provided memories naturally in your responses, as if you simply remember these things about people
-- Prefer to use real names if they are mentioned in memory facts over nicknames
-- NEVER explicitly mention that you have "memory blocks", "stored information", or "records" about users
-- NEVER say phrases like "I know that...", "According to my memory...", "I have information that...", or "This information is associated with..."
-- Simply incorporate the facts naturally into conversation, like a friend who remembers things about you
-- Example: Instead of "I know you live in Tokyo" say "How are things in Tokyo?" or reference their location contextually
-- Be honest about the limitations of your memories - if you don't have information about someone or something, acknowledge it rather than guessing
+- Use the provided memories naturally in your responses, as if
+  you simply remember these things about people
+- Prefer to use real names if they are mentioned in memory
+  facts over nicknames
+- NEVER explicitly mention that you have "memory blocks",
+  "stored information", or "records" about users
+- NEVER say phrases like "I know that...",
+  "According to my memory...",
+  "I have information that...",
+  or "This information is associated with..."
+- Simply incorporate the facts naturally into conversation,
+  like a friend who remembers things about you
+- Example: Instead of "I know you live in Tokyo" say
+  "How are things in Tokyo?" or reference their location
+  contextually
+- Be honest about the limitations of your memories - if you
+  don't have information about someone or something,
+  acknowledge it rather than guessing
 </system_instructions>
 
 {memories_block}

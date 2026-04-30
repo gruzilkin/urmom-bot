@@ -45,6 +45,7 @@ DEFAULT_MODEL_PROFILES: tuple[ModelProfile, ...] = (
     ModelProfile("gpt-oss:120b-cloud", supports_tools=True),
 )
 
+
 class CurrentEvent(BaseModel):
     """Structured response schema for web search tests."""
 
@@ -97,9 +98,7 @@ class TestOllamaClientIntegration(IsolatedAsyncioTestCase):
         """Models marked for structured output must obey the schema contract."""
 
         structured_models = [
-            profile
-            for profile in self.models
-            if profile.supports_text and profile.supports_structured
+            profile for profile in self.models if profile.supports_text and profile.supports_structured
         ]
         if not structured_models:
             self.skipTest("No structured-output models configured")
@@ -118,11 +117,7 @@ class TestOllamaClientIntegration(IsolatedAsyncioTestCase):
     async def test_web_search_grounding(self):
         """Models that support tools should handle grounding via web search."""
 
-        tool_models = [
-            profile
-            for profile in self.models
-            if profile.supports_text and profile.supports_tools
-        ]
+        tool_models = [profile for profile in self.models if profile.supports_text and profile.supports_tools]
         if not tool_models:
             self.skipTest("No models configured with tool support")
 
@@ -131,9 +126,7 @@ class TestOllamaClientIntegration(IsolatedAsyncioTestCase):
                 client = self._client_for(profile)
                 response = await client.generate_content(
                     message="What are the latest developments in AI in 2025?",
-                    prompt=(
-                        "You are a helpful assistant. Use web search to provide current information."
-                    ),
+                    prompt=("You are a helpful assistant. Use web search to provide current information."),
                     enable_grounding=True,
                 )
                 self.assertIsInstance(response, str)
@@ -148,23 +141,17 @@ class TestOllamaClientIntegration(IsolatedAsyncioTestCase):
         tool_structured_models = [
             profile
             for profile in self.models
-            if profile.supports_text
-            and profile.supports_tools
-            and profile.supports_structured
+            if profile.supports_text and profile.supports_tools and profile.supports_structured
         ]
         if not tool_structured_models:
-            self.skipTest(
-                "No models configured with both tool and structured output support"
-            )
+            self.skipTest("No models configured with both tool and structured output support")
 
         for profile in tool_structured_models:
             with self.subTest(model=profile.slug):
                 client = self._client_for(profile)
                 response = await client.generate_content(
                     message="Find the latest major tech event or announcement in 2025.",
-                    prompt=(
-                        "Use web search to find current information and extract it as structured data."
-                    ),
+                    prompt=("Use web search to find current information and extract it as structured data."),
                     enable_grounding=True,
                     response_schema=CurrentEvent,
                 )

@@ -142,6 +142,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             famous_generator=famous_generator,
             general_generator=general_generator,
             fact_handler=fact_handler,
+            conversation_formatter=conversation_formatter,
         )
 
         guild_id = store.physics_guild_id

@@ -83,15 +83,17 @@ class MemoryManager:
         self,
         telemetry: Telemetry,
         store: Store,
-        gemini_client: AIClient,
-        gemma_client: AIClient,
+        summary_client: AIClient,
+        alias_client: AIClient,
+        merge_client: AIClient,
         user_resolver: UserResolver,
         redis_cache: RedisCache,
     ):
         self._telemetry = telemetry
         self._store = store
-        self._gemini_client = gemini_client  # For batch daily summaries
-        self._gemma_client = gemma_client  # For historical summaries and context merging
+        self._summary_client = summary_client
+        self._alias_client = alias_client
+        self._merge_client = merge_client
         self._user_resolver = user_resolver
         self._redis_cache = redis_cache
 
@@ -394,7 +396,7 @@ class MemoryManager:
 {formatted_messages}
 </messages>"""
 
-            response = await self._gemini_client.generate_content(
+            response = await self._summary_client.generate_content(
                 message=structured_prompt, response_schema=DailySummaries, temperature=0
             )
 
@@ -450,7 +452,7 @@ class MemoryManager:
 {daily_summaries_xml}
 </daily_summaries>"""
 
-            response = await self._gemma_client.generate_content(
+            response = await self._merge_client.generate_content(
                 message=structured_prompt, response_schema=MemoryContext, temperature=0
             )
             merged_context = response.context
@@ -476,7 +478,7 @@ class MemoryManager:
                 if cached is not None:
                     return user_id, cached
 
-                response = await self._gemma_client.generate_content(
+                response = await self._alias_client.generate_content(
                     message=facts,
                     prompt=EXTRACT_ALIASES_PROMPT,
                     response_schema=UserAliases,

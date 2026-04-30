@@ -5,11 +5,12 @@ from open_telemetry import Telemetry
 
 logger = logging.getLogger(__name__)
 
+
 class CountryResolver:
     def __init__(self, ai_client: AIClient, telemetry: Telemetry):
         self.ai_client = ai_client
         self.telemetry = telemetry
-        
+
         # custom names for better humour
         self.flag_to_country = {
             "🇺🇸": "America",
@@ -23,7 +24,7 @@ class CountryResolver:
         # Regional indicator symbols are in range U+1F1E6 to U+1F1FF
         if len(emoji) != 2:
             return False
-            
+
         for char in emoji:
             # Check if character is in the regional indicator range
             code_point = ord(char)
@@ -45,7 +46,7 @@ class CountryResolver:
             # Cache the result for future use
             self.flag_to_country[emoji] = country
             return country
-        
+
         logger.warning(f'Unknown flag emoji: "{emoji}"')
         return None
 

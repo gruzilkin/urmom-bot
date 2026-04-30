@@ -4,7 +4,7 @@ from openai.types.chat import ChatCompletion
 from openai import PermissionDeniedError
 from ai_client import AIClient, BlockedException
 from collections.abc import Sequence
-from typing import TypeVar, Type
+from typing import TypeVar
 from opentelemetry.trace import SpanKind
 from open_telemetry import Telemetry
 from pydantic import BaseModel
@@ -65,7 +65,7 @@ class GrokClient(AIClient):
         prompt: str = None,
         samples: Sequence[tuple[str, str]] | None = None,
         enable_grounding: bool = False,
-        response_schema: Type[T] | None = None,
+        response_schema: type[T] | None = None,
         temperature: float | None = None,
         image_data: bytes | None = None,
         image_mime_type: str | None = None,
@@ -123,7 +123,8 @@ class GrokClient(AIClient):
                 if parsed_result is None:
                     self.telemetry.metrics.structured_output_failures.add(1, base_attrs)
                     raise ValueError(
-                        f"Failed to parse response with schema {response_schema.__name__}: {completion.choices[0].message.content}"
+                        f"Failed to parse response with schema {response_schema.__name__}:"
+                        f" {completion.choices[0].message.content}"
                     )
                 return parsed_result
             else:

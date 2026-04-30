@@ -62,8 +62,7 @@ async def index(request: Request, page: int = 1, search: str = ""):
         
         total_pages = (total_count + page_size - 1) // page_size
         
-        return templates.TemplateResponse("index.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "index.html", {
             "jokes": jokes,
             "current_page": page,
             "total_pages": total_pages,
@@ -80,8 +79,7 @@ async def edit_message(request: Request, message_id: int, content: str = Form(..
     try:
         success = await store.update_message_content(message_id, content)
         if success:
-            return templates.TemplateResponse("partials/editable_content.html", {
-                "request": request,
+            return templates.TemplateResponse(request, "partials/editable_content.html", {
                 "content": content,
                 "message_id": message_id
             })
@@ -99,8 +97,7 @@ async def edit_message_form(request: Request, message_id: int):
         if content is None:
             raise HTTPException(status_code=404, detail="Message not found")
             
-        return templates.TemplateResponse("partials/edit_form.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "partials/edit_form.html", {
             "content": content,
             "message_id": message_id
         })
@@ -116,8 +113,7 @@ async def cancel_edit_message(request: Request, message_id: int):
         if content is None:
             raise HTTPException(status_code=404, detail="Message not found")
             
-        return templates.TemplateResponse("partials/editable_content.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "partials/editable_content.html", {
             "content": content,
             "message_id": message_id
         })

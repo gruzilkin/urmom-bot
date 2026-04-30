@@ -11,7 +11,9 @@ class BlockedException(RuntimeError):
         super().__init__(reason)
         self.reason = reason
 
+
 T = TypeVar("T", bound=BaseModel)
+
 
 class AIClient(ABC):
     @abstractmethod

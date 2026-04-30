@@ -25,7 +25,7 @@ class CodexClient(AIClient):
     def __init__(
         self,
         telemetry: Telemetry,
-        model_name: str = "gpt-5.2",
+        model_name: str = "gpt-5.4",
         enable_web_search: bool = True,
     ):
         self.model_name = model_name
@@ -90,7 +90,6 @@ class CodexClient(AIClient):
                 "read-only",
                 "-m",
                 self.model_name,
-                "--json",
             ]
 
             if self.enable_web_search or enable_grounding:
@@ -107,7 +106,9 @@ class CodexClient(AIClient):
             schema_file = None
             if response_schema:
                 schema_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
-                json.dump(response_schema.model_json_schema(), schema_file)
+                schema = response_schema.model_json_schema()
+                schema["additionalProperties"] = False
+                json.dump(schema, schema_file)
                 schema_file.close()
                 codex_cmd.extend(["--output-schema", schema_file.name])
 
@@ -132,7 +133,9 @@ class CodexClient(AIClient):
                     self.telemetry.metrics.llm_requests.add(1, attrs_err)
                     raise RuntimeError(f"Codex CLI failed: {error_msg}")
 
-                response_text = self._extract_agent_message(stdout.decode())
+                response_text = stdout.decode().strip()
+                if not response_text:
+                    raise RuntimeError("Empty response from Codex CLI")
                 logger.info(f"Codex CLI response: {response_text}")
 
                 attrs = {**base_attrs, "outcome": "success"}
@@ -167,20 +170,3 @@ class CodexClient(AIClient):
                         os.unlink(image_file.name)
                     except OSError:
                         pass
-
-    def _extract_agent_message(self, jsonl_output: str) -> str:
-        """Extract the agent message from JSONL output."""
-        for line in jsonl_output.strip().splitlines():
-            try:
-                event = json.loads(line)
-                if event.get("type") == "item.completed":
-                    item = event["item"]
-                    if item["type"] == "agent_message":
-                        text = item["text"]
-                        if not text:
-                            raise RuntimeError("Empty agent_message text in Codex output")
-                        return text
-            except (json.JSONDecodeError, KeyError, TypeError):
-                continue
-
-        raise RuntimeError("No agent_message found in Codex output")
