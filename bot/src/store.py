@@ -45,7 +45,6 @@ class Store:
         self.conn: AsyncConnection | None = None
         self.weight_coef = weight_coef
         self._guild_configs = {}  # Add cache dictionary
-        self._user_facts_cache = LRUCache(maxsize=500)
         self._daily_summaries_cache = LRUCache(maxsize=200)  # Cache for daily summaries
 
     async def _connect(self) -> AsyncConnection:
@@ -249,25 +248,11 @@ class Store:
                 )
 
     async def get_user_facts(self, guild_id: int, user_id: int) -> str | None:
-        """Retrieve current memory blob for a user with LRU caching."""
+        """Retrieve current memory blob for a user."""
         async with self._telemetry.async_create_span("get_user_facts") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("user_id", user_id)
 
-            cache_key = (guild_id, user_id)
-
-            # Check cache first
-            cache_outcome = "miss"
-            if cache_key in self._user_facts_cache:
-                span.set_attribute("cache_hit", True)
-                cache_outcome = "hit"
-                facts = self._user_facts_cache[cache_key]
-                span.set_attribute("has_facts", bool(facts))
-                if facts:
-                    span.set_attribute("facts_length", len(facts))
-                return facts
-
-            span.set_attribute("cache_hit", False)
             timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
@@ -277,9 +262,6 @@ class Store:
                     )
                     result = await cur.fetchone()
                     memory_blob = result[0] if result else None
-
-                    # Cache the result
-                    self._user_facts_cache[cache_key] = memory_blob
                     span.set_attribute("has_facts", bool(memory_blob))
                     if memory_blob:
                         span.set_attribute("facts_length", len(memory_blob))
@@ -290,11 +272,11 @@ class Store:
                 return None
             finally:
                 self._telemetry.metrics.db_latency.record(
-                    timer(), {"operation": "get_user_facts", "guild_id": str(guild_id), "cache_outcome": cache_outcome}
+                    timer(), {"operation": "get_user_facts", "guild_id": str(guild_id)}
                 )
 
     async def save_user_facts(self, guild_id: int, user_id: int, memory_blob: str) -> None:
-        """Save or update memory blob for a user and invalidate cache."""
+        """Save or update memory blob for a user."""
         async with self._telemetry.async_create_span("save_user_facts") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("user_id", user_id)
@@ -314,16 +296,6 @@ class Store:
                         (guild_id, user_id, memory_blob),
                     )
                     await self.conn.commit()
-
-                    # Invalidate the cache for this specific user
-                    cache_key = (guild_id, user_id)
-                    cache_invalidated = cache_key in self._user_facts_cache
-                    if cache_invalidated:
-                        del self._user_facts_cache[cache_key]
-
-                    span.set_attribute("cache_invalidated", cache_invalidated)
-                    logger.debug(f"Saved and invalidated user facts cache for user {user_id} in guild {guild_id}")
-
             except Exception as e:
                 logger.error(f"Error saving user facts: {e}", exc_info=True)
                 raise e

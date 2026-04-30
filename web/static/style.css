@@ -37,6 +37,40 @@ header p {
     color: #7f8c8d;
 }
 
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #ddd;
+}
+
+.tab {
+    padding: 10px 20px;
+    background: #ecf0f1;
+    color: #34495e;
+    text-decoration: none;
+    border-radius: 6px 6px 0 0;
+    font-weight: 500;
+    border: 1px solid transparent;
+    border-bottom: none;
+    transition: background 0.2s, color 0.2s;
+}
+
+.tab:hover {
+    background: #d6dbdf;
+}
+
+.tab-active {
+    background: #3498db;
+    color: white;
+    border-color: #3498db;
+}
+
+.tab-active:hover {
+    background: #2980b9;
+}
+
 /* Controls */
 .controls {
     display: flex;
@@ -168,6 +202,27 @@ header p {
     font-family: inherit;
     font-size: 14px;
     resize: vertical;
+}
+
+.memory-textarea {
+    min-height: 200px;
+}
+
+.memory-cell {
+    max-width: 500px;
+}
+
+.id-cell {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    color: #2c3e50;
+    white-space: nowrap;
+}
+
+.updated-at {
+    font-size: 13px;
+    color: #7f8c8d;
+    white-space: nowrap;
 }
 
 .edit-buttons {
