@@ -358,20 +358,37 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
 
         raise ValueError("both cron_expression and first_run_phrase are null")
 
-    def _format_task_list(self, tasks: list[ScheduledTask]) -> str:
-        lines = []
+    def _render_tasks_xml(self, tasks: list[ScheduledTask]) -> str:
+        """Render tasks as XML for inclusion in LLM prompts.
+
+        Field elements match the names the LLM is expected to produce when editing
+        (task_id, prompt, cron_expression, timezone), so the LLM can copy unchanged
+        fields verbatim. next_run_at is read-only context.
+        """
+        if not tasks:
+            return "<scheduled_tasks/>"
+
+        parts = ["<scheduled_tasks>"]
         for t in tasks:
-            if t.cron_expression:
-                sched = f"recurring cron '{t.cron_expression}' in {t.timezone}"
-            else:
-                sched = f"one-off in {t.timezone}"
             try:
                 tz = ZoneInfo(t.timezone)
                 next_run = t.next_run_at.astimezone(tz).strftime("%Y-%m-%d %H:%M %Z")
             except ZoneInfoNotFoundError:
                 next_run = t.next_run_at.isoformat()
-            lines.append(f"- task #{t.task_id}: {sched}; next firing {next_run}\n  prompt: {t.prompt}")
-        return "\n".join(lines)
+            cron_el = (
+                f"<cron_expression>{t.cron_expression}</cron_expression>" if t.cron_expression else "<cron_expression/>"
+            )
+            parts.append(
+                f"  <task>\n"
+                f"    <task_id>{t.task_id}</task_id>\n"
+                f"    <prompt>{t.prompt}</prompt>\n"
+                f"    {cron_el}\n"
+                f"    <timezone>{t.timezone}</timezone>\n"
+                f"    <next_run_at>{next_run}</next_run_at>\n"
+                f"  </task>"
+            )
+        parts.append("</scheduled_tasks>")
+        return "\n".join(parts)
 
     def _build_create_prompt(self, default_tz_name: str, now_in_tz: datetime, language_name: str) -> str:
         return f"""
@@ -420,12 +437,11 @@ Please respond in {language_name}.
         return f"""
 You are answering a user's question about the scheduled tasks in their channel.
 
-Channel's scheduled tasks:
-{self._format_task_list(tasks)}
+{self._render_tasks_xml(tasks)}
 
-Answer the user's question (or fulfil their request) in {language_name} using the task list
+Answer the user's question (or fulfil their request) in {language_name} using the task data
 above. Be concise and helpful. If the user asks a question that can't be answered from this
-list, say so plainly. Always reference tasks by their integer task_id so the user can act on them.
+data, say so plainly. Always reference tasks by their integer task_id so the user can act on them.
 """
 
     def _build_edit_prompt(self, tasks: list[ScheduledTask], now_in_tz: datetime, language_name: str) -> str:
@@ -434,13 +450,15 @@ You are editing an existing scheduled task based on the user's change request.
 
 Current datetime: {now_in_tz.strftime("%Y-%m-%d %H:%M %Z")}
 
-Channel's scheduled tasks:
-{self._format_task_list(tasks)}
+{self._render_tasks_xml(tasks)}
 
 Steps:
-1. Identify which task the user wants to edit and set task_id to that integer.
-2. Return the FULL updated task fields. Carry forward unchanged values verbatim from the
-   existing task; modify ONLY the fields the user asked to change.
+1. Identify which task the user wants to edit by matching against the <task> entries above,
+   and set task_id to that integer.
+2. Return the FULL updated task fields. For any field the user did not ask to change, COPY
+   THE VALUE VERBATIM from the corresponding <task> element above. Modify ONLY the fields the
+   user asked to change. An empty <cron_expression/> in the source means the task is one-off
+   and cron_expression should remain null.
 3. cron_expression / first_run_phrase / timezone follow the same rules as for creating a task.
 
 If you cannot identify which task the user means, or cannot parse the change, set task_id and
@@ -454,10 +472,9 @@ Always respond in {language_name}.
         return f"""
 You are identifying which task the user wants to {action}.
 
-Channel's scheduled tasks:
-{self._format_task_list(tasks)}
+{self._render_tasks_xml(tasks)}
 
-Set task_id to the integer ID of the task the user is referring to. If you can't find a match,
+Set task_id to the integer ID of the matching <task> entry above. If you can't find a match,
 set task_id to null and explain in reason.
 
 reason: friendly confirmation of the action, or an explanation if the task wasn't found.

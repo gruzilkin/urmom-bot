@@ -333,25 +333,36 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, "Couldn't find the task.")
         self.mock_store.update_scheduled_task.assert_not_awaited()
 
-    # ---- _format_task_list ----
+    # ---- _render_tasks_xml ----
 
-    def test_format_task_list_recurring(self):
-        rendered = self.handler._format_task_list([_make_task(task_id=1)])
-        self.assertIn("task #1", rendered)
-        self.assertIn("0 9 * * 1", rendered)
-        self.assertIn("Asia/Tokyo", rendered)
+    def test_render_tasks_xml_recurring(self):
+        rendered = self.handler._render_tasks_xml([_make_task(task_id=1)])
+        self.assertIn("<scheduled_tasks>", rendered)
+        self.assertIn("<task_id>1</task_id>", rendered)
+        self.assertIn("<cron_expression>0 9 * * 1</cron_expression>", rendered)
+        self.assertIn("<timezone>Asia/Tokyo</timezone>", rendered)
+        self.assertIn("<next_run_at>", rendered)
 
-    def test_format_task_list_one_off(self):
+    def test_render_tasks_xml_one_off_emits_empty_cron_element(self):
         task = _make_task(task_id=1, cron=None, tz="UTC")
-        rendered = self.handler._format_task_list([task])
-        self.assertIn("one-off", rendered)
+        rendered = self.handler._render_tasks_xml([task])
+        # One-off tasks have a self-closing cron_expression element
+        self.assertIn("<cron_expression/>", rendered)
+        self.assertNotIn("<cron_expression>", rendered)
 
-    def test_format_task_list_invalid_timezone_falls_back_to_isoformat(self):
+    def test_render_tasks_xml_empty_list(self):
+        rendered = self.handler._render_tasks_xml([])
+        self.assertEqual(rendered, "<scheduled_tasks/>")
+
+    def test_render_tasks_xml_invalid_timezone_falls_back_to_isoformat(self):
         task = _make_task(task_id=1, tz="Made/Up_Zone")
-        rendered = self.handler._format_task_list([task])
-        self.assertIn("task #1", rendered)
+        rendered = self.handler._render_tasks_xml([task])
+        self.assertIn("<task_id>1</task_id>", rendered)
         # Falls back to ISO datetime when tz can't be resolved
-        self.assertIn("T", rendered)
+        self.assertIn("<next_run_at>", rendered)
+        # ISO datetime contains 'T'
+        next_run_segment = rendered.split("<next_run_at>")[1].split("</next_run_at>")[0]
+        self.assertIn("T", next_run_segment)
 
     # ---- discovery methods (used by AI router) ----
 
