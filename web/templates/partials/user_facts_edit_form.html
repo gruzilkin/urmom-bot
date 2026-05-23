@@ -1,0 +1,11 @@
+<div class="edit-form">
+    <form hx-post="/edit_user_facts/{{ guild_id }}/{{ user_id }}" hx-target="closest td" hx-swap="innerHTML">
+        <textarea name="memory_blob" class="edit-textarea memory-textarea">{{ memory_blob }}</textarea>
+        <div class="edit-buttons">
+            <button type="submit" class="save-btn">Save</button>
+            <button type="button" class="cancel-btn"
+                    hx-get="/cancel_edit_user_facts/{{ guild_id }}/{{ user_id }}"
+                    hx-target="closest td" hx-swap="innerHTML">Cancel</button>
+        </div>
+    </form>
+</div>
