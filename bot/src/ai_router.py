@@ -8,7 +8,7 @@ from ai_client import AIClient
 from conversation_formatter import ConversationFormatter
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
-from schemas import FamousParams, GeneralParams, FactParams, RouteSelection
+from schemas import FamousParams, FactParams, GeneralParams, RouteSelection, ScheduleParams
 from language_detector import LanguageDetector
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ class AiRouter:
         general_generator,
         fact_handler,
         conversation_formatter: ConversationFormatter,
+        schedule_handler,
     ):
         self.ai_client = ai_client
         self.telemetry = telemetry
@@ -35,12 +36,14 @@ class AiRouter:
         self.general_generator = general_generator
         self.fact_handler = fact_handler
         self.conversation_formatter = conversation_formatter
+        self.schedule_handler = schedule_handler
 
     def _build_route_selection_prompt(self, conversation_context: str = "") -> str:
         """Build focused prompt for route selection only (tier 1)."""
         famous_desc = self.famous_generator.get_route_description()
         general_desc = self.general_generator.get_route_description()
         fact_desc = self.fact_handler.get_route_description()
+        schedule_desc = self.schedule_handler.get_route_description()
 
         if conversation_context:
             conversation_context = f"""
@@ -94,6 +97,10 @@ Instructions:
 {fact_desc}
 </route>
 
+<route route="SCHEDULE">
+{schedule_desc}
+</route>
+
 <route route="NONE">
 NONE: For everything else
 - Simple reactions, acknowledgments, or invalid queries
@@ -122,7 +129,7 @@ NOTSURE: When uncertain about routing decision
         route: str,
         message: str,
         conversation_context: str = "",
-    ) -> FamousParams | GeneralParams | FactParams | None:
+    ) -> FamousParams | GeneralParams | FactParams | ScheduleParams | None:
         """Extract parameters for the selected route (tier 2)."""
         if route == "NONE":
             return None
@@ -134,6 +141,8 @@ NOTSURE: When uncertain about routing decision
             handler = self.general_generator
         elif route == "FACT":
             handler = self.fact_handler
+        elif route == "SCHEDULE":
+            handler = self.schedule_handler
         else:
             raise ValueError(f"Unknown route: {route}")
 
@@ -158,7 +167,7 @@ NOTSURE: When uncertain about routing decision
         message: str,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
         guild_id: int,
-    ) -> tuple[str, FamousParams | GeneralParams | FactParams | None]:
+    ) -> tuple[str, FamousParams | GeneralParams | FactParams | ScheduleParams | None]:
         """Route a message using 2-tier approach: route selection, language detection, then parameter extraction."""
         async with self.telemetry.async_create_span("route_request") as span:
             span.set_attribute("message", message)
@@ -223,5 +232,7 @@ NOTSURE: When uncertain about routing decision
                     span.set_attribute("fact_operation", params.operation)
                     span.set_attribute("fact_user_mention", params.user_mention)
                     span.set_attribute("fact_content", params.fact_content)
+                elif route_selection.route == "SCHEDULE":
+                    span.set_attribute("schedule_operation", params.operation)
 
             return (route_selection.route, params)

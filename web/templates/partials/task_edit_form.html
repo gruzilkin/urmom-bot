@@ -1,0 +1,23 @@
+<div class="edit-form">
+    <form hx-post="/edit_task/{{ task.task_id }}" hx-target="closest td" hx-swap="innerHTML">
+        <label class="edit-label">Prompt</label>
+        <textarea name="prompt" class="edit-textarea task-prompt-textarea">{{ task.prompt }}</textarea>
+
+        <label class="edit-label">Cron expression (leave empty for one-off)</label>
+        <input type="text" name="cron_expression" class="edit-input"
+               value="{{ task.cron_expression or '' }}"
+               placeholder="e.g. 0 9 * * 1">
+
+        <label class="edit-label">Timezone (IANA)</label>
+        <input type="text" name="timezone_name" class="edit-input"
+               value="{{ task.timezone }}"
+               placeholder="e.g. Asia/Tokyo">
+
+        <div class="edit-buttons">
+            <button type="submit" class="save-btn">Save</button>
+            <button type="button" class="cancel-btn"
+                    hx-get="/cancel_edit_task/{{ task.task_id }}"
+                    hx-target="closest td" hx-swap="innerHTML">Cancel</button>
+        </div>
+    </form>
+</div>

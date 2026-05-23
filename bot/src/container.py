@@ -13,6 +13,8 @@ from ai_router import AiRouter
 from response_summarizer import ResponseSummarizer
 from attachment_processor import AttachmentProcessor
 from fact_handler import FactHandler
+from schedule_handler import ScheduleHandler
+from schedule_engine import ScheduleEngine
 from user_resolver import UserResolver
 from memory_manager import MemoryManager
 from language_detector import LanguageDetector
@@ -229,6 +231,21 @@ class Container:
             memory_manager=self.memory_manager,
         )
 
+        self.schedule_engine = ScheduleEngine(
+            store=self.store,
+            telemetry=self.telemetry,
+            general_query_generator=self.general_query_generator,
+            language_detector=self.language_detector,
+            param_extraction_client=self.lightweight_fallback,
+        )
+
+        self.schedule_handler = ScheduleHandler(
+            ai_client=self.lightweight_fallback,
+            store=self.store,
+            telemetry=self.telemetry,
+            schedule_engine=self.schedule_engine,
+        )
+
         # The router client will be a composite client that handles the NOTSURE fallback.
         router_client = CompositeAIClient(
             [self.gemma, self.shuffled_haiku_codex_mini, self.retrying_gemma, self.retrying_grok],
@@ -244,6 +261,7 @@ class Container:
             self.general_query_generator,
             self.fact_handler,
             self.conversation_formatter,
+            self.schedule_handler,
         )
 
         self.country_resolver = CountryResolver(self.lightweight_fallback, self.telemetry)

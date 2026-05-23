@@ -2,6 +2,7 @@ import asyncio
 import io
 from enum import Enum
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -39,6 +40,7 @@ class BotCommand(Enum):
     DELETE_JOKES_AFTER = "deletejokesafterminutes"
     DELETE_JOKES_WHEN_DOWNVOTED = "deletejokeswhendownvoted"
     ENABLE_COUNTRY_JOKES = "enablecountryjokes"
+    SET_DEFAULT_TIMEZONE = "setdefaulttimezone"
 
     @classmethod
     def from_str(cls, value: str) -> "BotCommand | None":
@@ -53,6 +55,18 @@ async def on_ready() -> None:
     logger.info(f"Logged in as {bot.user}")
     # Initialize bot-dependent services
     container.user_resolver.set_bot_client(bot)
+
+    async def fetch_channel_conversation(channel_id: int) -> list[ConversationMessage]:
+        channel = bot.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await bot.fetch_channel(channel_id)
+            except Exception as e:
+                logger.error(f"Cannot fetch channel {channel_id} for scheduled task: {e}", exc_info=True)
+                return []
+        return await get_recent_conversation(channel)
+
+    await container.schedule_engine.start(bot, fetch_channel_conversation)
 
 
 @bot.event
@@ -148,6 +162,16 @@ async def on_message(message: nextcord.Message):
             response = await container.fact_handler.handle_request(params, message.guild.id)
             reply = await traced_reply(message, response)
 
+        elif route == "SCHEDULE" and params:
+            response = await container.schedule_handler.handle_request(
+                params,
+                processed_message,
+                message.guild.id,
+                message.channel.id,
+                message.author.id,
+            )
+            reply = await traced_reply(message, response)
+
         # Record reply latency once if a reply was sent
         if reply is not None:
             container.telemetry.metrics.message_latency.record(
@@ -240,6 +264,7 @@ Available commands:
 `@urmom-bot deleteJokesAfterMinutes X` - Delete jokes after X minutes (0 to disable)
 `@urmom-bot deleteJokesWhenDownvoted X` - Delete jokes when downvotes - upvotes >= X (0 to disable)
 `@urmom-bot enableCountryJokes true/false` - Enable/disable country-specific jokes
+`@urmom-bot setDefaultTimezone Asia/Tokyo` - Set default IANA timezone for scheduled tasks
 """
         await traced_reply(message, help_text)
         return True
@@ -251,6 +276,7 @@ Current settings:
 • Auto-delete after: {config.delete_jokes_after_minutes} minutes (0 = never)
 • Delete on downvotes: {config.downvote_reaction_threshold} (0 = disabled)
 • Country jokes: {"Enabled" if config.enable_country_jokes else "Disabled"}
+• Default timezone: {config.default_timezone}
 """
         await traced_reply(message, settings_text)
         return True
@@ -299,6 +325,19 @@ Current settings:
             await traced_reply(message, f"Country jokes {'enabled' if enable else 'disabled'}")
         except IndexError:
             await traced_reply(message, "Please specify true or false!")
+        return True
+
+    elif command == BotCommand.SET_DEFAULT_TIMEZONE:
+        try:
+            tz_name = args[1]
+            ZoneInfo(tz_name)  # raises ZoneInfoNotFoundError if invalid
+            config.default_timezone = tz_name
+            await container.store.save_guild_config(config)
+            await traced_reply(message, f"Default timezone set to {tz_name}")
+        except IndexError:
+            await traced_reply(message, "Please provide an IANA timezone name (e.g., Asia/Tokyo)")
+        except ZoneInfoNotFoundError:
+            await traced_reply(message, f"Unknown timezone '{args[1]}'. Use an IANA name like Asia/Tokyo.")
         return True
 
     return False

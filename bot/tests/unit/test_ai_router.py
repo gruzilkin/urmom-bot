@@ -49,6 +49,9 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         self.fact_handler = Mock()
         self.fact_handler.get_route_description.return_value = "FACT: For memory operations"
 
+        self.schedule_handler = Mock()
+        self.schedule_handler.get_route_description.return_value = "SCHEDULE: For scheduled tasks"
+
         # The router client will be a composite client that handles the NOTSURE fallback.
         router_client = CompositeAIClient(
             [self.primary_client, self.fallback_client],
@@ -65,6 +68,7 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
             general_generator=self.general_generator,
             fact_handler=self.fact_handler,
             conversation_formatter=self.conversation_formatter,
+            schedule_handler=self.schedule_handler,
         )
 
         # Default mock conversation fetcher for tests

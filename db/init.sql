@@ -16,7 +16,8 @@ CREATE TABLE guild_configs (
     archive_channel_id BIGINT DEFAULT 0,
     delete_jokes_after_minutes INTEGER DEFAULT 0,
     downvote_reaction_threshold INTEGER DEFAULT 0,
-    enable_country_jokes BOOLEAN DEFAULT TRUE
+    enable_country_jokes BOOLEAN DEFAULT TRUE,
+    default_timezone TEXT NOT NULL DEFAULT 'UTC'
 );
 
 CREATE TABLE user_facts (
@@ -47,6 +48,23 @@ CREATE TABLE daily_chat_summaries (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (guild_id, for_date, user_id)
 );
+
+CREATE TABLE scheduled_tasks (
+    task_id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    channel_id BIGINT NOT NULL,
+    creator_user_id BIGINT NOT NULL,
+    prompt TEXT NOT NULL,
+    cron_expression TEXT,
+    timezone TEXT NOT NULL,
+    next_run_at TIMESTAMPTZ NOT NULL,
+    last_run_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_scheduled_tasks_next_run ON scheduled_tasks (next_run_at);
+CREATE INDEX idx_scheduled_tasks_channel ON scheduled_tasks (guild_id, channel_id);
 
 -- Insert messages
 INSERT INTO messages VALUES

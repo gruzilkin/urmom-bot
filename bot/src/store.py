@@ -27,6 +27,22 @@ class GuildConfig:
     delete_jokes_after_minutes: int = 0
     downvote_reaction_threshold: int = 0
     enable_country_jokes: bool = True
+    default_timezone: str = "UTC"
+
+
+@dataclass
+class ScheduledTask:
+    task_id: int
+    guild_id: int
+    channel_id: int
+    creator_user_id: int
+    prompt: str
+    cron_expression: str | None
+    timezone: str
+    next_run_at: datetime
+    last_run_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class Store:
@@ -180,9 +196,10 @@ class Store:
 
                     await cur.execute(
                         """
-                        SELECT archive_channel_id, delete_jokes_after_minutes, 
-                               downvote_reaction_threshold, enable_country_jokes 
-                        FROM guild_configs 
+                        SELECT archive_channel_id, delete_jokes_after_minutes,
+                               downvote_reaction_threshold, enable_country_jokes,
+                               default_timezone
+                        FROM guild_configs
                         WHERE guild_id = %s
                         """,
                         (guild_id,),
@@ -195,6 +212,7 @@ class Store:
                         delete_jokes_after_minutes=result[1],
                         downvote_reaction_threshold=result[2],
                         enable_country_jokes=result[3],
+                        default_timezone=result[4],
                     )
             else:
                 span.set_attribute("cache_hit", True)
@@ -214,6 +232,7 @@ class Store:
             span.set_attribute("delete_jokes_after_minutes", config.delete_jokes_after_minutes)
             span.set_attribute("downvote_reaction_threshold", config.downvote_reaction_threshold)
             span.set_attribute("enable_country_jokes", config.enable_country_jokes)
+            span.set_attribute("default_timezone", config.default_timezone)
 
             timer = self._telemetry.metrics.timer()
             try:
@@ -221,11 +240,12 @@ class Store:
                 async with self.conn.cursor() as cur:
                     await cur.execute(
                         """
-                        UPDATE guild_configs 
+                        UPDATE guild_configs
                         SET archive_channel_id = %s,
                             delete_jokes_after_minutes = %s,
                             downvote_reaction_threshold = %s,
-                            enable_country_jokes = %s
+                            enable_country_jokes = %s,
+                            default_timezone = %s
                         WHERE guild_id = %s
                         """,
                         (
@@ -233,6 +253,7 @@ class Store:
                             config.delete_jokes_after_minutes,
                             config.downvote_reaction_threshold,
                             config.enable_country_jokes,
+                            config.default_timezone,
                             config.guild_id,
                         ),
                     )
@@ -515,6 +536,228 @@ class Store:
                 self._telemetry.metrics.db_latency.record(
                     timer(), {"operation": "save_daily_summaries", "guild_id": str(guild_id)}
                 )
+
+    async def create_scheduled_task(
+        self,
+        guild_id: int,
+        channel_id: int,
+        creator_user_id: int,
+        prompt: str,
+        cron_expression: str | None,
+        timezone: str,
+        next_run_at: datetime,
+    ) -> int:
+        """Insert a new scheduled task and return its task_id."""
+        async with self._telemetry.async_create_span("create_scheduled_task") as span:
+            span.set_attribute("guild_id", guild_id)
+            span.set_attribute("channel_id", channel_id)
+            span.set_attribute("creator_user_id", creator_user_id)
+            span.set_attribute("has_cron", cron_expression is not None)
+            span.set_attribute("timezone", timezone)
+
+            timer = self._telemetry.metrics.timer()
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        INSERT INTO scheduled_tasks
+                            (guild_id, channel_id, creator_user_id, prompt,
+                             cron_expression, timezone, next_run_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING task_id
+                        """,
+                        (guild_id, channel_id, creator_user_id, prompt, cron_expression, timezone, next_run_at),
+                    )
+                    result = await cur.fetchone()
+                    await self.conn.commit()
+                    task_id = result[0]
+                    span.set_attribute("task_id", task_id)
+                    return task_id
+            finally:
+                self._telemetry.metrics.db_latency.record(
+                    timer(), {"operation": "create_scheduled_task", "guild_id": str(guild_id)}
+                )
+
+    async def get_scheduled_task(self, task_id: int) -> ScheduledTask | None:
+        """Retrieve a single scheduled task by its ID."""
+        async with self._telemetry.async_create_span("get_scheduled_task") as span:
+            span.set_attribute("task_id", task_id)
+
+            timer = self._telemetry.metrics.timer()
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        SELECT task_id, guild_id, channel_id, creator_user_id, prompt,
+                               cron_expression, timezone, next_run_at, last_run_at,
+                               created_at, updated_at
+                        FROM scheduled_tasks
+                        WHERE task_id = %s
+                        """,
+                        (task_id,),
+                    )
+                    result = await cur.fetchone()
+                    if result is None:
+                        span.set_attribute("found", False)
+                        return None
+                    span.set_attribute("found", True)
+                    return ScheduledTask(*result)
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "get_scheduled_task"})
+
+    async def list_scheduled_tasks(
+        self,
+        guild_id: int | None = None,
+        channel_id: int | None = None,
+        due_before: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[ScheduledTask]:
+        """List scheduled tasks with optional filters, ordered by next_run_at ASC.
+
+        - guild_id / channel_id: filter to a specific channel.
+        - due_before: only tasks whose next_run_at <= due_before (engine's tick query).
+        - limit: cap result count.
+        """
+        async with self._telemetry.async_create_span("list_scheduled_tasks") as span:
+            if guild_id is not None:
+                span.set_attribute("guild_id", guild_id)
+            if channel_id is not None:
+                span.set_attribute("channel_id", channel_id)
+            if due_before is not None:
+                span.set_attribute("due_before", due_before.isoformat())
+            if limit is not None:
+                span.set_attribute("limit", limit)
+
+            timer = self._telemetry.metrics.timer()
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    clauses: list[str] = []
+                    params: list = []
+                    if guild_id is not None:
+                        clauses.append("guild_id = %s")
+                        params.append(guild_id)
+                    if channel_id is not None:
+                        clauses.append("channel_id = %s")
+                        params.append(channel_id)
+                    if due_before is not None:
+                        clauses.append("next_run_at <= %s")
+                        params.append(due_before)
+
+                    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+                    limit_clause = ""
+                    if limit is not None:
+                        limit_clause = "LIMIT %s"
+                        params.append(limit)
+
+                    await cur.execute(
+                        f"""
+                        SELECT task_id, guild_id, channel_id, creator_user_id, prompt,
+                               cron_expression, timezone, next_run_at, last_run_at,
+                               created_at, updated_at
+                        FROM scheduled_tasks
+                        {where}
+                        ORDER BY next_run_at ASC
+                        {limit_clause}
+                        """,
+                        params,
+                    )
+                    results = await cur.fetchall()
+                    tasks = [ScheduledTask(*row) for row in results]
+                    span.set_attribute("task_count", len(tasks))
+                    return tasks
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "list_scheduled_tasks"})
+
+    async def update_scheduled_task(
+        self,
+        task_id: int,
+        prompt: str,
+        cron_expression: str | None,
+        timezone: str,
+        next_run_at: datetime,
+    ) -> bool:
+        """Update mutable fields of a scheduled task. Returns True if a row was updated."""
+        async with self._telemetry.async_create_span("update_scheduled_task") as span:
+            span.set_attribute("task_id", task_id)
+            span.set_attribute("has_cron", cron_expression is not None)
+            span.set_attribute("timezone", timezone)
+
+            timer = self._telemetry.metrics.timer()
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        UPDATE scheduled_tasks
+                        SET prompt = %s,
+                            cron_expression = %s,
+                            timezone = %s,
+                            next_run_at = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE task_id = %s
+                        """,
+                        (prompt, cron_expression, timezone, next_run_at, task_id),
+                    )
+                    rows = cur.rowcount
+                    await self.conn.commit()
+                    span.set_attribute("rows_affected", rows)
+                    return rows > 0
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "update_scheduled_task"})
+
+    async def delete_scheduled_task(self, task_id: int) -> bool:
+        """Delete a scheduled task by ID. Returns True if a row was deleted."""
+        async with self._telemetry.async_create_span("delete_scheduled_task") as span:
+            span.set_attribute("task_id", task_id)
+
+            timer = self._telemetry.metrics.timer()
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute("DELETE FROM scheduled_tasks WHERE task_id = %s", (task_id,))
+                    rows = cur.rowcount
+                    await self.conn.commit()
+                    span.set_attribute("rows_affected", rows)
+                    return rows > 0
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "delete_scheduled_task"})
+
+    async def update_task_next_run_at(self, task_id: int, next_run_at: datetime) -> None:
+        """Update only the next_run_at column on a scheduled task."""
+        async with self._telemetry.async_create_span("update_task_next_run_at") as span:
+            span.set_attribute("task_id", task_id)
+
+            timer = self._telemetry.metrics.timer()
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        "UPDATE scheduled_tasks SET next_run_at = %s WHERE task_id = %s",
+                        (next_run_at, task_id),
+                    )
+                    await self.conn.commit()
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "update_task_next_run_at"})
+
+    async def mark_task_last_run(self, task_id: int, last_run_at: datetime) -> None:
+        """Engine post-execution: record when the task last fired."""
+        async with self._telemetry.async_create_span("mark_task_last_run") as span:
+            span.set_attribute("task_id", task_id)
+
+            timer = self._telemetry.metrics.timer()
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        "UPDATE scheduled_tasks SET last_run_at = %s WHERE task_id = %s",
+                        (last_run_at, task_id),
+                    )
+                    await self.conn.commit()
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "mark_task_last_run"})
 
     async def close(self) -> None:
         """Close the database connection."""

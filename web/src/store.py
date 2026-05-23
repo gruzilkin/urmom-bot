@@ -25,6 +25,21 @@ class UserFactsRow:
     updated_at: datetime
 
 
+@dataclass
+class ScheduledTaskRow:
+    task_id: int
+    guild_id: int
+    channel_id: int
+    creator_user_id: int
+    prompt: str
+    cron_expression: str | None
+    timezone: str
+    next_run_at: datetime
+    last_run_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class WebStore:
     def __init__(
         self,
@@ -334,6 +349,161 @@ class WebStore:
                     return success
             except Exception as e:
                 logger.error(f"Error deleting user facts: {e}", exc_info=True)
+                span.record_exception(e)
+                return False
+
+    async def get_scheduled_tasks_rows(
+        self, limit: int = 50, offset: int = 0, search_query: str = ""
+    ) -> list[ScheduledTaskRow]:
+        """Get paginated list of scheduled tasks with optional search on prompt text."""
+        async with self._telemetry.async_create_span("get_scheduled_tasks_rows") as span:
+            span.set_attribute("limit", limit)
+            span.set_attribute("offset", offset)
+            span.set_attribute("has_search", bool(search_query))
+
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    if search_query:
+                        await cur.execute(
+                            """
+                            SELECT task_id, guild_id, channel_id, creator_user_id, prompt,
+                                   cron_expression, timezone, next_run_at, last_run_at,
+                                   created_at, updated_at
+                            FROM scheduled_tasks
+                            WHERE prompt ILIKE %s
+                            ORDER BY next_run_at ASC
+                            LIMIT %s OFFSET %s
+                            """,
+                            (f"%{search_query}%", limit, offset),
+                        )
+                    else:
+                        await cur.execute(
+                            """
+                            SELECT task_id, guild_id, channel_id, creator_user_id, prompt,
+                                   cron_expression, timezone, next_run_at, last_run_at,
+                                   created_at, updated_at
+                            FROM scheduled_tasks
+                            ORDER BY next_run_at ASC
+                            LIMIT %s OFFSET %s
+                            """,
+                            (limit, offset),
+                        )
+                    results = await cur.fetchall()
+                    rows = [ScheduledTaskRow(*row) for row in results]
+                    span.set_attribute("returned_count", len(rows))
+                    return rows
+            except Exception as e:
+                logger.error(f"Error fetching scheduled tasks: {e}", exc_info=True)
+                span.record_exception(e)
+                return []
+
+    async def get_scheduled_tasks_count(self, search_query: str = "") -> int:
+        """Total scheduled tasks count for pagination, with optional search."""
+        async with self._telemetry.async_create_span("get_scheduled_tasks_count") as span:
+            span.set_attribute("has_search", bool(search_query))
+
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    if search_query:
+                        await cur.execute(
+                            "SELECT COUNT(*) FROM scheduled_tasks WHERE prompt ILIKE %s",
+                            (f"%{search_query}%",),
+                        )
+                    else:
+                        await cur.execute("SELECT COUNT(*) FROM scheduled_tasks")
+                    result = await cur.fetchone()
+                    count = result[0] if result else 0
+                    span.set_attribute("total_count", count)
+                    return count
+            except Exception as e:
+                logger.error(f"Error getting scheduled tasks count: {e}", exc_info=True)
+                span.record_exception(e)
+                return 0
+
+    async def get_scheduled_task(self, task_id: int) -> ScheduledTaskRow | None:
+        """Retrieve a single scheduled task by ID."""
+        async with self._telemetry.async_create_span("get_scheduled_task") as span:
+            span.set_attribute("task_id", task_id)
+
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        SELECT task_id, guild_id, channel_id, creator_user_id, prompt,
+                               cron_expression, timezone, next_run_at, last_run_at,
+                               created_at, updated_at
+                        FROM scheduled_tasks
+                        WHERE task_id = %s
+                        """,
+                        (task_id,),
+                    )
+                    result = await cur.fetchone()
+                    if result is None:
+                        span.set_attribute("found", False)
+                        return None
+                    span.set_attribute("found", True)
+                    return ScheduledTaskRow(*result)
+            except Exception as e:
+                logger.error(f"Error getting scheduled task: {e}", exc_info=True)
+                span.record_exception(e)
+                return None
+
+    async def update_scheduled_task(
+        self,
+        task_id: int,
+        prompt: str,
+        cron_expression: str | None,
+        timezone: str,
+        next_run_at: datetime,
+    ) -> bool:
+        """Update mutable fields of a scheduled task. Returns True if a row was updated."""
+        async with self._telemetry.async_create_span("update_scheduled_task") as span:
+            span.set_attribute("task_id", task_id)
+            span.set_attribute("has_cron", cron_expression is not None)
+            span.set_attribute("timezone", timezone)
+
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        UPDATE scheduled_tasks
+                        SET prompt = %s,
+                            cron_expression = %s,
+                            timezone = %s,
+                            next_run_at = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE task_id = %s
+                        """,
+                        (prompt, cron_expression, timezone, next_run_at, task_id),
+                    )
+                    rows = cur.rowcount
+                    await self.conn.commit()
+                    span.set_attribute("rows_affected", rows)
+                    return rows > 0
+            except Exception as e:
+                logger.error(f"Error updating scheduled task: {e}", exc_info=True)
+                span.record_exception(e)
+                return False
+
+    async def delete_scheduled_task(self, task_id: int) -> bool:
+        """Delete a scheduled task by ID."""
+        async with self._telemetry.async_create_span("delete_scheduled_task") as span:
+            span.set_attribute("task_id", task_id)
+
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute("DELETE FROM scheduled_tasks WHERE task_id = %s", (task_id,))
+                    rows = cur.rowcount
+                    await self.conn.commit()
+                    span.set_attribute("rows_affected", rows)
+                    return rows > 0
+            except Exception as e:
+                logger.error(f"Error deleting scheduled task: {e}", exc_info=True)
                 span.record_exception(e)
                 return False
 
