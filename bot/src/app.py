@@ -163,12 +163,14 @@ async def on_message(message: nextcord.Message):
             reply = await traced_reply(message, response)
 
         elif route == "SCHEDULE" and params:
+            conversation_fetcher = create_conversation_fetcher(message)
             response = await container.schedule_handler.handle_request(
                 params,
                 processed_message,
                 message.guild.id,
                 message.channel.id,
                 message.author.id,
+                conversation_fetcher,
             )
             reply = await traced_reply(message, response)
 

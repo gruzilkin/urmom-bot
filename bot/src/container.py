@@ -245,6 +245,7 @@ class Container:
             store=self.store,
             telemetry=self.telemetry,
             schedule_engine=self.schedule_engine,
+            conversation_formatter=self.conversation_formatter,
         )
 
         # The router client will be a composite client that handles the NOTSURE fallback.

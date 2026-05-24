@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from null_telemetry import NullTelemetry
 
 from ai_client import AIClient
+from conversation_formatter import ConversationFormatter
 from schedule_handler import ScheduleHandler
 from schemas import (
     ScheduleCreateParams,
@@ -56,11 +57,15 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.delete_scheduled_task = AsyncMock(return_value=True)
         self.mock_store.list_scheduled_tasks = AsyncMock(return_value=[])
 
+        self.mock_conversation_formatter = MagicMock(spec=ConversationFormatter)
+        self.mock_conversation_formatter.format_to_xml = AsyncMock(return_value="")
+
         self.handler = ScheduleHandler(
             ai_client=self.mock_ai,
             store=self.mock_store,
             telemetry=self.telemetry,
             schedule_engine=self.mock_engine,
+            conversation_formatter=self.mock_conversation_formatter,
         )
 
     # ---- _compute_next_run_at ----

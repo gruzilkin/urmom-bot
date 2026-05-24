@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable
 from datetime import datetime, timezone as dt_timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import dateparser
 from croniter import croniter, CroniterBadCronError
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ai_client import AIClient
+from conversation_formatter import ConversationFormatter
+from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from schemas import (
     ScheduleCreateParams,
@@ -33,11 +36,13 @@ class ScheduleHandler:
         store: Store,
         telemetry: Telemetry,
         schedule_engine: ScheduleEngine,
+        conversation_formatter: ConversationFormatter,
     ) -> None:
         self.ai_client = ai_client
         self.store = store
         self.telemetry = telemetry
         self.schedule_engine = schedule_engine
+        self.conversation_formatter = conversation_formatter
 
     def get_route_description(self) -> str:
         return """
@@ -98,6 +103,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         guild_id: int,
         channel_id: int,
         creator_user_id: int,
+        conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]] | None = None,
     ) -> str:
         logger.info(f"Processing schedule request: {params.operation}")
         language_name = params.language_name or "English"
@@ -107,12 +113,21 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("channel_id", channel_id)
 
+            if params.operation in ("create", "edit"):
+                conversation_context = ""
+                if conversation_fetcher is not None:
+                    conversation = await conversation_fetcher()
+                    if conversation:
+                        conversation_context = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+
             if params.operation == "create":
-                return await self._create(message, guild_id, channel_id, creator_user_id, language_name)
+                return await self._create(
+                    message, guild_id, channel_id, creator_user_id, language_name, conversation_context
+                )
             if params.operation == "list":
                 return await self._list(message, guild_id, channel_id, language_name)
             if params.operation == "edit":
-                return await self._edit(message, guild_id, channel_id, language_name)
+                return await self._edit(message, guild_id, channel_id, language_name, conversation_context)
             if params.operation == "delete":
                 return await self._delete(message, guild_id, channel_id, language_name)
             if params.operation == "run_now":
@@ -126,6 +141,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         channel_id: int,
         creator_user_id: int,
         language_name: str,
+        conversation_context: str = "",
     ) -> str:
         config = await self.store.get_guild_config(guild_id)
         default_tz_name = config.default_timezone
@@ -137,7 +153,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
             default_tz_name = "UTC"
 
         now_in_tz = datetime.now(default_tz)
-        prompt = self._build_create_prompt(default_tz_name, now_in_tz, language_name)
+        prompt = self._build_create_prompt(default_tz_name, now_in_tz, language_name, conversation_context)
 
         result: ScheduleCreateParams = await self.ai_client.generate_content(
             message=message,
@@ -203,6 +219,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         guild_id: int,
         channel_id: int,
         language_name: str,
+        conversation_context: str = "",
     ) -> str:
         tasks = await self.store.list_scheduled_tasks(guild_id, channel_id)
         if not tasks:
@@ -215,7 +232,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
             default_tz = ZoneInfo("UTC")
         now_in_tz = datetime.now(default_tz)
 
-        prompt = self._build_edit_prompt(tasks, now_in_tz, language_name)
+        prompt = self._build_edit_prompt(tasks, now_in_tz, language_name, conversation_context)
         result: ScheduleEditParams = await self.ai_client.generate_content(
             message=message,
             prompt=prompt,
@@ -408,15 +425,29 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         parts.append("</scheduled_tasks>")
         return "\n".join(parts)
 
-    def _build_create_prompt(self, default_tz_name: str, now_in_tz: datetime, language_name: str) -> str:
+    def _build_create_prompt(
+        self,
+        default_tz_name: str,
+        now_in_tz: datetime,
+        language_name: str,
+        conversation_context: str = "",
+    ) -> str:
+        context_section = ""
+        if conversation_context:
+            context_section = f"\n{conversation_context}\n"
+
         return f"""
 Extract schedule details for a new scheduled task from the user's request.
 
 Current datetime: {now_in_tz.strftime("%Y-%m-%d %H:%M %Z")}
 Guild default timezone (IANA): {default_tz_name}
-
+{context_section}
 Fields:
 - prompt: the instruction the bot will execute when fired. Strip scheduling words.
+  The task fires later when the current conversation is no longer available, so the
+  prompt MUST be self-contained: resolve every reference to context ("this", "that",
+  "it", "him", "her", "the article", "the video") by inlining the concrete subject
+  (title, URL, name) from the conversation. Never store deictic references.
 - cron_expression: 5-field cron for recurring schedules (e.g., "0 9 * * 1"). Null for one-off.
 - first_run_phrase: time expression for one-off tasks, or an explicit first-run anchor on a
   recurring task. Null when the recurring schedule's first firing is the next cron occurrence.
@@ -475,20 +506,34 @@ Reference tasks by their integer task_id. If the question can't be answered from
 say so. Respond in {language_name}.
 """
 
-    def _build_edit_prompt(self, tasks: list[ScheduledTask], now_in_tz: datetime, language_name: str) -> str:
+    def _build_edit_prompt(
+        self,
+        tasks: list[ScheduledTask],
+        now_in_tz: datetime,
+        language_name: str,
+        conversation_context: str = "",
+    ) -> str:
+        context_section = ""
+        if conversation_context:
+            context_section = f"\n{conversation_context}\n"
+
         return f"""
 Edit an existing scheduled task based on the user's change request.
 
 Current datetime: {now_in_tz.strftime("%Y-%m-%d %H:%M %Z")}
 
 {self._render_tasks_xml(tasks)}
-
+{context_section}
 Steps:
 1. Identify which task the user wants to edit; set task_id to that integer.
 2. Return the full updated task fields. Copy unchanged fields verbatim from the matching
    <task> element. Modify only the fields the user asked to change. An empty
    <cron_expression/> means the task is one-off and cron_expression must remain null.
 3. cron_expression / first_run_phrase / timezone follow the same rules as for creating a task.
+4. The task fires later when the current conversation is no longer available. If the user's
+   change refers to context ("this", "that", "the article", etc.), resolve every reference
+   by inlining the concrete subject from the conversation into the stored prompt. Never store
+   deictic references.
 
 If the task or change cannot be identified, set task_id and all data fields to null and
 explain in reason.
