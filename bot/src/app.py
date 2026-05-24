@@ -153,7 +153,7 @@ async def on_message(message: nextcord.Message):
             conversation_fetcher = create_conversation_fetcher(message)
 
             response = await container.general_query_generator.handle_request(
-                params, conversation_fetcher, message.guild.id, bot.user, message.author
+                params, conversation_fetcher, message.guild.id, bot.user, message.author.id
             )
             if response is not None:
                 reply = await traced_reply(message, response)

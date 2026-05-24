@@ -229,6 +229,7 @@ class Container:
             store=self.store,
             conversation_formatter=self.conversation_formatter,
             memory_manager=self.memory_manager,
+            user_resolver=self.user_resolver,
         )
 
         self.schedule_engine = ScheduleEngine(

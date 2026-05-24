@@ -4,7 +4,6 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
 
 import nextcord
 from croniter import croniter
@@ -169,11 +168,6 @@ class ScheduleEngine:
                 span.set_attribute("ai_backend", params.ai_backend)
                 span.set_attribute("temperature", params.temperature)
 
-                requesting_user = SimpleNamespace(
-                    id=task.creator_user_id,
-                    display_name="Scheduled Task",
-                )
-
                 async def fetch_conversation() -> list[ConversationMessage]:
                     return await self._channel_conversation_fetcher(task.channel_id)
 
@@ -182,7 +176,7 @@ class ScheduleEngine:
                     fetch_conversation,
                     task.guild_id,
                     self.bot.user,
-                    requesting_user,
+                    task.creator_user_id,
                 )
 
                 if response is None:

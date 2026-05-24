@@ -238,11 +238,18 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         except ZoneInfoNotFoundError:
             return f"Couldn't resolve timezone '{result.timezone}'."
 
-        if not result.cron_expression and not result.first_run_phrase:
-            # Prompt-only (or timezone-only) edit: preserve the existing schedule.
-            # For a one-off task next_run_at *is* the schedule; for a recurring task
-            # the LLM is expected to copy cron_expression back from the XML, but if
-            # it omits it we still fall back to the existing values rather than reject.
+        # Schedule is unchanged if the LLM copied cron + timezone verbatim from the XML
+        # and provided no first_run_phrase. In that case keep existing.next_run_at —
+        # recomputing would clobber a one-off's stored firing time, and for a recurring
+        # task whose first firing was set via first_run_phrase it would silently skip
+        # past that intended first run to the next cron occurrence.
+        schedule_unchanged = (
+            result.cron_expression == existing.cron_expression
+            and result.timezone == existing.timezone
+            and not result.first_run_phrase
+        )
+
+        if schedule_unchanged:
             new_cron = existing.cron_expression
             next_run_at = existing.next_run_at
         else:

@@ -245,6 +245,18 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.mock_bot.fetch_channel.assert_awaited_once_with(task.channel_id)
         self.mock_channel.send.assert_awaited_once_with("response text")
 
+    async def test_execute_passes_creator_user_id_to_generator(self):
+        # The engine passes the task creator's user ID through to GeneralQueryGenerator,
+        # which is responsible for resolving display name and loading the creator's
+        # facts into the memory block.
+        task = _make_task()
+
+        await self.engine._execute(task, intended_run_at=task.next_run_at, scheduled=True)
+
+        call_args = self.mock_gqg.handle_request.await_args
+        passed_requester_id = call_args.args[4]
+        self.assertEqual(passed_requester_id, task.creator_user_id)
+
     # ---- _dispatch_due_task error handling ----
 
     async def test_dispatch_store_failure_skips_execution(self):

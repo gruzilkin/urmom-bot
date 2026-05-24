@@ -327,6 +327,69 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["task_id"], 5)
         self.assertEqual(kwargs["prompt"], "new prompt")
 
+    async def test_edit_recurring_prompt_only_preserves_next_run_at(self):
+        # Recurring task whose first firing was set by a first_run_phrase override
+        # (cron="0 9 * * *", but next_run_at=tomorrow 10:00). A prompt-only edit must
+        # keep next_run_at as-is; recomputing from cron would skip the intended first
+        # firing forward to the next 09:00 occurrence.
+        existing_next = datetime(2026, 5, 25, 1, 0, tzinfo=timezone.utc)  # 10:00 JST
+        existing = _make_task(
+            task_id=5,
+            prompt="old prompt",
+            cron="0 9 * * *",
+            next_run_at=existing_next,
+        )
+        self.mock_store.list_scheduled_tasks.return_value = [existing]
+        self.mock_ai.generate_content = AsyncMock(
+            return_value=ScheduleEditParams(
+                reason="Updated task 5's prompt.",
+                task_id=5,
+                prompt="new prompt",
+                cron_expression="0 9 * * *",  # LLM copied verbatim from XML
+                first_run_phrase=None,
+                timezone="Asia/Tokyo",
+            )
+        )
+        params = ScheduleParams(operation="edit", language_name="English")
+        await self.handler.handle_request(
+            params,
+            message="change task 5's prompt to new prompt",
+            guild_id=100,
+            channel_id=200,
+            creator_user_id=300,
+        )
+        self.mock_store.update_scheduled_task.assert_awaited_once()
+        kwargs = self.mock_store.update_scheduled_task.await_args.kwargs
+        self.assertEqual(kwargs["prompt"], "new prompt")
+        self.assertEqual(kwargs["cron_expression"], "0 9 * * *")
+        self.assertEqual(kwargs["next_run_at"], existing_next)
+
+    async def test_edit_recurring_cron_change_recomputes_next_run_at(self):
+        # Sanity check: when the LLM returns a different cron, next_run_at IS recomputed.
+        existing_next = datetime(2026, 5, 25, 1, 0, tzinfo=timezone.utc)
+        existing = _make_task(task_id=5, cron="0 9 * * *", next_run_at=existing_next)
+        self.mock_store.list_scheduled_tasks.return_value = [existing]
+        self.mock_ai.generate_content = AsyncMock(
+            return_value=ScheduleEditParams(
+                reason="Updated schedule.",
+                task_id=5,
+                prompt="do thing",
+                cron_expression="0 9 * * 1",  # changed from daily to weekly
+                first_run_phrase=None,
+                timezone="Asia/Tokyo",
+            )
+        )
+        params = ScheduleParams(operation="edit", language_name="English")
+        await self.handler.handle_request(
+            params,
+            message="make it weekly on Mondays",
+            guild_id=100,
+            channel_id=200,
+            creator_user_id=300,
+        )
+        kwargs = self.mock_store.update_scheduled_task.await_args.kwargs
+        self.assertNotEqual(kwargs["next_run_at"], existing_next)
+
     async def test_edit_one_off_prompt_only_preserves_schedule(self):
         # One-off task: cron is null in storage and there's no first_run_phrase in the
         # XML for the LLM to copy. A prompt-only edit must preserve next_run_at instead

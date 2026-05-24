@@ -50,10 +50,11 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_bot_user.name = "urmom-bot"
         self.mock_bot_user.id = 99999
 
-        # Mock requesting user
-        self.mock_requesting_user = Mock()
-        self.mock_requesting_user.id = 123
-        self.mock_requesting_user.display_name = "TestUser"
+        # Requesting user is now passed by id; display name is resolved internally.
+        self.requesting_user_id = 123
+
+        self.mock_user_resolver = Mock()
+        self.mock_user_resolver.get_display_name = AsyncMock(return_value="TestUser")
 
         self.telemetry = NullTelemetry()
 
@@ -70,6 +71,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             store=self.mock_store,
             conversation_formatter=self.mock_conversation_formatter,
             memory_manager=self.mock_memory_manager,
+            user_resolver=self.mock_user_resolver,
         )
 
     async def test_handle_request_with_gemini_flash(self):
@@ -94,7 +96,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user=self.mock_requesting_user,
+            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertEqual(result, "Quick answer!")
@@ -124,7 +126,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user=self.mock_requesting_user,
+            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertEqual(result, "Creative response!")
@@ -153,7 +155,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user=self.mock_requesting_user,
+            requesting_user_id=self.requesting_user_id,
         )
 
         # Should return None when AI client returns None
@@ -186,12 +188,39 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
                 mock_conversation_fetcher,
                 guild_id=12345,
                 bot_user=self.mock_bot_user,
-                requesting_user=self.mock_requesting_user,
+                requesting_user_id=self.requesting_user_id,
             )
 
         self.assertEqual(str(context.exception), "API error")
         # Response summarizer should not be called due to exception
         self.mock_response_summarizer.process_response.assert_not_called()
+
+    async def test_requesting_user_included_in_memory_lookup(self):
+        # The requesting user's facts must be loaded into the memory block even
+        # when they have no recent message in the conversation — otherwise scheduled
+        # tasks (where the creator is rarely present in recent history) lose all
+        # personalization.
+        params = GeneralParams(ai_backend="gemini_flash", temperature=0.3, cleaned_query="hi")
+        self.mock_gemini_flash.generate_content.return_value = "Hello"
+
+        async def mock_conversation_fetcher():
+            return [
+                ConversationMessage(
+                    message_id=1, author_id=42, content="Hi", timestamp="2024-01-01", mentioned_user_ids=[]
+                )
+            ]
+
+        await self.generator.handle_request(
+            params,
+            mock_conversation_fetcher,
+            guild_id=1,
+            bot_user=self.mock_bot_user,
+            requesting_user_id=999,  # not present in conversation
+        )
+
+        self.mock_memory_manager.build_memory_prompt.assert_awaited_once()
+        passed_user_ids = self.mock_memory_manager.build_memory_prompt.await_args.args[1]
+        self.assertIn(999, passed_user_ids)
 
     async def test_client_selector_called_with_backend(self):
         """Ensure the client selector is invoked with the requested backend."""
@@ -211,7 +240,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=1,
             bot_user=self.mock_bot_user,
-            requesting_user=self.mock_requesting_user,
+            requesting_user_id=self.requesting_user_id,
         )
 
         self.mock_gemini_flash.generate_content.assert_called_once()
