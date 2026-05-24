@@ -139,15 +139,11 @@ class ScheduleCreateParams(BaseModel):
     """
 
     reason: str = Field(
-        description=(
-            "User-facing message. On success: friendly confirmation including the resolved"
-            " schedule and next firing time. On failure: explanation of why the request"
-            " couldn't be parsed. Always populated, in the user's language."
-        )
+        description="User-facing outcome message describing success or failure, in the user's language."
     )
     prompt: str | None = Field(
         default=None,
-        description="The instruction the bot will execute when the task fires. Null if extraction failed.",
+        description="Instruction the bot will execute when the task fires.",
     )
     cron_expression: str | None = Field(
         default=None,
@@ -159,14 +155,15 @@ class ScheduleCreateParams(BaseModel):
     first_run_phrase: str | None = Field(
         default=None,
         description=(
-            "Natural-language time expression resolvable by dateparser (e.g., 'tomorrow at 3pm',"
-            " 'next Monday 9am'). Required for one-off tasks. Optional for recurring tasks when the"
-            " user explicitly specifies the first firing; otherwise null."
+            "Natural-language time expression. MUST be written in English regardless of the"
+            " user's input language (e.g., 'tomorrow at 3pm', 'in 2 hours', 'Monday 9am')."
+            " Required for one-off tasks, or for an explicit first-run anchor on a recurring"
+            " task; otherwise null."
         ),
     )
     timezone: str | None = Field(
         default=None,
-        description=("IANA timezone name (e.g., 'Asia/Tokyo', 'Europe/Berlin', 'UTC'). Null if extraction failed."),
+        description="IANA timezone name (e.g., 'Asia/Tokyo', 'Asia/Dubai', 'America/New_York').",
     )
 
 
@@ -190,43 +187,38 @@ class ScheduleEditParams(BaseModel):
     """
 
     reason: str = Field(
-        description=(
-            "User-facing message. On success: friendly confirmation summarizing what was changed."
-            " On failure: explanation of why the request couldn't be processed."
-            " Always populated, in the user's language."
-        )
+        description="User-facing outcome message describing success or failure, in the user's language."
     )
     task_id: int | None = Field(
         default=None,
         description=(
-            "ID of the task to edit, resolved from the user's request against the channel's task list."
+            "ID of the task referenced by the user, resolved against the channel's task list."
             " Null if no matching task was found."
         ),
     )
     prompt: str | None = Field(
         default=None,
-        description=(
-            "Updated prompt for the task. Carries the existing prompt forward verbatim if the user"
-            " did not change it. Null if the task could not be resolved."
-        ),
+        description="Instruction the bot will execute when the task fires.",
     )
     cron_expression: str | None = Field(
         default=None,
         description=(
-            "Updated cron expression. Carries the existing value forward if unchanged."
-            " Null for one-off tasks or if the task could not be resolved."
+            "5-field cron expression for recurring schedules (e.g., '0 9 * * 1' for every Monday 9am)."
+            " Null for one-off tasks."
         ),
     )
     first_run_phrase: str | None = Field(
         default=None,
-        description=("Natural-language first-firing time (for one-off tasks or explicit overrides). Null when unused."),
+        description=(
+            "Natural-language time expression. MUST be written in English regardless of the"
+            " user's input language (e.g., 'tomorrow at 3pm', 'in 2 hours', 'Monday 9am')."
+            " Required for one-off tasks, or for an explicit first-run anchor on a recurring"
+            " task; otherwise null."
+        ),
     )
     timezone: str | None = Field(
         default=None,
-        description=(
-            "Updated IANA timezone name. Carries the existing value forward if unchanged."
-            " Null if the task could not be resolved."
-        ),
+        description="IANA timezone name (e.g., 'Asia/Tokyo', 'Asia/Dubai', 'America/New_York').",
     )
 
 
@@ -242,11 +234,7 @@ class ScheduleTaskResolution(BaseModel):
         ),
     )
     reason: str = Field(
-        description=(
-            "User-facing message. On success: friendly confirmation of the action."
-            " On failure: explanation of why the task could not be found."
-            " Always populated, in the user's language."
-        )
+        description="User-facing outcome message describing success or failure, in the user's language."
     )
 
 

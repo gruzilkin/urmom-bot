@@ -88,8 +88,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         - 'run_now' — user wants to fire a task immediately
           (e.g., "run task 5 now", "fire the daily standup now")
 
-        Identify the verb from the user's message only — do NOT try to resolve which task they mean.
-        That resolution happens later in the handler.
+        Identify the verb from the user's message only. Do not resolve which task they mean.
         {context_section}"""
 
     async def handle_request(
@@ -360,6 +359,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
                     "TIMEZONE": str(tz),
                     "RETURN_AS_TIMEZONE_AWARE": True,
                     "RELATIVE_BASE": now_tz.replace(tzinfo=None),
+                    "PREFER_DATES_FROM": "future",
                 },
             )
             if parsed is None:
@@ -410,27 +410,36 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
 
     def _build_create_prompt(self, default_tz_name: str, now_in_tz: datetime, language_name: str) -> str:
         return f"""
-You are extracting schedule details for a new scheduled task from the user's request.
+Extract schedule details for a new scheduled task from the user's request.
 
-Current datetime in the guild's default timezone: {now_in_tz.strftime("%Y-%m-%d %H:%M %Z")}
+Current datetime: {now_in_tz.strftime("%Y-%m-%d %H:%M %Z")}
 Guild default timezone (IANA): {default_tz_name}
 
-Fields to produce:
-- prompt: the instruction the bot will execute when fired. STRIP scheduling words like
-  "every Monday" or "tomorrow at 3pm" — keep only what the bot should do.
-- cron_expression: 5-field cron for RECURRING schedules (e.g., "0 9 * * 1" for every Monday 9am).
-  Null for one-off tasks.
-- first_run_phrase: natural-language time expression for ONE-OFF tasks, OR for an explicit
-  first-run anchor on a recurring task. Null when the recurring schedule's first firing
-  should be the next cron occurrence after now. Examples: "tomorrow at 3pm", "in 2 hours",
-  "next Monday 9am".
-- timezone: IANA name (e.g., "Asia/Tokyo"). If the user did not specify one, use the
-  guild default: {default_tz_name}.
-- reason: friendly confirmation echoing back the resolved schedule and what the task will do.
-  Include the resolved cron or time so the user can spot mistranslations.
+Fields:
+- prompt: the instruction the bot will execute when fired. Strip scheduling words.
+- cron_expression: 5-field cron for recurring schedules (e.g., "0 9 * * 1"). Null for one-off.
+- first_run_phrase: time expression for one-off tasks, or an explicit first-run anchor on a
+  recurring task. Null when the recurring schedule's first firing is the next cron occurrence.
+  Always write first_run_phrase field in English regardless of input language.
 
-If you cannot parse the user's request into a valid schedule, set prompt / cron_expression /
-first_run_phrase / timezone all to null and explain the problem in reason.
+  Use these forms:
+    - "in 2 hours", "in 30 minutes", "in 5 days", "in 1 week"
+    - "tomorrow", "tomorrow at 3pm", "tomorrow 9am"
+    - "Monday 9am", "Monday at 9am", "Friday 5pm", "Sunday at noon"
+    - "3pm", "9am", "noon", "midnight", "15:30"
+    - "June 15 at 9am", "Dec 1 2pm", "2026-06-15 09:00"
+    - "next week", "next month"
+
+  Never produce these forms:
+    - "next Monday", "next Friday", "next Monday 9am" — use bare "Monday", "Monday 9am"
+    - "tomorrow morning", "tomorrow evening", "tonight", "this evening", "end of week" —
+      use explicit clock times like "tomorrow at 8am", "tomorrow at 7pm"
+    - bare ordinals like "the 1st at 9am" — use "June 1 at 9am"
+- timezone: IANA name. If the user did not specify one, use {default_tz_name}.
+- reason: confirmation in {language_name} echoing the resolved schedule.
+
+If the request cannot be parsed, set prompt / cron_expression / first_run_phrase / timezone
+to null and explain in reason.
 
 Examples:
 - "schedule a weekly summary every Monday 9am"
@@ -447,54 +456,54 @@ Examples:
     cron_expression: "0 10 * * *", first_run_phrase: "tomorrow at 10am",
     timezone: "Asia/Tokyo",
     reason: "Scheduled a daily haiku at 10:00 Asia/Tokyo, first firing tomorrow."
+- "напомни мне позвонить маме завтра в 3 дня"
+  → prompt: "напомни нам позвонить маме",
+    cron_expression: null, first_run_phrase: "tomorrow at 3pm",
+    timezone: "{default_tz_name}",
+    reason: "Напомню один раз завтра в 15:00 ({default_tz_name})."
 
-Please respond in {language_name}.
+Respond in {language_name}.
 """
 
     def _build_list_prompt(self, tasks: list[ScheduledTask], language_name: str) -> str:
         return f"""
-You are answering a user's question about the scheduled tasks in their channel.
+Answer the user's question about scheduled tasks in their channel.
 
 {self._render_tasks_xml(tasks)}
 
-Answer the user's question (or fulfil their request) in {language_name} using the task data
-above. Be concise and helpful. If the user asks a question that can't be answered from this
-data, say so plainly. Always reference tasks by their integer task_id so the user can act on them.
+Reference tasks by their integer task_id. If the question can't be answered from this data,
+say so. Respond in {language_name}.
 """
 
     def _build_edit_prompt(self, tasks: list[ScheduledTask], now_in_tz: datetime, language_name: str) -> str:
         return f"""
-You are editing an existing scheduled task based on the user's change request.
+Edit an existing scheduled task based on the user's change request.
 
 Current datetime: {now_in_tz.strftime("%Y-%m-%d %H:%M %Z")}
 
 {self._render_tasks_xml(tasks)}
 
 Steps:
-1. Identify which task the user wants to edit by matching against the <task> entries above,
-   and set task_id to that integer.
-2. Return the FULL updated task fields. For any field the user did not ask to change, COPY
-   THE VALUE VERBATIM from the corresponding <task> element above. Modify ONLY the fields the
-   user asked to change. An empty <cron_expression/> in the source means the task is one-off
-   and cron_expression should remain null.
+1. Identify which task the user wants to edit; set task_id to that integer.
+2. Return the full updated task fields. Copy unchanged fields verbatim from the matching
+   <task> element. Modify only the fields the user asked to change. An empty
+   <cron_expression/> means the task is one-off and cron_expression must remain null.
 3. cron_expression / first_run_phrase / timezone follow the same rules as for creating a task.
 
-If you cannot identify which task the user means, or cannot parse the change, set task_id and
-all data fields to null and explain in reason.
+If the task or change cannot be identified, set task_id and all data fields to null and
+explain in reason.
 
-reason: friendly confirmation summarising what was changed, or an explanation of the failure.
-Always respond in {language_name}.
+reason: confirmation of the change or explanation of failure, in {language_name}.
 """
 
     def _build_resolution_prompt(self, tasks: list[ScheduledTask], action: str, language_name: str) -> str:
         return f"""
-You are identifying which task the user wants to {action}.
+Identify which task the user wants to {action}.
 
 {self._render_tasks_xml(tasks)}
 
-Set task_id to the integer ID of the matching <task> entry above. If you can't find a match,
-set task_id to null and explain in reason.
+Set task_id to the integer ID of the matching <task> entry. If no match, set task_id to null
+and explain in reason.
 
-reason: friendly confirmation of the action, or an explanation if the task wasn't found.
-Always respond in {language_name}.
+reason: confirmation of the action or explanation if not found, in {language_name}.
 """
