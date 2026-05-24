@@ -69,7 +69,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         tz = ZoneInfo("Asia/Tokyo")
         nxt = self.handler._compute_next_run_at(cron="0 9 * * 1", first_run_phrase=None, tz=tz)
         self.assertEqual(nxt.tzinfo, timezone.utc)
-        # Should be a Monday 9am Berlin in the future
+        # Should be a Monday 9am Tokyo in the future
         self.assertGreater(nxt, datetime.now(timezone.utc))
 
     def test_compute_next_run_at_first_run_override(self):
@@ -94,6 +94,14 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         tz = ZoneInfo("UTC")
         with self.assertRaises(ValueError):
             self.handler._compute_next_run_at(cron="not a cron", first_run_phrase=None, tz=tz)
+
+    def test_compute_next_run_at_bad_cron_with_first_run_phrase_raises(self):
+        # Cron must be validated even when first_run_phrase provides the first firing,
+        # otherwise a malformed cron would only blow up at firing time in the engine
+        # and leave the task permanently stuck.
+        tz = ZoneInfo("UTC")
+        with self.assertRaises(ValueError):
+            self.handler._compute_next_run_at(cron="not a cron", first_run_phrase="in 5 minutes", tz=tz)
 
     def test_compute_next_run_at_past_phrase_raises(self):
         tz = ZoneInfo("UTC")
@@ -318,6 +326,39 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         kwargs = self.mock_store.update_scheduled_task.await_args.kwargs
         self.assertEqual(kwargs["task_id"], 5)
         self.assertEqual(kwargs["prompt"], "new prompt")
+
+    async def test_edit_one_off_prompt_only_preserves_schedule(self):
+        # One-off task: cron is null in storage and there's no first_run_phrase in the
+        # XML for the LLM to copy. A prompt-only edit must preserve next_run_at instead
+        # of rejecting the edit.
+        existing_next = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+        existing = _make_task(task_id=8, prompt="old prompt", cron=None, next_run_at=existing_next)
+        self.mock_store.list_scheduled_tasks.return_value = [existing]
+        self.mock_ai.generate_content = AsyncMock(
+            return_value=ScheduleEditParams(
+                reason="Updated task 8's prompt.",
+                task_id=8,
+                prompt="new prompt",
+                cron_expression=None,
+                first_run_phrase=None,
+                timezone="Asia/Tokyo",
+            )
+        )
+        params = ScheduleParams(operation="edit", language_name="English")
+        response = await self.handler.handle_request(
+            params,
+            message="change task 8's prompt to new prompt",
+            guild_id=100,
+            channel_id=200,
+            creator_user_id=300,
+        )
+        self.assertEqual(response, "Updated task 8's prompt.")
+        self.mock_store.update_scheduled_task.assert_awaited_once()
+        kwargs = self.mock_store.update_scheduled_task.await_args.kwargs
+        self.assertEqual(kwargs["task_id"], 8)
+        self.assertEqual(kwargs["prompt"], "new prompt")
+        self.assertIsNone(kwargs["cron_expression"])
+        self.assertEqual(kwargs["next_run_at"], existing_next)
 
     async def test_edit_unresolved_task(self):
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]

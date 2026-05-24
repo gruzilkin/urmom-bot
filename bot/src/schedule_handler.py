@@ -228,8 +228,6 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
             return result.reason
         if not result.prompt or not result.timezone:
             return result.reason
-        if not result.cron_expression and not result.first_run_phrase:
-            return result.reason
 
         existing = next((t for t in tasks if t.task_id == result.task_id), None)
         if existing is None:
@@ -240,19 +238,28 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         except ZoneInfoNotFoundError:
             return f"Couldn't resolve timezone '{result.timezone}'."
 
-        try:
-            next_run_at = self._compute_next_run_at(
-                cron=result.cron_expression,
-                first_run_phrase=result.first_run_phrase,
-                tz=task_tz,
-            )
-        except ValueError as e:
-            return f"Couldn't parse the new schedule: {e}"
+        if not result.cron_expression and not result.first_run_phrase:
+            # Prompt-only (or timezone-only) edit: preserve the existing schedule.
+            # For a one-off task next_run_at *is* the schedule; for a recurring task
+            # the LLM is expected to copy cron_expression back from the XML, but if
+            # it omits it we still fall back to the existing values rather than reject.
+            new_cron = existing.cron_expression
+            next_run_at = existing.next_run_at
+        else:
+            new_cron = result.cron_expression
+            try:
+                next_run_at = self._compute_next_run_at(
+                    cron=result.cron_expression,
+                    first_run_phrase=result.first_run_phrase,
+                    tz=task_tz,
+                )
+            except ValueError as e:
+                return f"Couldn't parse the new schedule: {e}"
 
         await self.store.update_scheduled_task(
             task_id=result.task_id,
             prompt=result.prompt,
-            cron_expression=result.cron_expression,
+            cron_expression=new_cron,
             timezone=result.timezone,
             next_run_at=next_run_at,
         )
@@ -331,6 +338,14 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         """
         now_tz = datetime.now(tz)
 
+        if cron:
+            try:
+                itr = croniter(cron, now_tz)
+            except (CroniterBadCronError, ValueError) as e:
+                raise ValueError(f"invalid cron expression '{cron}': {e}") from e
+        else:
+            itr = None
+
         if first_run_phrase:
             parsed = dateparser.parse(
                 first_run_phrase,
@@ -348,11 +363,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
                 raise ValueError(f"parsed time {parsed.isoformat()} is in the past")
             return parsed.astimezone(dt_timezone.utc)
 
-        if cron:
-            try:
-                itr = croniter(cron, now_tz)
-            except (CroniterBadCronError, ValueError) as e:
-                raise ValueError(f"invalid cron expression '{cron}': {e}") from e
+        if itr is not None:
             nxt = itr.get_next(datetime)
             return nxt.astimezone(dt_timezone.utc)
 
