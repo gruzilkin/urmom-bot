@@ -21,6 +21,7 @@ from general_query_generator import GeneralQueryGenerator
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
 from ollama_client import OllamaClient
+from schedule_handler import ScheduleHandler
 
 load_dotenv()
 
@@ -152,12 +153,20 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             store=mock_store,
             conversation_formatter=conversation_formatter,
             memory_manager=AsyncMock(),
+            user_resolver=mock_user_resolver,
         )
         fact_handler = FactHandler(
             ai_client=None,
             store=None,
             telemetry=self.telemetry,
             user_resolver=mock_user_resolver,
+        )
+
+        schedule_handler = ScheduleHandler(
+            ai_client=AsyncMock(spec=AIClient),
+            store=Mock(),
+            telemetry=self.telemetry,
+            schedule_engine=Mock(),
         )
 
         language_detector = LanguageDetector(
@@ -172,6 +181,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             famous_generator=famous_generator,
             general_generator=general_generator,
             fact_handler=fact_handler,
+            schedule_handler=schedule_handler,
             conversation_formatter=conversation_formatter,
         )
 
@@ -437,6 +447,52 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                     "codex",
                     "ChatGPT requests should select codex backend",
                 )
+
+    async def test_route_request_schedule_create(self):
+        """Recurring 'schedule X' phrasing should route to SCHEDULE/create."""
+        user_message = "schedule a weekly summary every Monday at 9am"
+
+        for profile in self.profiles:
+            with self.subTest(profile=profile.name):
+                route, params = await profile.router.route_request(
+                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                )
+
+                self.assertEqual(route, "SCHEDULE")
+                self.assertIsNotNone(params)
+                self.assertEqual(params.operation, "create")
+
+    async def test_route_request_schedule_list(self):
+        """'What's scheduled' should route to SCHEDULE/list, not GENERAL."""
+        user_message = "what's scheduled in this channel?"
+
+        for profile in self.profiles:
+            with self.subTest(profile=profile.name):
+                route, params = await profile.router.route_request(
+                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                )
+
+                self.assertEqual(route, "SCHEDULE")
+                self.assertIsNotNone(params)
+                self.assertEqual(params.operation, "list")
+
+    async def test_route_request_remind_me_routes_to_schedule_not_fact(self):
+        """'Remind me' overlaps with FACT's 'remember' verb but should route to SCHEDULE."""
+        user_message = "remind me to call mom tomorrow at 3pm"
+
+        for profile in self.profiles:
+            with self.subTest(profile=profile.name):
+                route, params = await profile.router.route_request(
+                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                )
+
+                self.assertEqual(
+                    route,
+                    "SCHEDULE",
+                    "'Remind me at <time>' is a scheduling intent, not a fact recall.",
+                )
+                self.assertIsNotNone(params)
+                self.assertEqual(params.operation, "create")
 
     async def test_route_request_song_writing_selects_claude(self):
         """Test that song writing requests are routed to Claude backend."""

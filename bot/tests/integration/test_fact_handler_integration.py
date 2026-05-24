@@ -125,12 +125,22 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             store=Mock(),
             conversation_formatter=conversation_formatter,
             memory_manager=Mock(),
+            user_resolver=user_resolver,
         )
         general_generator.get_parameter_schema = Mock(
             side_effect=Exception("Should not extract GENERAL params in FACT tests")
         )
         general_generator.get_parameter_extraction_prompt = Mock(
             side_effect=Exception("Should not extract GENERAL params in FACT tests")
+        )
+
+        schedule_handler = Mock()
+        schedule_handler.get_route_description = Mock(return_value="SCHEDULE: scheduling")
+        schedule_handler.get_parameter_schema = Mock(
+            side_effect=Exception("Should not extract SCHEDULE params in FACT tests")
+        )
+        schedule_handler.get_parameter_extraction_prompt = Mock(
+            side_effect=Exception("Should not extract SCHEDULE params in FACT tests")
         )
 
         language_detector = LanguageDetector(ai_client=client, telemetry=self.telemetry)
@@ -142,6 +152,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             famous_generator=famous_generator,
             general_generator=general_generator,
             fact_handler=fact_handler,
+            schedule_handler=schedule_handler,
             conversation_formatter=conversation_formatter,
         )
 
