@@ -444,10 +444,15 @@ Guild default timezone (IANA): {default_tz_name}
 {context_section}
 Fields:
 - prompt: the instruction the bot will execute when fired. Strip scheduling words.
-  The task fires later when the current conversation is no longer available, so the
-  prompt MUST be self-contained: resolve every reference to context ("this", "that",
-  "it", "him", "her", "the article", "the video") by inlining the concrete subject
-  (title, URL, name) from the conversation. Never store deictic references.
+  Two requirements:
+  (a) The prompt is replayed as a single one-shot directive at each firing — the
+      recurrence lives in cron_expression, never re-encode it in the verb. Render the
+      action in perfective / punctual / single-event aspect: a bounded action with a
+      result, not a habit or ongoing process.
+  (b) The task fires later when the current conversation is no longer available, so the
+      prompt MUST be self-contained: resolve every reference to context ("this", "that",
+      "it", "him", "her", "the article", "the video") by inlining the concrete subject
+      (title, URL, name) from the conversation. Never store deictic references.
 - cron_expression: 5-field cron for recurring schedules (e.g., "0 9 * * 1"). Null for one-off.
 - first_run_phrase: time expression for one-off tasks, or an explicit first-run anchor on a
   recurring task. Null when the recurring schedule's first firing is the next cron occurrence.
@@ -492,6 +497,11 @@ Examples:
     cron_expression: null, first_run_phrase: "tomorrow at 3pm",
     timezone: "{default_tz_name}",
     reason: "Напомню один раз завтра в 15:00 ({default_tz_name})."
+- "смотри новости по будням в 9"
+  → prompt: "посмотри новости",
+    cron_expression: "0 9 * * 1-5", first_run_phrase: null,
+    timezone: "{default_tz_name}",
+    reason: "Запланировано: новости по будням в 9:00 ({default_tz_name})."
 
 Respond in {language_name}.
 """
@@ -530,7 +540,11 @@ Steps:
    <task> element. Modify only the fields the user asked to change. An empty
    <cron_expression/> means the task is one-off and cron_expression must remain null.
 3. cron_expression / first_run_phrase / timezone follow the same rules as for creating a task.
-4. The task fires later when the current conversation is no longer available. If the user's
+4. The stored prompt is replayed as a single one-shot directive at each firing — the
+   recurrence lives in cron_expression, never re-encode it in the verb. Render the action
+   in perfective / punctual / single-event aspect: a bounded action with a result, not a
+   habit or ongoing process.
+5. The task fires later when the current conversation is no longer available. If the user's
    change refers to context ("this", "that", "the article", etc.), resolve every reference
    by inlining the concrete subject from the conversation into the stored prompt. Never store
    deictic references.
