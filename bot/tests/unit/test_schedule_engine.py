@@ -106,7 +106,6 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.engine._execute = AsyncMock()
 
         await self.engine._dispatch_due_task(task, now)
-        await asyncio.sleep(0)
 
         self.mock_store.delete_scheduled_task.assert_awaited_once_with(7)
         self.mock_store.update_task_next_run_at.assert_not_called()
@@ -120,7 +119,6 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.engine._execute = AsyncMock()
 
         await self.engine._dispatch_due_task(task, now)
-        await asyncio.sleep(0)
 
         # Schedule advanced, but execute should NOT have been called
         self.mock_store.update_task_next_run_at.assert_awaited_once()
@@ -135,7 +133,6 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.engine._execute = AsyncMock()
 
         await self.engine._dispatch_due_task(task, now)
-        await asyncio.sleep(0)
 
         self.engine._execute.assert_called_once()
 
@@ -266,7 +263,6 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.engine._execute = AsyncMock()
 
         await self.engine._dispatch_due_task(task, datetime.now(timezone.utc))
-        await asyncio.sleep(0)
 
         self.engine._execute.assert_not_called()
 

@@ -98,7 +98,7 @@ class ScheduleEngine:
             )
             return
 
-        asyncio.create_task(self._execute(task, intended_run_at=intended, scheduled=True))
+        await self._execute(task, intended_run_at=intended, scheduled=True)
 
     def _compute_next_after_fire(self, task: ScheduledTask, now: datetime) -> datetime:
         """Compute next_run_at after a firing of a recurring task (croniter from now → UTC instant)."""
