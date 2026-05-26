@@ -147,6 +147,7 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         guild_id: int,
         bot_user: nextcord.User,
         requesting_user_id: int,
+        extra_user_ids: set[int] | None = None,
     ) -> str | None:
         """
         Handle a general query request using the provided parameters.
@@ -162,6 +163,10 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
                 to identify its own messages and establish bot identity
             requesting_user_id (int): Discord user ID of the requester
                 (live message author or scheduled task creator)
+            extra_user_ids (set[int] | None): Additional user IDs whose
+                memories should be loaded alongside the conversation
+                participants. Used by scheduled tasks firing into low-traffic
+                channels so the bot can reference recent guild activity.
 
         Returns:
             str | None: The response string ready to be sent
@@ -181,6 +186,9 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
 
             user_ids = self._extract_unique_user_ids(conversation)
             user_ids.add(requesting_user_id)
+            if extra_user_ids:
+                user_ids.update(extra_user_ids)
+            span.set_attribute("memory_user_count", len(user_ids))
             memories_block = await self.memory_manager.build_memory_prompt(guild_id, user_ids)
 
             conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation)

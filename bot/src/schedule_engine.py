@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 CATCHUP_STALENESS = timedelta(hours=12)
 TICK_INTERVAL_SECONDS = 60
+ACTIVITY_WINDOW = timedelta(hours=24)
 
 
 class ScheduleEngine:
@@ -171,12 +172,17 @@ class ScheduleEngine:
                 async def fetch_conversation() -> list[ConversationMessage]:
                     return await self._channel_conversation_fetcher(task.channel_id)
 
+                active_user_ids = await self.store.list_active_user_ids(task.guild_id, actual_run_at - ACTIVITY_WINDOW)
+                extra_user_ids = set(active_user_ids)
+                span.set_attribute("extra_user_count", len(extra_user_ids))
+
                 response = await self.general_query_generator.handle_request(
                     params,
                     fetch_conversation,
                     task.guild_id,
                     self.bot.user,
                     task.creator_user_id,
+                    extra_user_ids=extra_user_ids,
                 )
 
                 if response is None:

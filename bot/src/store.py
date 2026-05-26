@@ -441,6 +441,36 @@ class Store:
                     timer(), {"operation": "has_chat_messages_for_date", "guild_id": str(guild_id)}
                 )
 
+    async def list_active_user_ids(self, guild_id: int, since: datetime) -> list[int]:
+        """Return distinct user_ids that posted in the guild at or after `since`."""
+        async with self._telemetry.async_create_span("list_active_user_ids") as span:
+            span.set_attribute("guild_id", guild_id)
+            span.set_attribute("since", since.isoformat())
+
+            timer = self._telemetry.metrics.timer()
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        SELECT DISTINCT user_id FROM chat_history
+                        WHERE guild_id = %s AND timestamp >= %s
+                        """,
+                        (guild_id, since),
+                    )
+                    rows = await cur.fetchall()
+                    user_ids = [row[0] for row in rows]
+                    span.set_attribute("user_count", len(user_ids))
+                    return user_ids
+            except Exception as e:
+                logger.error(f"Error listing active user ids: {e}", exc_info=True)
+                span.record_exception(e)
+                return []
+            finally:
+                self._telemetry.metrics.db_latency.record(
+                    timer(), {"operation": "list_active_user_ids", "guild_id": str(guild_id)}
+                )
+
     async def get_daily_summaries(self, guild_id: int, for_date: date) -> dict[int, str]:
         """Get daily summaries for all users on a specific date with caching."""
         async with self._telemetry.async_create_span("get_daily_summaries") as span:

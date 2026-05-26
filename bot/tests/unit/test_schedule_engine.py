@@ -43,6 +43,7 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.mock_store.update_task_next_run_at = AsyncMock()
         self.mock_store.delete_scheduled_task = AsyncMock(return_value=True)
         self.mock_store.mark_task_last_run = AsyncMock()
+        self.mock_store.list_active_user_ids = AsyncMock(return_value=[])
 
         self.mock_gqg = MagicMock(spec=GeneralQueryGenerator)
         self.mock_gqg.handle_request = AsyncMock(return_value="response text")
