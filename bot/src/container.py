@@ -236,8 +236,6 @@ class Container:
             store=self.store,
             telemetry=self.telemetry,
             general_query_generator=self.general_query_generator,
-            language_detector=self.language_detector,
-            param_extraction_client=self.lightweight_fallback,
         )
 
         self.schedule_handler = ScheduleHandler(
@@ -265,6 +263,9 @@ class Container:
             self.conversation_formatter,
             self.schedule_handler,
         )
+
+        # Late-bound to break the engine → router → schedule_handler → engine cycle
+        self.schedule_engine.ai_router = self.ai_router
 
         self.country_resolver = CountryResolver(self.lightweight_fallback, self.telemetry)
 

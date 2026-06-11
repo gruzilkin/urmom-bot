@@ -349,7 +349,7 @@ async def edit_task(
     cron_expression: str = Form(""),
     timezone_name: str = Form(...),
 ):
-    """Save edits to a scheduled task. Recomputes next_run_at for recurring tasks; preserves it for one-off."""
+    """Save edits to a scheduled task. Recomputes next_run_at only when the schedule changes."""
     try:
         existing = await store.get_scheduled_task(task_id)
         if existing is None:
@@ -364,18 +364,19 @@ async def edit_task(
         except ZoneInfoNotFoundError:
             raise HTTPException(status_code=400, detail=f"Invalid IANA timezone: {tz_name}")
 
-        # Decide next_run_at
-        if cron_value:
-            # Validate and recompute next firing
+        # Preserve next_run_at unless cron or timezone changed — recomputing on a
+        # prompt-only edit would clobber a one-off's stored firing time or an
+        # explicitly anchored first run of a recurring task (mirrors bot-side _edit).
+        schedule_unchanged = cron_value == existing.cron_expression and tz_name == existing.timezone
+        if schedule_unchanged or not cron_value:
+            next_run_at = existing.next_run_at
+        else:
             try:
                 now_in_tz = datetime.now(tz)
                 itr = croniter(cron_value, now_in_tz)
                 next_run_at = itr.get_next(datetime).astimezone(dt_timezone.utc)
             except (CroniterBadCronError, ValueError) as e:
                 raise HTTPException(status_code=400, detail=f"Invalid cron expression: {e}")
-        else:
-            # One-off: cron stays null, next_run_at unchanged
-            next_run_at = existing.next_run_at
 
         success = await store.update_scheduled_task(
             task_id=task_id,

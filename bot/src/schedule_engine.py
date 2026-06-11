@@ -9,10 +9,9 @@ import nextcord
 from croniter import croniter
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ai_client import AIClient
+from ai_router import AiRouter
 from conversation_graph import ConversationMessage
 from general_query_generator import GeneralQueryGenerator
-from language_detector import LanguageDetector
 from open_telemetry import Telemetry
 from schemas import GeneralParams
 from store import ScheduledTask, Store
@@ -30,14 +29,13 @@ class ScheduleEngine:
         store: Store,
         telemetry: Telemetry,
         general_query_generator: GeneralQueryGenerator,
-        language_detector: LanguageDetector,
-        param_extraction_client: AIClient,
     ) -> None:
         self.store = store
         self.telemetry = telemetry
         self.general_query_generator = general_query_generator
-        self.language_detector = language_detector
-        self.param_extraction_client = param_extraction_client
+        # Set by the container after AiRouter construction; constructor injection
+        # would be circular (engine → router → schedule_handler → engine).
+        self.ai_router: AiRouter | None = None
         self.bot: nextcord.Client | None = None
         self._channel_conversation_fetcher: Callable[[int], Awaitable[list[ConversationMessage]]] | None = None
         self._loop_task: asyncio.Task | None = None
@@ -132,9 +130,9 @@ class ScheduleEngine:
             span.set_attribute("drift_seconds", (actual_run_at - intended_run_at).total_seconds())
             span.set_attribute("scheduled", scheduled)
 
-            if self.bot is None or self._channel_conversation_fetcher is None:
+            if self.bot is None or self._channel_conversation_fetcher is None or self.ai_router is None:
                 span.set_attribute("status", "engine_not_started")
-                logger.error(f"Task {task.task_id}: engine not started; cannot fire")
+                logger.error(f"Task {task.task_id}: engine not started or not wired; cannot fire")
                 return
 
             channel = self.bot.get_channel(task.channel_id)
@@ -150,21 +148,7 @@ class ScheduleEngine:
                     return
 
             try:
-                # Extract ai_backend / temperature / cleaned_query from the task prompt the
-                # same way the AI router does for reactive GENERAL messages. This honours
-                # routing hints in the prompt itself (e.g., "ask grok to...", "with high creativity").
-                extraction_prompt = self.general_query_generator.get_parameter_extraction_prompt()
-                params: GeneralParams = await self.param_extraction_client.generate_content(
-                    message=task.prompt,
-                    prompt=extraction_prompt,
-                    temperature=0.0,
-                    response_schema=GeneralParams,
-                )
-
-                language_code = await self.language_detector.detect_language(task.prompt)
-                language_name = await self.language_detector.get_language_name(language_code)
-                params.language_code = language_code
-                params.language_name = language_name
+                params: GeneralParams = await self.ai_router.extract_general_params(task.prompt)
 
                 span.set_attribute("ai_backend", params.ai_backend)
                 span.set_attribute("temperature", params.temperature)

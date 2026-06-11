@@ -332,13 +332,13 @@ Current settings:
     elif command == BotCommand.SET_DEFAULT_TIMEZONE:
         try:
             tz_name = args[1]
-            ZoneInfo(tz_name)  # raises ZoneInfoNotFoundError if invalid
+            ZoneInfo(tz_name)  # ZoneInfoNotFoundError if unknown, ValueError for path-like keys
             config.default_timezone = tz_name
             await container.store.save_guild_config(config)
             await traced_reply(message, f"Default timezone set to {tz_name}")
         except IndexError:
             await traced_reply(message, "Please provide an IANA timezone name (e.g., Asia/Tokyo)")
-        except ZoneInfoNotFoundError:
+        except (ZoneInfoNotFoundError, ValueError):
             await traced_reply(message, f"Unknown timezone '{args[1]}'. Use an IANA name like Asia/Tokyo.")
         return True
 

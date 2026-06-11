@@ -162,6 +162,19 @@ NOTSURE: When uncertain about routing decision
             logger.info(f"Extracted parameters for {route}: {params}")
             return params
 
+    async def extract_general_params(self, message: str, conversation_context: str = "") -> GeneralParams:
+        """Extract GENERAL-route parameters without route selection.
+
+        For flows that must never be routed elsewhere — e.g. scheduled task firings,
+        which would otherwise be able to create new scheduled tasks."""
+        params, language_code = await asyncio.gather(
+            self._extract_parameters("GENERAL", message, conversation_context),
+            self.language_detector.detect_language(message),
+        )
+        params.language_code = language_code
+        params.language_name = await self.language_detector.get_language_name(language_code)
+        return params
+
     async def route_request(
         self,
         message: str,

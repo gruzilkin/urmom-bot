@@ -6,9 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from null_telemetry import NullTelemetry
 
-from ai_client import AIClient
+from ai_router import AiRouter
 from general_query_generator import GeneralQueryGenerator
-from language_detector import LanguageDetector
 from schedule_engine import CATCHUP_STALENESS, ScheduleEngine
 from schemas import GeneralParams
 from store import ScheduledTask, Store
@@ -47,18 +46,15 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
 
         self.mock_gqg = MagicMock(spec=GeneralQueryGenerator)
         self.mock_gqg.handle_request = AsyncMock(return_value="response text")
-        self.mock_gqg.get_parameter_extraction_prompt = MagicMock(return_value="extract general params")
 
-        self.mock_lang = MagicMock(spec=LanguageDetector)
-        self.mock_lang.detect_language = AsyncMock(return_value="en")
-        self.mock_lang.get_language_name = AsyncMock(return_value="English")
-
-        self.mock_param_client = MagicMock(spec=AIClient)
-        self.mock_param_client.generate_content = AsyncMock(
+        self.mock_router = MagicMock(spec=AiRouter)
+        self.mock_router.extract_general_params = AsyncMock(
             return_value=GeneralParams(
                 ai_backend="grok",
                 temperature=0.7,
                 cleaned_query="post a haiku",
+                language_code="en",
+                language_name="English",
             )
         )
 
@@ -66,9 +62,8 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
             store=self.mock_store,
             telemetry=NullTelemetry(),
             general_query_generator=self.mock_gqg,
-            language_detector=self.mock_lang,
-            param_extraction_client=self.mock_param_client,
         )
+        self.engine.ai_router = self.mock_router
 
         # Stub bot and channel fetcher
         self.mock_channel = MagicMock()

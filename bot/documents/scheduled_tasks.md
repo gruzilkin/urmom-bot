@@ -60,6 +60,8 @@ Three sources, in priority order:
 
 The resolved timezone is frozen on the task row at creation. Even if the task uses the guild default at creation time, the resolved IANA name is written to the row — so subsequent changes to the guild default do not silently shift when existing tasks fire.
 
+All schedule arithmetic follows one rule: anchor the cron expression to a timezone-aware "now" in the task's IANA timezone, and store the resulting instant in UTC.
+
 ### Display
 
 Firing times are displayed in the task's timezone — both during creation preview and via `SCHEDULE_NEXT`. That is the timezone the user wrote and reasoned in. For channels with members in mixed timezones, this still works: members convert mentally if they need to. Surfacing all readers' timezones would be noise.
