@@ -45,8 +45,7 @@ class GeneralParams(BaseModel):
     )
     temperature: float = Field(
         description=(
-            "Response creativity level: 0.1-0.3 for factual/precise,"
-            " 0.4-0.6 for balanced, 0.7-0.9 for creative"
+            "Response creativity level: 0.1-0.3 for factual/precise, 0.4-0.6 for balanced, 0.7-0.9 for creative"
         ),
         ge=0.0,
         le=1.0,
@@ -88,6 +87,34 @@ class FactParams(BaseModel):
     )
 
 
+class ScheduleParams(BaseModel):
+    """Parameters for scheduled task management requests.
+
+    Router tier 2 extraction: identifies which sub-operation the user wants.
+    Task identification and per-operation payload extraction happen later inside
+    the schedule handler, where the channel's task list is available as context.
+    """
+
+    operation: Literal["create", "list", "edit", "delete", "run_now"] = Field(
+        description=(
+            "Schedule sub-operation: 'create' to add a new task, 'list' to query existing tasks,"
+            " 'edit' to modify an existing task, 'delete' to remove a task,"
+            " 'run_now' to fire a task immediately outside its schedule."
+        )
+    )
+    language_code: str | None = Field(
+        default=None,
+        description="ISO 639-1 language code (e.g., 'en', 'ru', 'de') - populated after parameter extraction",
+    )
+    language_name: str | None = Field(
+        default=None,
+        description=(
+            "Full name of the detected language (e.g., 'English', 'Russian', 'German')"
+            " - populated after parameter extraction"
+        ),
+    )
+
+
 class MemoryUpdate(BaseModel):
     """Schema for memory update operations."""
 
@@ -103,10 +130,118 @@ class MemoryForget(BaseModel):
     confirmation_message: str = Field(description="Brief confirmation message for the user in their language")
 
 
+class ScheduleCreateParams(BaseModel):
+    """LLM output for creating a new scheduled task.
+
+    On a successful parse: prompt and timezone are populated, plus at least one of
+    cron_expression / first_run_phrase. On failure (request unparseable, ambiguous,
+    or contradictory): all data fields are null and reason explains why.
+    """
+
+    reason: str = Field(
+        description="User-facing outcome message describing success or failure, in the user's language."
+    )
+    prompt: str | None = Field(
+        default=None,
+        description="Instruction the bot will execute when the task fires.",
+    )
+    cron_expression: str | None = Field(
+        default=None,
+        description=(
+            "5-field cron expression for recurring schedules (e.g., '0 9 * * 1' for every Monday 9am)."
+            " Null for one-off tasks."
+        ),
+    )
+    first_run_phrase: str | None = Field(
+        default=None,
+        description=(
+            "Natural-language time expression. MUST be written in English regardless of the"
+            " user's input language (e.g., 'tomorrow at 3pm', 'in 2 hours', 'Monday 9am')."
+            " Required for one-off tasks, or for an explicit first-run anchor on a recurring"
+            " task; otherwise null."
+        ),
+    )
+    timezone: str | None = Field(
+        default=None,
+        description="IANA timezone name (e.g., 'Asia/Tokyo', 'Asia/Dubai', 'America/New_York').",
+    )
+
+
+class ScheduleListParams(BaseModel):
+    """LLM output for the list operation — freeform answer to the user's question
+    given the channel's task list."""
+
+    answer: str = Field(
+        description=("Response to the user's request about the channel's scheduled tasks, in the user's language.")
+    )
+
+
+class ScheduleEditParams(BaseModel):
+    """LLM output for editing an existing scheduled task.
+
+    Resolves the target task and produces the updated task fields in a single call.
+    On a successful parse: task_id resolved against the channel's task list, plus the
+    full updated task fields (unchanged fields carried forward verbatim from the existing
+    task). On failure (task not found, or change request unparseable): task_id and data
+    fields are null and reason explains why.
+    """
+
+    reason: str = Field(
+        description="User-facing outcome message describing success or failure, in the user's language."
+    )
+    task_id: int | None = Field(
+        default=None,
+        description=(
+            "ID of the task referenced by the user, resolved against the channel's task list."
+            " Null if no matching task was found."
+        ),
+    )
+    prompt: str | None = Field(
+        default=None,
+        description="Instruction the bot will execute when the task fires.",
+    )
+    cron_expression: str | None = Field(
+        default=None,
+        description=(
+            "5-field cron expression for recurring schedules (e.g., '0 9 * * 1' for every Monday 9am)."
+            " Null for one-off tasks."
+        ),
+    )
+    first_run_phrase: str | None = Field(
+        default=None,
+        description=(
+            "Natural-language time expression. MUST be written in English regardless of the"
+            " user's input language (e.g., 'tomorrow at 3pm', 'in 2 hours', 'Monday 9am')."
+            " Required for one-off tasks, or for an explicit first-run anchor on a recurring"
+            " task; otherwise null."
+        ),
+    )
+    timezone: str | None = Field(
+        default=None,
+        description="IANA timezone name (e.g., 'Asia/Tokyo', 'Asia/Dubai', 'America/New_York').",
+    )
+
+
+class ScheduleTaskResolution(BaseModel):
+    """LLM output for delete and run_now: resolves a task reference from the user's
+    message against the channel's task list."""
+
+    task_id: int | None = Field(
+        default=None,
+        description=(
+            "ID of the task referenced by the user, resolved against the channel's task list."
+            " Null if no matching task was found."
+        ),
+    )
+    reason: str = Field(
+        description="User-facing outcome message describing success or failure, in the user's language."
+    )
+
+
 class RouteSelection(BaseModel):
     """Schema for AI router route selection (first tier)."""
 
-    route: Literal["FAMOUS", "GENERAL", "FACT", "NONE", "NOTSURE"] = Field(description="Route decision")
+    route: Literal["FAMOUS", "GENERAL", "FACT", "SCHEDULE", "NONE", "NOTSURE"] = Field(description="Route decision")
     reason: str = Field(description="Brief reason for choosing this route")
 
 

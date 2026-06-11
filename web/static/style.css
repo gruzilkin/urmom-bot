@@ -355,6 +355,69 @@ header p {
     pointer-events: none;
 }
 
+/* Scheduled tasks */
+.task-cell {
+    max-width: 480px;
+}
+
+.task-summary {
+    display: block;
+}
+
+.task-prompt {
+    font-size: 14px;
+    color: #2c3e50;
+    margin-bottom: 6px;
+    word-wrap: break-word;
+}
+
+.task-schedule {
+    font-size: 12px;
+    color: #7f8c8d;
+}
+
+.task-schedule code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #f1f3f4;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.task-schedule .schedule-human {
+    color: #34495e;
+    margin: 0 4px;
+}
+
+.task-prompt-textarea {
+    min-height: 120px;
+}
+
+.edit-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #34495e;
+    margin: 8px 0 4px;
+}
+
+.edit-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+}
+
+.context-cell {
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.context-cell div {
+    color: #7f8c8d;
+}
+
 /* Mobile responsiveness */
 @media (max-width: 768px) {
     .container {

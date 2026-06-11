@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scheduled Tasks</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Scheduled Tasks</h1>
+            <p>Inspect, edit, and delete scheduled tasks managed by the bot</p>
+        </header>
+
+        {% set active = 'tasks' %}
+        {% include 'partials/_tabs.html' %}
+
+        <div class="controls">
+            <form method="get" action="/tasks" class="search-form">
+                <input type="text" name="search" placeholder="Search prompts..." value="{{ search }}" />
+                <button type="submit">Search</button>
+                {% if search %}
+                    <a href="/tasks" class="clear-search">Clear</a>
+                {% endif %}
+            </form>
+
+            <div class="stats">
+                Total tasks: {{ total_count }}
+            </div>
+        </div>
+
+        {% if rows %}
+        <div class="table-container">
+            <table class="jokes-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Context</th>
+                        <th>Task</th>
+                        <th>Next firing</th>
+                        <th>Last firing</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr id="task-{{ row.task_id }}">
+                        <td class="id-cell">#{{ row.task_id }}</td>
+                        <td class="id-cell context-cell">
+                            <div>guild {{ row.guild_id }}</div>
+                            <div>channel {{ row.channel_id }}</div>
+                            <div>creator {{ row.creator_user_id }}</div>
+                        </td>
+                        <td class="editable task-cell">
+                            {% set task = row %}
+                            {% include 'partials/task_editable_content.html' with context %}
+                        </td>
+                        <td class="updated-at">{{ row.next_run_at | in_tz(row.timezone) }}</td>
+                        <td class="updated-at">{{ row.last_run_at | in_tz(row.timezone) }}</td>
+                        <td class="actions">
+                            <button class="delete-btn"
+                                    hx-delete="/delete_scheduled_task/{{ row.task_id }}"
+                                    hx-target="closest tr"
+                                    hx-confirm="Delete task #{{ row.task_id }}?">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if not search and total_pages > 1 %}
+        <div class="pagination">
+            {% if current_page > 1 %}
+                <a href="?page={{ current_page - 1 }}" class="page-link">&laquo; Previous</a>
+            {% endif %}
+
+            {% for page_num in range(1, total_pages + 1) %}
+                {% if page_num == current_page %}
+                    <span class="page-current">{{ page_num }}</span>
+                {% elif page_num <= 3 or page_num > total_pages - 3 or (page_num >= current_page - 2 and page_num <= current_page + 2) %}
+                    <a href="?page={{ page_num }}" class="page-link">{{ page_num }}</a>
+                {% elif page_num == 4 or page_num == total_pages - 3 %}
+                    <span class="page-ellipsis">...</span>
+                {% endif %}
+            {% endfor %}
+
+            {% if current_page < total_pages %}
+                <a href="?page={{ current_page + 1 }}" class="page-link">Next &raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="no-results">
+            {% if search %}
+                <p>No tasks found matching "{{ search }}"</p>
+                <a href="/tasks">View all tasks</a>
+            {% else %}
+                <p>No scheduled tasks in the database.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Auto-focus on textarea when editing
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            const textarea = evt.detail.target.querySelector('textarea');
+            if (textarea) {
+                textarea.focus();
+            }
+        });
+    </script>
+</body>
+</html>

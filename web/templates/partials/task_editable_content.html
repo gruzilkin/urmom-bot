@@ -1,0 +1,16 @@
+<div class="editable-content task-summary"
+     hx-get="/edit_task_form/{{ task.task_id }}"
+     hx-trigger="click"
+     hx-target="closest td"
+     hx-swap="innerHTML">
+    <div class="task-prompt">{{ task.prompt }}</div>
+    <div class="task-schedule">
+        {% if task.cron_expression %}
+            <code>{{ task.cron_expression }}</code>
+            <span class="schedule-human">{{ task.cron_expression | describe_cron }}</span>
+            in {{ task.timezone }}
+        {% else %}
+            <span class="schedule-human">One-off</span> in {{ task.timezone }}
+        {% endif %}
+    </div>
+</div>

@@ -13,6 +13,8 @@ from ai_router import AiRouter
 from response_summarizer import ResponseSummarizer
 from attachment_processor import AttachmentProcessor
 from fact_handler import FactHandler
+from schedule_handler import ScheduleHandler
+from schedule_engine import ScheduleEngine
 from user_resolver import UserResolver
 from memory_manager import MemoryManager
 from language_detector import LanguageDetector
@@ -227,6 +229,21 @@ class Container:
             store=self.store,
             conversation_formatter=self.conversation_formatter,
             memory_manager=self.memory_manager,
+            user_resolver=self.user_resolver,
+        )
+
+        self.schedule_engine = ScheduleEngine(
+            store=self.store,
+            telemetry=self.telemetry,
+            general_query_generator=self.general_query_generator,
+        )
+
+        self.schedule_handler = ScheduleHandler(
+            ai_client=self.lightweight_fallback,
+            store=self.store,
+            telemetry=self.telemetry,
+            schedule_engine=self.schedule_engine,
+            conversation_formatter=self.conversation_formatter,
         )
 
         # The router client will be a composite client that handles the NOTSURE fallback.
@@ -244,7 +261,11 @@ class Container:
             self.general_query_generator,
             self.fact_handler,
             self.conversation_formatter,
+            self.schedule_handler,
         )
+
+        # Late-bound to break the engine → router → schedule_handler → engine cycle
+        self.schedule_engine.ai_router = self.ai_router
 
         self.country_resolver = CountryResolver(self.lightweight_fallback, self.telemetry)
 

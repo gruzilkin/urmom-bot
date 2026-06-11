@@ -12,6 +12,7 @@ from schemas import GeneralParams
 from response_summarizer import ResponseSummarizer
 from store import Store
 from ai_client import AIClient
+from user_resolver import UserResolver
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class GeneralQueryGenerator:
         store: Store,
         conversation_formatter: ConversationFormatter,
         memory_manager: MemoryManager,
+        user_resolver: UserResolver,
     ) -> None:
         self._client_selector = client_selector
         self.response_summarizer = response_summarizer
@@ -32,6 +34,7 @@ class GeneralQueryGenerator:
         self.store = store
         self.conversation_formatter = conversation_formatter
         self.memory_manager = memory_manager
+        self.user_resolver = user_resolver
 
     def get_route_description(self) -> str:
         return """
@@ -143,7 +146,8 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
         guild_id: int,
         bot_user: nextcord.User,
-        requesting_user: nextcord.User,
+        requesting_user_id: int,
+        extra_user_ids: set[int] | None = None,
     ) -> str | None:
         """
         Handle a general query request using the provided parameters.
@@ -157,8 +161,12 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
                 resolution
             bot_user (nextcord.User): Discord user object of the bot
                 to identify its own messages and establish bot identity
-            requesting_user (nextcord.User): The user who sent the
-                message (Member extends User, so both work)
+            requesting_user_id (int): Discord user ID of the requester
+                (live message author or scheduled task creator)
+            extra_user_ids (set[int] | None): Additional user IDs whose
+                memories should be loaded alongside the conversation
+                participants. Used by scheduled tasks firing into low-traffic
+                channels so the bot can reference recent guild activity.
 
         Returns:
             str | None: The response string ready to be sent
@@ -177,14 +185,20 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
             conversation = await conversation_fetcher()
 
             user_ids = self._extract_unique_user_ids(conversation)
+            user_ids.add(requesting_user_id)
+            if extra_user_ids:
+                user_ids.update(extra_user_ids)
+            span.set_attribute("memory_user_count", len(user_ids))
             memories_block = await self.memory_manager.build_memory_prompt(guild_id, user_ids)
 
             conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation)
 
+            requesting_user_name = await self.user_resolver.get_display_name(guild_id, requesting_user_id)
+
             # Format the user message in the same XML structure as conversation_history
             user_message_xml = f"""<request>
-<author_id>{requesting_user.id}</author_id>
-<author>{requesting_user.display_name}</author>
+<author_id>{requesting_user_id}</author_id>
+<author>{requesting_user_name}</author>
 <content>{params.cleaned_query}</content>
 </request>"""
 

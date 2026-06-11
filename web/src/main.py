@@ -1,5 +1,10 @@
 import os
 import logging
+from datetime import datetime, timezone as dt_timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from croniter import croniter, CroniterBadCronError
+from cron_descriptor import get_description
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -47,6 +52,31 @@ app.mount("/static", StaticFiles(directory=os.path.join(app_root, "static")), na
 
 # Initialize templates
 templates = Jinja2Templates(directory=os.path.join(app_root, "templates"))
+
+
+def describe_cron(cron_expression: str | None) -> str:
+    """Render a cron expression as human-readable text. Returns 'One-off' for null cron."""
+    if not cron_expression:
+        return "One-off"
+    try:
+        return get_description(cron_expression)
+    except Exception:
+        return cron_expression
+
+
+def render_in_timezone(dt: datetime | None, tz_name: str) -> str:
+    """Render a UTC datetime in the given IANA timezone. Returns '—' for None."""
+    if dt is None:
+        return "—"
+    try:
+        tz = ZoneInfo(tz_name)
+        return dt.astimezone(tz).strftime("%Y-%m-%d %H:%M %Z")
+    except ZoneInfoNotFoundError:
+        return dt.isoformat()
+
+
+templates.env.filters["describe_cron"] = describe_cron
+templates.env.filters["in_tz"] = render_in_timezone
 
 
 @app.get("/")
@@ -240,6 +270,151 @@ async def delete_user_facts(guild_id: int, user_id: int):
     except Exception as e:
         logger.error(f"Error deleting user facts {guild_id}/{user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error deleting user facts")
+
+
+@app.get("/tasks", response_class=HTMLResponse)
+async def tasks(request: Request, page: int = 1, search: str = ""):
+    """Scheduled task management page."""
+    try:
+        page_size = 20
+        offset = (page - 1) * page_size
+
+        search_query = search.strip()
+        rows = await store.get_scheduled_tasks_rows(limit=page_size, offset=offset, search_query=search_query)
+        total_count = await store.get_scheduled_tasks_count(search_query=search_query)
+
+        total_pages = (total_count + page_size - 1) // page_size
+
+        return templates.TemplateResponse(
+            request,
+            "tasks.html",
+            {
+                "rows": rows,
+                "current_page": page,
+                "total_pages": total_pages,
+                "search": search,
+                "total_count": total_count,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Error loading scheduled tasks page: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error loading scheduled tasks")
+
+
+@app.get("/edit_task_form/{task_id}")
+async def edit_task_form(request: Request, task_id: int):
+    """Return edit form for a scheduled task."""
+    try:
+        task = await store.get_scheduled_task(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        return templates.TemplateResponse(
+            request,
+            "partials/task_edit_form.html",
+            {"task": task},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting edit form for task {task_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error getting edit form")
+
+
+@app.get("/cancel_edit_task/{task_id}")
+async def cancel_edit_task(request: Request, task_id: int):
+    """Return to display mode without saving."""
+    try:
+        task = await store.get_scheduled_task(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        return templates.TemplateResponse(
+            request,
+            "partials/task_editable_content.html",
+            {"task": task},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error canceling edit for task {task_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error canceling edit")
+
+
+@app.post("/edit_task/{task_id}")
+async def edit_task(
+    request: Request,
+    task_id: int,
+    prompt: str = Form(...),
+    cron_expression: str = Form(""),
+    timezone_name: str = Form(...),
+):
+    """Save edits to a scheduled task. Recomputes next_run_at only when the schedule changes."""
+    try:
+        existing = await store.get_scheduled_task(task_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        cron_value = cron_expression.strip() or None
+        tz_name = timezone_name.strip()
+
+        # Validate timezone
+        try:
+            tz = ZoneInfo(tz_name)
+        except ZoneInfoNotFoundError:
+            raise HTTPException(status_code=400, detail=f"Invalid IANA timezone: {tz_name}")
+
+        # Preserve next_run_at unless cron or timezone changed — recomputing on a
+        # prompt-only edit would clobber a one-off's stored firing time or an
+        # explicitly anchored first run of a recurring task (mirrors bot-side _edit).
+        schedule_unchanged = cron_value == existing.cron_expression and tz_name == existing.timezone
+        if schedule_unchanged or not cron_value:
+            next_run_at = existing.next_run_at
+        else:
+            try:
+                now_in_tz = datetime.now(tz)
+                itr = croniter(cron_value, now_in_tz)
+                next_run_at = itr.get_next(datetime).astimezone(dt_timezone.utc)
+            except (CroniterBadCronError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=f"Invalid cron expression: {e}")
+
+        success = await store.update_scheduled_task(
+            task_id=task_id,
+            prompt=prompt,
+            cron_expression=cron_value,
+            timezone=tz_name,
+            next_run_at=next_run_at,
+        )
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to update task")
+
+        # Re-fetch to get fresh row (includes updated_at and next_run_at)
+        updated = await store.get_scheduled_task(task_id)
+        return templates.TemplateResponse(
+            request,
+            "partials/task_editable_content.html",
+            {"task": updated},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating task {task_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error updating task")
+
+
+@app.delete("/delete_scheduled_task/{task_id}")
+async def delete_scheduled_task(task_id: int):
+    """Delete a scheduled task via HTMX."""
+    try:
+        success = await store.delete_scheduled_task(task_id)
+        if success:
+            return HTMLResponse("")
+        raise HTTPException(status_code=400, detail="Failed to delete task")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting task {task_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error deleting task")
 
 
 @app.on_event("shutdown")
