@@ -115,15 +115,8 @@ class Container:
         self.retrying_gemma = RetryAIClient(self.gemma, telemetry=self.telemetry, max_time=60, jitter=True)
         self.retrying_grok = RetryAIClient(self.grok, telemetry=self.telemetry, max_tries=3)
 
-        self.shuffled_haiku_codex_mini = CompositeAIClient(
-            [self.claude_haiku, self.codex_mini],
-            telemetry=self.telemetry,
-            shuffle=True,
-        )
-
-        # gemma → [shuffled haiku, codex_mini] → retrying gemma → grok
         self.lightweight_fallback = CompositeAIClient(
-            [self.gemma, self.shuffled_haiku_codex_mini, self.retrying_gemma, self.retrying_grok],
+            [self.gemma, self.codex_mini, self.retrying_gemma, self.claude_haiku, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
@@ -141,14 +134,14 @@ class Container:
             shuffle=True,
         )
 
-        self.claude_codex_flash_fallback = CompositeAIClient(
-            [self.claude, self.codex, self.gemini_flash],
+        self.codex_claude_flash_fallback = CompositeAIClient(
+            [self.codex, self.claude, self.gemini_flash],
             telemetry=self.telemetry,
         )
 
-        # Composite for devil's advocate: claude → gemini → kimi_long → grok
-        self.claude_gemini_kimi_grok = CompositeAIClient(
-            [self.claude, self.gemini_flash, self.ollama_kimi_long_timeout, self.retrying_grok],
+        # Composite for the devil's advocate generator
+        self.kimi_claude_gemini_grok = CompositeAIClient(
+            [self.ollama_kimi_long_timeout, self.claude, self.gemini_flash, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
@@ -186,7 +179,7 @@ class Container:
         )
 
         fact_handler_client = CompositeAIClient(
-            [self.claude, self.codex, self.retrying_gemma, self.retrying_grok],
+            [self.codex, self.retrying_gemma, self.claude, self.retrying_grok],
             telemetry=self.telemetry,
         )
         self.fact_handler = FactHandler(
@@ -199,7 +192,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            summary_client=self.claude_codex_flash_fallback,
+            summary_client=self.codex_claude_flash_fallback,
             alias_client=self.lightweight_fallback,
             merge_client=self.lightweight_fallback,
             user_resolver=self.user_resolver,
@@ -243,7 +236,7 @@ class Container:
 
         # The router client will be a composite client that handles the NOTSURE fallback.
         router_client = CompositeAIClient(
-            [self.gemma, self.shuffled_haiku_codex_mini, self.retrying_gemma, self.retrying_grok],
+            [self.gemma, self.codex_mini, self.retrying_gemma, self.claude_haiku, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
@@ -274,7 +267,7 @@ class Container:
         )
 
         self.devils_advocate_generator = DevilsAdvocateGenerator(
-            ai_client=self.claude_gemini_kimi_grok,
+            ai_client=self.kimi_claude_gemini_grok,
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
@@ -319,7 +312,7 @@ class Container:
         if preferred_backend not in client_map:
             raise ValueError(f"Unknown ai_backend: {preferred_backend}")
 
-        fallback_order = ["claude", "codex", "gemini_flash", "grok"]
+        fallback_order = ["codex", "claude", "gemini_flash", "grok"]
         ordered_labels = [preferred_backend] + [label for label in fallback_order if label != preferred_backend]
 
         chain = [client_map[label] for label in ordered_labels]

@@ -1,6 +1,5 @@
 import logging
-from typing import Callable
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 
 import nextcord
 
@@ -82,14 +81,14 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         Extract parameters for a general AI query request.
         
         ai_backend selection:
-        * claude: General queries, coding, technical explanations,
-          detailed analysis, complex reasoning, fact-checking,
-          internet search
+        * codex: DEFAULT for general queries, coding, technical
+          explanations, detailed analysis, complex reasoning,
+          fact-checking, research, current events, internet search
+          (also select for "chatgpt"/"openai" requests)
         * gemini_flash: Creative writing, songs, poems,
           artistic content, extensive internet search
         * grok: Uncensored content, wild requests, crazy talk
-        * codex: Research topics, analysis, current events
-          (select for "chatgpt"/"openai" requests)
+        * claude: Do not select unless explicitly requested
         * gemma: Do not select unless explicitly requested
         * Handle explicit requests: "ask grok about...",
           "use gemini flash for...", "ask claude to..."
