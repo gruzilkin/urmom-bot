@@ -1,6 +1,6 @@
 """
 Integration tests for MemoryManager with real AI clients and realistic physics data.
-These tests use actual Gemini/Gemma (and optionally Ollama Kimi) APIs and the full physics chat history.
+These tests use actual Gemini/Gemma APIs and the full physics chat history.
 """
 
 import os
@@ -17,7 +17,6 @@ from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
-from ollama_client import OllamaClient
 from test_store import TestStore
 
 # Load environment variables from .env file
@@ -73,20 +72,8 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             )
             self.merge_profiles.append(Profile(name="gemma", client=gemma_client))
 
-        ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        if ollama_api_key:
-            kimi_model = os.getenv("OLLAMA_KIMI_MODEL", "kimi-k2:1t-cloud")
-            kimi_client = OllamaClient(
-                api_key=ollama_api_key,
-                model_name=kimi_model,
-                telemetry=self.telemetry,
-                temperature=0.0,
-            )
-            self.merge_profiles.append(Profile(name="ollama_kimi", client=kimi_client))
-            self.summary_profiles.append(Profile(name="ollama_kimi", client=kimi_client))
-
         if not self.merge_profiles:
-            self.skipTest("No merge-capable AI clients configured (Gemma or Kimi required).")
+            self.skipTest("No merge-capable AI clients configured (Gemma required).")
         self.default_merge_profile = self.merge_profiles[0]
 
     def _build_context(self, profile: Profile) -> MemoryTestContext:

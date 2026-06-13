@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 
 from gemma_client import GemmaClient
 from null_telemetry import NullTelemetry
-from ollama_client import OllamaClient
 from ai_client_wrappers import CompositeAIClient, RetryAIClient
 
 from schedule_handler import ScheduleHandler
@@ -38,16 +37,8 @@ class TestScheduleHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             telemetry=self.telemetry,
             temperature=0.1,
         )
-        kimi = OllamaClient(
-            api_key=os.getenv("OLLAMA_API_KEY"),
-            model_name=os.getenv("OLLAMA_KIMI_MODEL", "kimi-k2:1t-cloud"),
-            telemetry=self.telemetry,
-            base_url=os.getenv("OLLAMA_BASE_URL", "https://ollama.com"),
-            temperature=0.1,
-            timeout=60.0,
-        )
         retrying_gemma = RetryAIClient(gemma, telemetry=self.telemetry, max_time=60, jitter=True)
-        self.client = CompositeAIClient([gemma, kimi, retrying_gemma], telemetry=self.telemetry)
+        self.client = CompositeAIClient([gemma, retrying_gemma], telemetry=self.telemetry)
 
         # Mock store: just records what gets persisted
         self.mock_store = MagicMock(spec=Store)

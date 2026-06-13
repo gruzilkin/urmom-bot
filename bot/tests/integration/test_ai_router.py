@@ -1,6 +1,6 @@
 """
 Integration tests for AiRouter that verify routing behaviour across multiple
-client configurations (Gemma/Gemini and Ollama Kimi).
+client configurations (Gemma/Gemini).
 """
 
 import os
@@ -20,7 +20,6 @@ from gemma_client import GemmaClient
 from general_query_generator import GeneralQueryGenerator
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
-from ollama_client import OllamaClient
 from schedule_handler import ScheduleHandler
 
 load_dotenv()
@@ -50,16 +49,8 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         if gemini_profile:
             self.profiles.append(gemini_profile)
 
-        gpt_oss_profile = self._build_gpt_oss_profile()
-        if gpt_oss_profile:
-            self.profiles.append(gpt_oss_profile)
-
-        kimi_profile = self._build_kimi_profile()
-        if kimi_profile:
-            self.profiles.append(kimi_profile)
-
         if not self.profiles:
-            self.skipTest("No AI router profiles configured; ensure Gemini and/or Ollama credentials are set.")
+            self.skipTest("No AI router profiles configured; ensure Gemini credentials are set.")
 
     def _build_gemini_profile(self) -> RouterProfile | None:
         gemini_api_key = os.getenv("GEMINI_API_KEY")
@@ -89,50 +80,6 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
 
         router = self._create_router(router_client, language_detector_client=gemma_client)
         return RouterProfile(name="gemma_gemini", router=router)
-
-    def _build_gpt_oss_profile(self) -> RouterProfile | None:
-        ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        model_name = os.getenv("OLLAMA_GPT_OSS_MODEL", "gpt-oss:120b-cloud")
-        if not ollama_api_key:
-            return None
-
-        gpt_oss_client = OllamaClient(
-            api_key=ollama_api_key,
-            model_name=model_name,
-            telemetry=self.telemetry,
-            temperature=0.1,
-        )
-
-        router_client = CompositeAIClient(
-            [gpt_oss_client],
-            telemetry=self.telemetry,
-            is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
-        )
-
-        router = self._create_router(router_client, language_detector_client=gpt_oss_client)
-        return RouterProfile(name="ollama_gpt_oss", router=router)
-
-    def _build_kimi_profile(self) -> RouterProfile | None:
-        ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        model_name = os.getenv("OLLAMA_KIMI_MODEL", "kimi-k2:1t-cloud")
-        if not ollama_api_key:
-            return None
-
-        kimi_client = OllamaClient(
-            api_key=ollama_api_key,
-            model_name=model_name,
-            telemetry=self.telemetry,
-            temperature=0.1,
-        )
-
-        router_client = CompositeAIClient(
-            [kimi_client],
-            telemetry=self.telemetry,
-            is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
-        )
-
-        router = self._create_router(router_client, language_detector_client=kimi_client)
-        return RouterProfile(name="ollama_kimi", router=router)
 
     def _create_router(self, router_client: AIClient, *, language_detector_client: AIClient) -> AiRouter:
         """Instantiate AiRouter with shared mocks and specified AI client."""

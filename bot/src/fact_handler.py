@@ -9,9 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class FactHandler:
-    def __init__(
-        self, ai_client: AIClient, store: Store, telemetry: Telemetry, user_resolver: UserResolver
-    ):
+    def __init__(self, ai_client: AIClient, store: Store, telemetry: Telemetry, user_resolver: UserResolver):
         self.ai_client = ai_client
         self.store = store
         self.telemetry = telemetry
@@ -123,9 +121,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
           gender is unknown
         {context_section}"""
 
-    async def _remember_fact(
-        self, guild_id: int, user_id: int, fact_content: str, language_name: str
-    ) -> str:
+    async def _remember_fact(self, guild_id: int, user_id: int, fact_content: str, language_name: str) -> str:
         """Add or update a fact about a user.
 
         Fact content is already in third-person perspective from parameter extraction.
@@ -197,9 +193,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
             # Return the language-appropriate confirmation message from the schema
             return memory_response.confirmation_message
 
-    async def _forget_fact(
-        self, guild_id: int, user_id: int, fact_content: str, language_name: str
-    ) -> str:
+    async def _forget_fact(self, guild_id: int, user_id: int, fact_content: str, language_name: str) -> str:
         """Remove a specific fact about a user.
 
         Fact content is already in third-person perspective from parameter extraction.

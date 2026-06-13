@@ -13,7 +13,6 @@ from language_detector import LanguageDetector
 from conversation_formatter import ConversationFormatter
 from memory_manager import MemoryManager
 from null_telemetry import NullTelemetry
-from ollama_client import OllamaClient
 from store import Store
 
 load_dotenv()
@@ -81,17 +80,6 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
                 telemetry=self.telemetry,
             )
             self.profiles.append(JokeClientProfile(name="gemini_flash", client=gemini_client))
-
-        ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        if ollama_api_key:
-            kimi_model = os.getenv("OLLAMA_KIMI_MODEL", "kimi-k2:1t-cloud")
-            kimi_client = OllamaClient(
-                api_key=ollama_api_key,
-                model_name=kimi_model,
-                telemetry=self.telemetry,
-                temperature=0.1,
-            )
-            self.profiles.append(JokeClientProfile(name="ollama_kimi", client=kimi_client))
 
         if not self.profiles:
             self.skipTest("No joke generator AI clients configured for integration tests")

@@ -17,7 +17,6 @@ from language_detector import LanguageDetector
 from memory_manager import MemoryManager
 from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
-from ollama_client import OllamaClient
 from response_summarizer import ResponseSummarizer
 from test_store import TestStore
 from wisdom_generator import WisdomGenerator
@@ -76,17 +75,6 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
                     telemetry=self.telemetry,
                 )
                 self.profiles.append(WisdomClientProfile(name="grok", client=grok_client))
-
-        ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        if ollama_api_key:
-            kimi_model = os.getenv("OLLAMA_KIMI_MODEL", "kimi-k2:1t-cloud")
-            kimi_client = OllamaClient(
-                api_key=ollama_api_key,
-                model_name=kimi_model,
-                telemetry=self.telemetry,
-                temperature=0.7,
-            )
-            self.profiles.append(WisdomClientProfile(name="ollama_kimi", client=kimi_client))
 
         if not self.profiles:
             self.skipTest("No wisdom generator AI clients configured for integration tests")

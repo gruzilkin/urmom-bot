@@ -23,7 +23,6 @@ from conversation_formatter import ConversationFormatter
 from config import AppConfig
 from ai_client_wrappers import CompositeAIClient, RetryAIClient
 from ai_client import AIClient
-from ollama_client import OllamaClient
 from wisdom_generator import WisdomGenerator
 from devils_advocate_generator import DevilsAdvocateGenerator
 from cobalt_client import CobaltClient
@@ -111,15 +110,6 @@ class Container:
             temperature=self.config.deepseek_temperature,
         )
 
-        self.ollama_kimi_long_timeout = OllamaClient(
-            api_key=self.config.ollama_api_key,
-            model_name=self.config.ollama_kimi_model,
-            telemetry=self.telemetry,
-            base_url=self.config.ollama_base_url,
-            temperature=self.config.ollama_temperature,
-            timeout=90.0,
-        )
-
         # Apply retry policy for rate-limited services (Gemma/Grok only)
         self.retrying_gemma = RetryAIClient(self.gemma, telemetry=self.telemetry, max_time=60, jitter=True)
         self.retrying_grok = RetryAIClient(self.grok, telemetry=self.telemetry, max_tries=3)
@@ -129,16 +119,9 @@ class Container:
             telemetry=self.telemetry,
         )
 
-        # Shuffled composite for jokes - gives both clients equal chance
+        # Shuffled composite for jokes and wisdom - gives both clients equal chance
         self.shuffled_grok_gemini = CompositeAIClient(
             [self.retrying_grok, self.gemini_flash],
-            telemetry=self.telemetry,
-            shuffle=True,
-        )
-
-        # Shuffled composite for wisdom - gives both clients equal chance
-        self.shuffled_grok_kimi = CompositeAIClient(
-            [self.retrying_grok, self.ollama_kimi_long_timeout],
             telemetry=self.telemetry,
             shuffle=True,
         )
@@ -149,8 +132,8 @@ class Container:
         )
 
         # Composite for the devil's advocate generator
-        self.kimi_codex_gemini_grok = CompositeAIClient(
-            [self.ollama_kimi_long_timeout, self.codex, self.gemini_flash, self.retrying_grok],
+        self.codex_gemini_grok = CompositeAIClient(
+            [self.codex, self.gemini_flash, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
@@ -267,7 +250,7 @@ class Container:
         self.country_resolver = CountryResolver(self.lightweight_fallback, self.telemetry)
 
         self.wisdom_generator = WisdomGenerator(
-            ai_client=self.shuffled_grok_kimi,
+            ai_client=self.shuffled_grok_gemini,
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
@@ -276,7 +259,7 @@ class Container:
         )
 
         self.devils_advocate_generator = DevilsAdvocateGenerator(
-            ai_client=self.kimi_codex_gemini_grok,
+            ai_client=self.codex_gemini_grok,
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,

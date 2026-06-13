@@ -2,8 +2,7 @@
 Integration tests for FactHandler across multiple AI clients.
 
 Each test exercises the same memory scenarios (remember, merge, forget, routing)
-against Gemma and Ollama cloud models to ensure parity in behaviour and language
-preservation.
+against Gemma to verify behaviour and language preservation.
 """
 
 import os
@@ -22,7 +21,6 @@ from gemma_client import GemmaClient
 from general_query_generator import GeneralQueryGenerator
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
-from ollama_client import OllamaClient
 from test_store import TestStore
 
 load_dotenv()
@@ -68,29 +66,8 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             )
             self.profiles.append(FactClientProfile(name="gemma", client=gemma_client))
 
-        ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        if ollama_api_key:
-            gpt_oss_model = os.getenv("OLLAMA_GPT_OSS_MODEL", "gpt-oss:120b-cloud")
-            kimi_model = os.getenv("OLLAMA_KIMI_MODEL", "kimi-k2:1t-cloud")
-
-            gpt_oss_client = OllamaClient(
-                api_key=ollama_api_key,
-                model_name=gpt_oss_model,
-                telemetry=self.telemetry,
-                temperature=0.0,
-            )
-            self.profiles.append(FactClientProfile(name="ollama_gpt_oss", client=gpt_oss_client))
-
-            kimi_client = OllamaClient(
-                api_key=ollama_api_key,
-                model_name=kimi_model,
-                telemetry=self.telemetry,
-                temperature=0.0,
-            )
-            self.profiles.append(FactClientProfile(name="ollama_kimi", client=kimi_client))
-
         if not self.profiles:
-            self.skipTest("No FactHandler AI clients configured; ensure Gemma or Ollama credentials are set.")
+            self.skipTest("No FactHandler AI clients configured; ensure Gemma credentials are set.")
 
     def _build_context(self, client: AIClient) -> FactTestContext:
         """Create a fresh FactHandler + router stack for a single test run."""

@@ -8,7 +8,6 @@ from deepseek_client import DeepSeekClient
 from gemma_client import GemmaClient
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
-from ollama_client import OllamaClient
 
 load_dotenv()
 
@@ -25,7 +24,7 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
     """
     Integration tests for LanguageDetector with real AI detection.
 
-    Runs the same scenarios across Gemma and Kimi (when credentials are available)
+    Runs the same scenarios across Gemma (when credentials are available)
     to validate language detection quality and caching behaviour.
     """
 
@@ -44,17 +43,6 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
             )
             self.profiles.append(DetectorProfile(name="gemma", client=gemma_client))
 
-        ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        if ollama_api_key:
-            kimi_model = os.getenv("OLLAMA_KIMI_MODEL", "kimi-k2:1t-cloud")
-            kimi_client = OllamaClient(
-                api_key=ollama_api_key,
-                model_name=kimi_model,
-                telemetry=self.telemetry,
-                temperature=0.0,
-            )
-            self.profiles.append(DetectorProfile(name="ollama_kimi", client=kimi_client))
-
         # DeepSeek is metered per-token, so only include it when paid tests are enabled.
         deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
         if deepseek_api_key and os.getenv("ENABLE_PAID_TESTS", "").lower() == "true":
@@ -67,7 +55,7 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
             self.profiles.append(DetectorProfile(name="deepseek", client=deepseek_client))
 
         if not self.profiles:
-            self.skipTest("No language detector AI clients configured; ensure Gemma or Ollama credentials are set.")
+            self.skipTest("No language detector AI clients configured; ensure Gemma credentials are set.")
 
     def _build_detector(self, profile: DetectorProfile) -> LanguageDetector:
         """Return a fresh LanguageDetector per profile to avoid cache sharing."""
