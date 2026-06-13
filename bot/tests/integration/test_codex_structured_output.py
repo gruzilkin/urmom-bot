@@ -15,7 +15,7 @@ from null_telemetry import NullTelemetry
 class TestCodexStructuredOutput(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.client = CodexClient(telemetry=self.telemetry, model_name="gpt-5.4")
+        self.client = CodexClient(telemetry=self.telemetry, model_name="gpt-5.5")
 
     async def test_yes_no_structured_output_yes(self):
         message = "Is the sky blue?"

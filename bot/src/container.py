@@ -99,7 +99,7 @@ class Container:
         self.claude = ClaudeClient(telemetry=self.telemetry, model_name="opus")
         self.claude_haiku = ClaudeClient(telemetry=self.telemetry, model_name="haiku")
 
-        self.codex = CodexClient(telemetry=self.telemetry, model_name="gpt-5.4")
+        self.codex = CodexClient(telemetry=self.telemetry, model_name="gpt-5.5")
         self.codex_mini = CodexClient(telemetry=self.telemetry, model_name="gpt-5.4-mini")
 
         self.deepseek = DeepSeekClient(

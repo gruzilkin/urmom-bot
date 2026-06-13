@@ -25,7 +25,7 @@ class CodexClient(AIClient):
     def __init__(
         self,
         telemetry: Telemetry,
-        model_name: str = "gpt-5.4",
+        model_name: str = "gpt-5.5",
         enable_web_search: bool = True,
     ):
         self.model_name = model_name
