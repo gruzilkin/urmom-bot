@@ -21,6 +21,7 @@ class TestAppConfig(unittest.TestCase):
             gemma_model="gemma-3-27b-it",
             grok_api_key="test-grok-key",
             grok_model="grok-beta",
+            deepseek_api_key="test-deepseek-key",
             discord_token="test-token",
             sample_jokes_count=5,
             sample_jokes_coef=1.0,
@@ -29,6 +30,8 @@ class TestAppConfig(unittest.TestCase):
 
         self.assertEqual(config.postgres_host, "localhost")
         self.assertEqual(config.postgres_port, 5432)
+        self.assertEqual(config.deepseek_model, "deepseek-v4-flash")
+        self.assertEqual(config.deepseek_base_url, "https://api.deepseek.com")
 
     def test_port_validation(self):
         """Test that invalid port raises ValueError."""
@@ -45,6 +48,7 @@ class TestAppConfig(unittest.TestCase):
                 gemma_model="gemma-3-27b-it",
                 grok_api_key="test-grok-key",
                 grok_model="grok-beta",
+                deepseek_api_key="test-deepseek-key",
                 discord_token="test-token",
                 sample_jokes_count=5,
                 sample_jokes_coef=1.0,
@@ -68,6 +72,7 @@ class TestAppConfig(unittest.TestCase):
                 gemini_temperature=3.0,  # Invalid temperature
                 grok_api_key="test-grok-key",
                 grok_model="grok-beta",
+                deepseek_api_key="test-deepseek-key",
                 discord_token="test-token",
                 sample_jokes_count=5,
                 sample_jokes_coef=1.0,
@@ -89,11 +94,14 @@ class TestAppConfig(unittest.TestCase):
             "GEMMA_MODEL": "gemma-3-27b-it",
             "GROK_API_KEY": "test-grok-key",
             "GROK_MODEL": "test-grok-model",
+            "DEEPSEEK_API_KEY": "test-deepseek-key",
+            "DEEPSEEK_MODEL": "test-deepseek-model",
             "DISCORD_TOKEN": "test-discord-token",
             "SAMPLE_JOKES_COUNT": "10",
             "SAMPLE_JOKES_COEF": "2.5",
             "GEMINI_TEMPERATURE": "0.8",
             "GROK_TEMPERATURE": "0.9",
+            "DEEPSEEK_TEMPERATURE": "0.6",
             "TINYURL_API_TOKEN": "test-tinyurl-token",
         },
     )
@@ -112,11 +120,14 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(config.gemma_model, "gemma-3-27b-it")
         self.assertEqual(config.grok_api_key, "test-grok-key")
         self.assertEqual(config.grok_model, "test-grok-model")
+        self.assertEqual(config.deepseek_api_key, "test-deepseek-key")
+        self.assertEqual(config.deepseek_model, "test-deepseek-model")
         self.assertEqual(config.discord_token, "test-discord-token")
         self.assertEqual(config.sample_jokes_count, 10)
         self.assertEqual(config.sample_jokes_coef, 2.5)
         self.assertEqual(config.gemini_temperature, 0.8)
         self.assertEqual(config.grok_temperature, 0.9)
+        self.assertEqual(config.deepseek_temperature, 0.6)
 
 
 if __name__ == "__main__":

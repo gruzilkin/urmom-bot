@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from deepseek_client import DeepSeekClient
 from gemma_client import GemmaClient
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
@@ -53,6 +54,17 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
                 temperature=0.0,
             )
             self.profiles.append(DetectorProfile(name="ollama_kimi", client=kimi_client))
+
+        # DeepSeek is metered per-token, so only include it when paid tests are enabled.
+        deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+        if deepseek_api_key and os.getenv("ENABLE_PAID_TESTS", "").lower() == "true":
+            deepseek_client = DeepSeekClient(
+                api_key=deepseek_api_key,
+                model_name=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+                telemetry=self.telemetry,
+                temperature=0.0,
+            )
+            self.profiles.append(DetectorProfile(name="deepseek", client=deepseek_client))
 
         if not self.profiles:
             self.skipTest("No language detector AI clients configured; ensure Gemma or Ollama credentials are set.")

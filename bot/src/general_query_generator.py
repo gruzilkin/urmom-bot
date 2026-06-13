@@ -88,10 +88,12 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         * gemini_flash: Creative writing, songs, poems,
           artistic content, extensive internet search
         * grok: Uncensored content, wild requests, crazy talk
+        * deepseek: Do not select unless explicitly requested;
+          no internet access
         * claude: Do not select unless explicitly requested
         * gemma: Do not select unless explicitly requested
         * Handle explicit requests: "ask grok about...",
-          "use gemini flash for...", "ask claude to..."
+          "use gemini flash for...", "ask deepseek to...", "ask claude to..."
         
         temperature selection:
         * Use a low temperature (<= 0.3) for factual data,

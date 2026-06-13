@@ -28,6 +28,12 @@ class AppConfig(BaseSettings):
     grok_model: str = Field(env="GROK_MODEL")
     grok_temperature: float = Field(default=0.7, env="GROK_TEMPERATURE")
 
+    # DeepSeek configuration (OpenAI-compatible API)
+    deepseek_api_key: str = Field(env="DEEPSEEK_API_KEY")
+    deepseek_model: str = Field(default="deepseek-v4-flash", env="DEEPSEEK_MODEL")
+    deepseek_base_url: str = Field(default="https://api.deepseek.com", env="DEEPSEEK_BASE_URL")
+    deepseek_temperature: float = Field(default=0.7, env="DEEPSEEK_TEMPERATURE")
+
     # Ollama configuration
     ollama_api_key: str = Field(env="OLLAMA_API_KEY")
     ollama_base_url: str = Field(default="https://ollama.com", env="OLLAMA_BASE_URL")
@@ -88,7 +94,7 @@ class AppConfig(BaseSettings):
             raise ValueError("SAMPLE_JOKES_COEF must be positive")
         return v
 
-    @field_validator("gemini_temperature", "grok_temperature", "ollama_temperature")
+    @field_validator("gemini_temperature", "grok_temperature", "ollama_temperature", "deepseek_temperature")
     @classmethod
     def validate_temperature(cls, v: float) -> float:
         """Validate temperature is within valid range."""

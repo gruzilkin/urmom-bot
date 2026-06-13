@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from deepseek_client import DeepSeekClient
 from gemma_client import GemmaClient
 from ollama_client import OllamaClient
 from response_summarizer import ResponseSummarizer
@@ -56,6 +57,17 @@ class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
                 temperature=0.0,
             )
             self.profiles.append(SummarizerProfile(name="ollama_kimi", client=kimi_client))
+
+        # DeepSeek is metered per-token, so only include it when paid tests are enabled.
+        deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+        if deepseek_api_key and os.getenv("ENABLE_PAID_TESTS", "").lower() == "true":
+            deepseek_client = DeepSeekClient(
+                api_key=deepseek_api_key,
+                model_name=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+                telemetry=self.telemetry,
+                temperature=0.0,
+            )
+            self.profiles.append(SummarizerProfile(name="deepseek", client=deepseek_client))
 
         if not self.profiles:
             self.skipTest("No response summariser AI clients configured (Gemma or Kimi required).")
@@ -247,9 +259,7 @@ E=mc² показывает эквивалентность массы и эне�
                     found = re.search(pattern, result)
                     self.assertTrue(
                         found,
-                        f"Russian term '{term_name}' "
-                        f"(pattern: {pattern}) "
-                        "should be preserved in summary",
+                        f"Russian term '{term_name}' (pattern: {pattern}) should be preserved in summary",
                     )
 
                 # Verify it's a meaningful summary, not just the start of the original

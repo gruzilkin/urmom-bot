@@ -15,7 +15,7 @@ class TestGrokClientExceptionHandling(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         """Set up test dependencies."""
-        patcher = patch("grok_client.OpenAI")
+        patcher = patch("openai_client.OpenAI")
         self.addCleanup(patcher.stop)
         self.mock_openai_cls = patcher.start()
         self.mock_openai = self.mock_openai_cls.return_value
