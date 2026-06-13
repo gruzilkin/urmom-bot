@@ -87,12 +87,7 @@ class Container:
             temperature=self.config.gemini_temperature,
         )
 
-        self.gemma = GemmaClient(
-            api_key=self.config.gemma_api_key,
-            model_name=self.config.gemma_model,
-            telemetry=self.telemetry,
-            temperature=self.config.gemini_temperature,
-        )
+        self.gemma = self._build_gemma_client()
 
         self.grok = GrokClient(
             api_key=self.config.grok_api_key,
@@ -286,6 +281,30 @@ class Container:
             memory_manager=self.memory_manager,
             telemetry=self.telemetry,
         )
+
+    def _build_gemma_client(self) -> AIClient:
+        """Build the Gemma client, shuffling across two models when GEMMA_MODEL_2 is set.
+
+        The two Gemma models have independent rate-limit quotas, so a shuffled composite
+        doubles the effective free tier.
+        """
+        model_names = [self.config.gemma_model]
+        if self.config.gemma_model_2:
+            model_names.append(self.config.gemma_model_2)
+
+        clients = [
+            GemmaClient(
+                api_key=self.config.gemma_api_key,
+                model_name=model_name,
+                telemetry=self.telemetry,
+                temperature=self.config.gemini_temperature,
+            )
+            for model_name in model_names
+        ]
+
+        if len(clients) == 1:
+            return clients[0]
+        return CompositeAIClient(clients, telemetry=self.telemetry, shuffle=True)
 
     def _build_general_ai_client(self, preferred_backend: str) -> AIClient:
         """Create a composite client matching the fallback rules for general queries."""

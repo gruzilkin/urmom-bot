@@ -20,6 +20,8 @@ class AppConfig(BaseSettings):
     # Gemma configuration (separate API key for free-tier access)
     gemma_api_key: str = Field(env="GEMMA_API_KEY")
     gemma_model: str = Field(env="GEMMA_MODEL")
+    # Optional second Gemma model name; used alongside GEMMA_MODEL when set.
+    gemma_model_2: str | None = Field(default=None, env="GEMMA_MODEL_2")
 
     # Grok configuration
     grok_api_key: str = Field(env="GROK_API_KEY")
