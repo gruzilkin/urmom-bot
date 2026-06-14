@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 # TTLs in seconds
 _ONE_DAY = 86400
 _SEVEN_DAYS = 7 * _ONE_DAY
-_LOCK_TTL = 600  # 10 minutes
 
 
 class RedisCache:
@@ -63,11 +62,11 @@ class RedisCache:
                 span.record_exception(e)
                 logger.warning(f"Redis set_daily_summary failed: {e}")
 
-    # ── merged context ──────────────────────────────────────────────
+    # ── merged memory ───────────────────────────────────────────────
 
-    async def get_context(self, guild_id: int, user_id: int, facts_hash: str, summaries_hash: str) -> str | None:
-        async with self._telemetry.async_create_span("redis.get_context") as span:
-            key = f"ctx:{guild_id}:{user_id}:{facts_hash}:{summaries_hash}"
+    async def get_memory(self, guild_id: int, user_id: int, facts_hash: str, summaries_hash: str) -> str | None:
+        async with self._telemetry.async_create_span("redis.get_memory") as span:
+            key = f"memory:{guild_id}:{user_id}:{facts_hash}:{summaries_hash}"
             span.set_attribute("key", key)
             try:
                 result = await self._redis.get(key)
@@ -75,20 +74,38 @@ class RedisCache:
                 return result
             except Exception as e:
                 span.record_exception(e)
-                logger.warning(f"Redis get_context failed: {e}")
+                logger.warning(f"Redis get_memory failed: {e}")
                 return None
 
-    async def set_context(
-        self, guild_id: int, user_id: int, facts_hash: str, summaries_hash: str, context: str
-    ) -> None:
-        async with self._telemetry.async_create_span("redis.set_context") as span:
-            key = f"ctx:{guild_id}:{user_id}:{facts_hash}:{summaries_hash}"
+    async def set_memory(self, guild_id: int, user_id: int, facts_hash: str, summaries_hash: str, memory: str) -> None:
+        """Cache a merged memory under both its content-addressed key and the hash-independent latest key.
+
+        The content-addressed key serves exact-input cache hits; the latest key gives readers a
+        last-known-good value to fall back on while inputs change, so the read path never blocks.
+        """
+        async with self._telemetry.async_create_span("redis.set_memory") as span:
+            key = f"memory:{guild_id}:{user_id}:{facts_hash}:{summaries_hash}"
+            latest_key = f"memory_latest:{guild_id}:{user_id}"
             span.set_attribute("key", key)
             try:
-                await self._redis.set(key, context, ex=_ONE_DAY)
+                await self._redis.set(key, memory, ex=_ONE_DAY)
+                await self._redis.set(latest_key, memory, ex=_SEVEN_DAYS)
             except Exception as e:
                 span.record_exception(e)
-                logger.warning(f"Redis set_context failed: {e}")
+                logger.warning(f"Redis set_memory failed: {e}")
+
+    async def get_memory_latest(self, guild_id: int, user_id: int) -> str | None:
+        async with self._telemetry.async_create_span("redis.get_memory_latest") as span:
+            key = f"memory_latest:{guild_id}:{user_id}"
+            span.set_attribute("key", key)
+            try:
+                result = await self._redis.get(key)
+                span.set_attribute("hit", result is not None)
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                logger.warning(f"Redis get_memory_latest failed: {e}")
+                return None
 
     # ── articles ────────────────────────────────────────────────────
 
@@ -170,31 +187,6 @@ class RedisCache:
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Redis set_aliases failed: {e}", exc_info=True)
-
-    # ── build lock ──────────────────────────────────────────────────
-
-    async def try_acquire_build_lock(self, guild_id: int, for_date: date) -> bool:
-        async with self._telemetry.async_create_span("redis.try_acquire_build_lock") as span:
-            key = f"lock:daily:{guild_id}:{for_date}"
-            span.set_attribute("key", key)
-            try:
-                acquired = bool(await self._redis.set(key, "1", nx=True, ex=_LOCK_TTL))
-                span.set_attribute("acquired", acquired)
-                return acquired
-            except Exception as e:
-                span.record_exception(e)
-                logger.warning(f"Redis try_acquire_build_lock failed: {e}")
-                return False
-
-    async def release_build_lock(self, guild_id: int, for_date: date) -> None:
-        async with self._telemetry.async_create_span("redis.release_build_lock") as span:
-            key = f"lock:daily:{guild_id}:{for_date}"
-            span.set_attribute("key", key)
-            try:
-                await self._redis.delete(key)
-            except Exception as e:
-                span.record_exception(e)
-                logger.warning(f"Redis release_build_lock failed: {e}")
 
     # ── lifecycle ───────────────────────────────────────────────────
 

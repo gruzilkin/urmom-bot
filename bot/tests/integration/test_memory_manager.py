@@ -96,6 +96,7 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             merge_client=profile.client,
             user_resolver=store.user_resolver,
             redis_cache=NullRedisCache(),
+            timeout=None,
         )
         return MemoryTestContext(
             memory_manager=memory_manager,
@@ -113,6 +114,7 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             merge_client=self.default_merge_profile.client,
             user_resolver=store.user_resolver,
             redis_cache=NullRedisCache(),
+            timeout=None,
         )
         return MemoryTestContext(memory_manager=memory_manager, store=store)
 
