@@ -223,7 +223,7 @@ class Container:
 
         # The router client will be a composite client that handles the NOTSURE fallback.
         router_client = CompositeAIClient(
-            [self.gemma, self.codex_mini, self.retrying_gemma, self.deepseek, self.retrying_grok],
+            [self.codex_mini, self.retrying_gemma, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
