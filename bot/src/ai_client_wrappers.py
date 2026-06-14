@@ -41,6 +41,9 @@ class RetryAIClient(AIClient):
         self._jitter = backoff.full_jitter if jitter else None
         self._telemetry = telemetry
 
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._delegate!r})"
+
     async def generate_content(
         self,
         message: str,
@@ -101,6 +104,10 @@ class CompositeAIClient(AIClient):
         self._telemetry = telemetry
         self._shuffle = shuffle
 
+    def __repr__(self) -> str:
+        members = ", ".join(repr(client) for client in self._clients)
+        return f"{type(self).__name__}([{members}])"
+
     async def generate_content(
         self,
         message: str,
@@ -119,11 +126,11 @@ class CompositeAIClient(AIClient):
             random.shuffle(clients_to_try)
 
         async with self._telemetry.async_create_span("composite_generate_content") as span:
-            client_order = [client.__class__.__name__ for client in clients_to_try]
-            span.set_attribute("client_order", ",".join(client_order))
+            client_order = [repr(client) for client in clients_to_try]
+            span.set_attribute("client_order", ", ".join(client_order))
 
             for client in clients_to_try:
-                client_label = client.__class__.__name__
+                client_label = repr(client)
                 try:
                     response = await client.generate_content(
                         message=message,

@@ -29,3 +29,7 @@ class AIClient(ABC):
         image_mime_type: str | None = None,
     ) -> str | T:
         pass
+
+    def __repr__(self) -> str:
+        """Identify the client by its class and model name."""
+        return f"{type(self).__name__}({self.model_name})" if self.model_name else type(self).__name__
