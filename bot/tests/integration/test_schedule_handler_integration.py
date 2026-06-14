@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 from croniter import croniter
 from dotenv import load_dotenv
 
+from conversation_formatter import ConversationFormatter
 from gemma_client import GemmaClient
 from null_telemetry import NullTelemetry
 from ai_client_wrappers import CompositeAIClient, RetryAIClient
@@ -51,11 +52,16 @@ class TestScheduleHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         self.mock_engine = MagicMock()
         self.mock_engine.fire_task = AsyncMock()
 
+        mock_user_resolver = MagicMock()
+        mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda text, guild_id: text)
+        self.conversation_formatter = ConversationFormatter(mock_user_resolver)
+
         self.handler = ScheduleHandler(
             ai_client=self.client,
             store=self.mock_store,
             telemetry=self.telemetry,
             schedule_engine=self.mock_engine,
+            conversation_formatter=self.conversation_formatter,
         )
 
     async def test_create_extracts_cron_for_recurring_schedule(self):

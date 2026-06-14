@@ -13,6 +13,7 @@ from ai_client import AIClient
 from ai_client_wrappers import CompositeAIClient
 from ai_router import AiRouter
 from conversation_formatter import ConversationFormatter
+from conversation_graph import ConversationMessage
 from fact_handler import FactHandler
 from famous_person_generator import FamousPersonGenerator
 from gemini_client import GeminiClient
@@ -106,7 +107,6 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             ai_client=None,
             store=None,
             telemetry=self.telemetry,
-            user_resolver=mock_user_resolver,
         )
 
         schedule_handler = ScheduleHandler(
@@ -114,12 +114,16 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             store=Mock(),
             telemetry=self.telemetry,
             schedule_engine=Mock(),
+            conversation_formatter=conversation_formatter,
         )
 
         language_detector = LanguageDetector(
             ai_client=language_detector_client,
             telemetry=self.telemetry,
         )
+
+        memory_manager = Mock()
+        memory_manager.build_memory_prompt = AsyncMock(return_value="")
 
         return AiRouter(
             ai_client=router_client,
@@ -130,6 +134,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             fact_handler=fact_handler,
             schedule_handler=schedule_handler,
             conversation_formatter=conversation_formatter,
+            memory_manager=memory_manager,
         )
 
     async def test_route_request_with_perspective_shift(self):
@@ -161,7 +166,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         Test that the router correctly handles a direct command to the bot,
         stripping out only the bot's name and routing hints.
         """
-        user_message = "BOT, ask claude to write a technical blog post, be very detailed"
+        user_message = "BOT, ask deepseek to write a technical blog post, be very detailed"
         expected_cleaned_query = "write a technical blog post"
 
         for profile in self.profiles:
@@ -172,7 +177,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
 
                 self.assertEqual(route, "GENERAL")
                 self.assertIsNotNone(params)
-                self.assertEqual(params.ai_backend, "claude")
+                self.assertEqual(params.ai_backend, "deepseek")
                 self.assertEqual(params.cleaned_query.lower(), expected_cleaned_query.lower())
                 self.assertLessEqual(
                     params.temperature,
@@ -195,14 +200,14 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(route, "FACT")
                 self.assertIsNotNone(params)
                 self.assertEqual(params.operation, "remember")
-                self.assertEqual(params.user_mention, "1333878858138652682")
+                self.assertEqual(params.member_id, 1333878858138652682)
                 self.assertIn("TechCorp", params.fact_content)
 
     async def test_route_request_memory_forget(self):
         """
         Test that the router correctly identifies and routes memory forget commands.
         """
-        user_message = "Bot forget that gruzilkin likes pizza"
+        user_message = "Bot forget that <@1333878858138652682> likes pizza"
 
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
@@ -213,7 +218,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(route, "FACT")
                 self.assertIsNotNone(params)
                 self.assertEqual(params.operation, "forget")
-                self.assertEqual(params.user_mention, "gruzilkin")
+                self.assertEqual(params.member_id, 1333878858138652682)
                 self.assertIn("pizza", params.fact_content.lower())
                 self.assertIn("like", params.fact_content.lower())
 
@@ -441,8 +446,8 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNotNone(params)
                 self.assertEqual(params.operation, "create")
 
-    async def test_route_request_song_writing_selects_claude(self):
-        """Test that song writing requests are routed to Claude backend."""
+    async def test_route_request_song_writing_selects_gemini_flash(self):
+        """Test that song writing requests are routed to the Gemini Flash backend."""
         user_message = "BOT write a song about summer"
 
         for profile in self.profiles:
@@ -455,14 +460,72 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNotNone(params, "GENERAL route should have parameters")
                 self.assertEqual(
                     params.ai_backend,
-                    "claude",
-                    "Song requests should select Claude backend",
+                    "gemini_flash",
+                    "Song requests should select the Gemini Flash backend",
                 )
                 self.assertIn(
                     "song",
                     params.cleaned_query.lower(),
                     "Should preserve song request in query",
                 )
+
+    # Shared context for the two resolution tests: a <memories> directory mapping one
+    # member_id to a member_name + alias, plus a conversation that references them by id only.
+    _RESOLVE_TARGET_ID = "187911955"
+    _RESOLVE_MEMBER_NAME = "QuantumFox"
+    _RESOLVE_ALIAS = "крокодил"
+
+    def _mock_member_directory(self, profile: RouterProfile) -> None:
+        memories_block = (
+            "<memories>\n"
+            f"<memory><member_id>{self._RESOLVE_TARGET_ID}</member_id>"
+            f"<member_name>{self._RESOLVE_MEMBER_NAME}</member_name>"
+            f"<also_known_as>{self._RESOLVE_ALIAS}</also_known_as>"
+            "<facts>enjoys quantum mechanics</facts></memory>\n"
+            "</memories>"
+        )
+        conversation_block = (
+            "<conversation_history>\n"
+            f"<message><id>1</id><timestamp>t</timestamp><member_id>{self._RESOLVE_TARGET_ID}</member_id>"
+            "<content>hey everyone</content></message>\n"
+            "</conversation_history>"
+        )
+        profile.router.memory_manager.build_memory_prompt = AsyncMock(return_value=memories_block)
+        profile.router.conversation_formatter.format_to_xml = AsyncMock(return_value=conversation_block)
+
+    async def _assert_reference_resolves_to_target(self, reference: str) -> None:
+        conversation = [
+            ConversationMessage(
+                message_id=1,
+                author_id=int(self._RESOLVE_TARGET_ID),
+                content="hey everyone",
+                timestamp="t",
+                mentioned_user_ids=[],
+            )
+        ]
+        fetcher = AsyncMock(return_value=conversation)  # non-empty so memory + conversation get built
+        for profile in self.profiles:
+            with self.subTest(profile=profile.name):
+                self._mock_member_directory(profile)
+                route, params = await profile.router.route_request(
+                    f"BOT remember that {reference} loves quantum mechanics", fetcher, self.default_guild_id
+                )
+                self.assertEqual(route, "FACT")
+                self.assertIsNotNone(params)
+                self.assertEqual(params.operation, "remember")
+                self.assertEqual(
+                    params.member_id,
+                    int(self._RESOLVE_TARGET_ID),
+                    f"Should resolve '{reference}' to member_id via the <memories> directory",
+                )
+
+    async def test_fact_resolves_alias_to_member_id_from_memories(self):
+        """Referencing a member by an alias listed in <memories> resolves to their member_id."""
+        await self._assert_reference_resolves_to_target(self._RESOLVE_ALIAS)
+
+    async def test_fact_resolves_member_name_to_member_id_from_memories(self):
+        """Referencing a member by their member_name listed in <memories> resolves to their member_id."""
+        await self._assert_reference_resolves_to_target(self._RESOLVE_MEMBER_NAME)
 
 
 if __name__ == "__main__":

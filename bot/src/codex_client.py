@@ -21,6 +21,23 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
+def _enforce_no_additional_properties(node: object) -> None:
+    """Recursively set ``additionalProperties: false`` on every object in a JSON schema.
+
+    Codex strict structured output rejects any object that does not explicitly forbid
+    additional properties — including nested models under ``$defs`` and array item
+    objects, not only the top-level schema.
+    """
+    if isinstance(node, dict):
+        if node.get("type") == "object" or "properties" in node:
+            node["additionalProperties"] = False
+        for value in node.values():
+            _enforce_no_additional_properties(value)
+    elif isinstance(node, list):
+        for item in node:
+            _enforce_no_additional_properties(item)
+
+
 class CodexClient(AIClient):
     def __init__(
         self,
@@ -107,7 +124,7 @@ class CodexClient(AIClient):
             if response_schema:
                 schema_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
                 schema = response_schema.model_json_schema()
-                schema["additionalProperties"] = False
+                _enforce_no_additional_properties(schema)
                 json.dump(schema, schema_file)
                 schema_file.close()
                 codex_cmd.extend(["--output-schema", schema_file.name])

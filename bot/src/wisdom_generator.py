@@ -71,6 +71,7 @@ class WisdomGenerator:
             conversation = await conversation_fetcher()
 
             user_ids = self._extract_unique_user_ids(conversation)
+            user_ids.add(trigger_message.author.id)
             memories_block = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
 
             conversation_block = await self._conversation_formatter.format_to_xml(guild_id, conversation)
@@ -131,8 +132,7 @@ Personalization:
 
             # Format trigger message with author attribution
             trigger_message_xml = f"""<trigger_message>
-<author_id>{trigger_message.author.id}</author_id>
-<author>{trigger_message.author.display_name}</author>
+<member_id>{trigger_message.author.id}</member_id>
 <content>{trigger_message.content}</content>
 </trigger_message>"""
 

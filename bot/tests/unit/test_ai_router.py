@@ -59,6 +59,9 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
             is_bad_response=lambda r: hasattr(r, "route") and r.route == "NOTSURE",
         )
 
+        self.memory_manager = Mock()
+        self.memory_manager.build_memory_prompt = AsyncMock(return_value="")
+
         # Create router with mocked dependencies
         self.router = AiRouter(
             ai_client=router_client,
@@ -69,6 +72,7 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
             fact_handler=self.fact_handler,
             conversation_formatter=self.conversation_formatter,
             schedule_handler=self.schedule_handler,
+            memory_manager=self.memory_manager,
         )
 
         # Default mock conversation fetcher for tests

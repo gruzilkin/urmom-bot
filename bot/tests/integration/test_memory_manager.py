@@ -4,6 +4,7 @@ These tests use actual Gemini/Gemma APIs and the full physics chat history.
 """
 
 import os
+import shutil
 import time
 import unittest
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from dotenv import load_dotenv
 from memory_manager import MemoryManager
 from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
+from codex_client import CodexClient
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
 from test_store import TestStore
@@ -60,6 +62,14 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
 
         self.summary_profiles: list[Profile] = [Profile(name="gemini_flash", client=self.gemini_client)]
         self.merge_profiles: list[Profile] = []
+
+        # Codex runs on a subscription (not metered), so this isn't gated on ENABLE_PAID_TESTS —
+        # it runs wherever the Codex CLI is available. Mirrors production, where daily history
+        # parsing uses gpt-5.4-mini, and drives the nested DailySummaries schema through Codex.
+        if shutil.which("codex"):
+            self.summary_profiles.append(
+                Profile(name="codex_mini", client=CodexClient(telemetry=self.telemetry, model_name="gpt-5.4-mini"))
+            )
 
         gemma_api_key = os.getenv("GEMMA_API_KEY")
         gemma_model = os.getenv("GEMMA_MODEL")

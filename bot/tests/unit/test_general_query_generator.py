@@ -15,16 +15,12 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_grok = Mock()
         self.mock_grok.generate_content = AsyncMock()
 
-        self.mock_claude = Mock()
-        self.mock_claude.generate_content = AsyncMock()
-
         self.mock_gemma = Mock()
         self.mock_gemma.generate_content = AsyncMock()
 
         self.client_map = {
             "gemini_flash": self.mock_gemini_flash,
             "grok": self.mock_grok,
-            "claude": self.mock_claude,
             "gemma": self.mock_gemma,
         }
 

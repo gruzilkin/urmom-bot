@@ -429,8 +429,8 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("<message>", prompt)
         self.assertIn("<timestamp>1905-03-03 09:15:00+00:00</timestamp>", prompt)
-        self.assertIn(f"<author_id>{einstein_id}</author_id>", prompt)
-        self.assertIn("<author>Einstein</author>", prompt)
+        self.assertIn(f"<member_id>{einstein_id}</member_id>", prompt)
+        self.assertIn("<member_name>Einstein</member_name>", prompt)
 
         # This content comes directly from TestStore's data for March 3rd, 1905
         expected_content = (
@@ -465,8 +465,8 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         prompt = call_args[1]["message"]
 
         # Should contain each user only once in the target_users section
-        einstein_user_entries = prompt.count(f"<user_id>{einstein_id}</user_id>")
-        bohr_user_entries = prompt.count(f"<user_id>{bohr_id}</user_id>")
+        einstein_user_entries = prompt.count(f"<member><member_id>{einstein_id}</member_id>")
+        bohr_user_entries = prompt.count(f"<member><member_id>{bohr_id}</member_id>")
 
         self.assertEqual(
             einstein_user_entries, 1, "Einstein should appear only once in user list despite multiple messages"

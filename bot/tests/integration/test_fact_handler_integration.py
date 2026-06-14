@@ -79,7 +79,6 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             ai_client=client,
             store=store,
             telemetry=self.telemetry,
-            user_resolver=user_resolver,
         )
 
         famous_generator = FamousPersonGenerator(
@@ -122,6 +121,9 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
 
         language_detector = LanguageDetector(ai_client=client, telemetry=self.telemetry)
 
+        memory_manager = Mock()
+        memory_manager.build_memory_prompt = AsyncMock(return_value="")
+
         ai_router = AiRouter(
             ai_client=client,
             telemetry=self.telemetry,
@@ -131,6 +133,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             fact_handler=fact_handler,
             schedule_handler=schedule_handler,
             conversation_formatter=conversation_formatter,
+            memory_manager=memory_manager,
         )
 
         guild_id = store.physics_guild_id
@@ -375,18 +378,20 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
 
     async def test_end_to_end_russian_language_preservation(self):
         """Russian input should stay in Russian through routing and storage."""
-        russian_message = "БОТ запомни что Rutherford так же известен как Крокодил"
-
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 ctx = self._build_context(profile.client)
+                rutherford_id = ctx.store.physicist_ids["Rutherford"]
+                russian_message = f"БОТ запомни что <@{rutherford_id}> так же известен как Крокодил"
 
-                route, params = await ctx.ai_router.route_request(russian_message)
+                route, params = await ctx.ai_router.route_request(
+                    russian_message, AsyncMock(return_value=[]), ctx.guild_id
+                )
 
                 self.assertEqual(route, "FACT", "Should route Russian command to FACT")
                 self.assertIsNotNone(params, "Should extract parameters for FACT route")
                 self.assertEqual(params.operation, "remember")
-                self.assertEqual(params.user_mention, "Rutherford")
+                self.assertEqual(params.member_id, rutherford_id)
 
                 fact_content_lower = params.fact_content.lower()
                 russian_terms = ["известен", "крокодил"]
@@ -426,18 +431,20 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
 
     async def test_end_to_end_english_still_works(self):
         """English end-to-end flow should continue to behave correctly."""
-        english_message = "BOT remember that Einstein likes chocolate"
-
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 ctx = self._build_context(profile.client)
+                einstein_id = ctx.store.physicist_ids["Einstein"]
+                english_message = f"BOT remember that <@{einstein_id}> likes chocolate"
 
-                route, params = await ctx.ai_router.route_request(english_message)
+                route, params = await ctx.ai_router.route_request(
+                    english_message, AsyncMock(return_value=[]), ctx.guild_id
+                )
 
                 self.assertEqual(route, "FACT")
                 self.assertIsNotNone(params)
                 self.assertEqual(params.operation, "remember")
-                self.assertEqual(params.user_mention, "Einstein")
+                self.assertEqual(params.member_id, einstein_id)
                 self.assertIn("chocolate", params.fact_content.lower())
                 self.assertIn("like", params.fact_content.lower())
 

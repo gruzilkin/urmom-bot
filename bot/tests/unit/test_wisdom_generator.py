@@ -68,10 +68,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         self.ai_client.generate_content.assert_called_once()
         call_args = self.ai_client.generate_content.call_args
         self.assertEqual(call_args.kwargs["temperature"], 0.8)
-        # Message should contain author attribution and content
+        # Message should contain the member id and content
         message = call_args.kwargs["message"]
-        self.assertIn("12345", message)  # author id
-        self.assertIn("TestUser", message)  # author name
+        self.assertIn("12345", message)  # member id
         self.assertIn("Hello world", message)  # content
         self.assertEqual(call_args.kwargs["response_schema"], WisdomResponse)
         self.assertIn("prompt", call_args.kwargs)
@@ -215,7 +214,8 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
     async def test_generate_wisdom_includes_memories(self) -> None:
         """Test that memories are fetched and included in the prompt."""
         memory_block = (
-            "<memories>\n<memory><nickname>User</nickname><facts>Lives in Tokyo</facts></memory>\n</memories>"
+            "<memories>\n<memory><member_id>42</member_id><member_name>User</member_name>"
+            "<facts>Lives in Tokyo</facts></memory>\n</memories>"
         )
         self.memory_manager.build_memory_prompt = AsyncMock(return_value=memory_block)
         self.ai_client.generate_content.return_value = WisdomResponse(answer="Wisdom", reason="test")

@@ -7,7 +7,6 @@ from gemma_client import GemmaClient
 from schemas import FactParams, MemoryUpdate, MemoryForget
 from store import Store
 from null_telemetry import NullTelemetry
-from user_resolver import UserResolver
 
 load_dotenv()
 
@@ -24,15 +23,11 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         self.mock_store.get_user_facts = AsyncMock(return_value=None)
         self.mock_store.save_user_facts = AsyncMock()
 
-        # Mock the user resolver
-        self.mock_user_resolver = Mock(spec=UserResolver)
-
         # The component under test
         self.fact_handler = FactHandler(
             ai_client=self.mock_ai_client,
             store=self.mock_store,
             telemetry=self.telemetry,
-            user_resolver=self.mock_user_resolver,
         )
 
     async def test_remember_fact_for_new_user(self):
@@ -40,12 +35,11 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Arrange
         params = FactParams(
             operation="remember",
-            user_mention="testuser",
+            member_id=12345,
             fact_content="they like chocolate",
             language_code="en",
             language_name="English",
         )
-        self.mock_user_resolver.resolve_user_id.return_value = 12345
         self.mock_ai_client.generate_content = AsyncMock(
             return_value=MemoryUpdate(
                 updated_memory="they like chocolate", confirmation_message="I'll remember that they like chocolate."
@@ -67,12 +61,11 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Arrange
         params = FactParams(
             operation="remember",
-            user_mention="testuser",
+            member_id=12345,
             fact_content="they are a developer",
             language_code="en",
             language_name="English",
         )
-        self.mock_user_resolver.resolve_user_id.return_value = 12345
         self.mock_store.get_user_facts.return_value = "they like chocolate"
         # Set up mock to return merging response
         self.mock_ai_client.generate_content = AsyncMock(
@@ -98,12 +91,11 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Arrange
         params = FactParams(
             operation="forget",
-            user_mention="testuser",
+            member_id=12345,
             fact_content="they dislike broccoli",
             language_code="en",
             language_name="English",
         )
-        self.mock_user_resolver.resolve_user_id.return_value = 12345
         self.mock_store.get_user_facts.return_value = "they like chocolate"
         # Set up mock to return forget operation response
         self.mock_ai_client.generate_content = AsyncMock(
@@ -128,12 +120,11 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Arrange
         params = FactParams(
             operation="forget",
-            user_mention="testuser",
+            member_id=12345,
             fact_content="they like chocolate",
             language_code="en",
             language_name="English",
         )
-        self.mock_user_resolver.resolve_user_id.return_value = 12345
         self.mock_store.get_user_facts.return_value = "they like chocolate and they are a developer"
         # Set up mock to return forget operation response
         self.mock_ai_client.generate_content = AsyncMock(
@@ -154,22 +145,21 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         self.mock_ai_client.generate_content.assert_called_once()
 
     async def test_handle_request_with_unresolvable_user(self):
-        """Test that the handler returns a helpful message for unresolvable users."""
+        """Test that the handler returns a helpful message when the member could not be identified."""
         # Arrange
         params = FactParams(
             operation="remember",
-            user_mention="nonexistentuser",
+            member_id=None,
             fact_content="they like testing",
             language_code="en",
             language_name="English",
         )
-        self.mock_user_resolver.resolve_user_id.return_value = None
 
         # Act
         response = await self.fact_handler.handle_request(params, guild_id=67890)
 
         # Assert
-        self.assertIn("couldn't identify the user", response)
+        self.assertIn("couldn't identify the member", response)
         self.mock_store.get_user_facts.assert_not_awaited()
         self.mock_store.save_user_facts.assert_not_awaited()
 

@@ -47,6 +47,7 @@ class TestGeminiGrounding(unittest.IsolatedAsyncioTestCase):
         response = await self.client.generate_content(
             message="What's the current weather in San Francisco?",
             prompt="Provide current weather information using web search.",
+            enable_grounding=True,
         )
 
         self.assertIsInstance(response, str)
@@ -55,7 +56,9 @@ class TestGeminiGrounding(unittest.IsolatedAsyncioTestCase):
     async def test_current_news_grounding(self):
         """Test grounding with current news"""
         response = await self.client.generate_content(
-            message="What are the top news stories today?", prompt="Use web search to provide current news information."
+            message="What are the top news stories today?",
+            prompt="Use web search to provide current news information.",
+            enable_grounding=True,
         )
 
         self.assertIsInstance(response, str)
@@ -66,6 +69,7 @@ class TestGeminiGrounding(unittest.IsolatedAsyncioTestCase):
         response = await self.client.generate_content(
             message="What's the current price of Bitcoin?",
             prompt="Use web search to provide current cryptocurrency price information.",
+            enable_grounding=True,
         )
 
         self.assertIsInstance(response, str)

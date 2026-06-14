@@ -368,14 +368,7 @@ class MemoryManager:
             formatter = ConversationFormatter(self._user_resolver)
             formatted_messages = await formatter.format_to_xml(guild_id, conversation_messages)
 
-            # Fetch facts and extract aliases for identity resolution
-            user_facts = {}
-            for user_id in active_user_ids:
-                facts = await self._store.get_user_facts(guild_id, user_id)
-                if facts:
-                    user_facts[user_id] = facts
-
-            aliases_map = await self._extract_aliases(user_facts) if user_facts else {}
+            aliases_map = await self._extract_aliases_for(guild_id, active_user_ids)
 
             # Create user list with names and aliases for context
             user_list = []
@@ -384,14 +377,14 @@ class MemoryManager:
                 aliases = aliases_map.get(user_id, [])
                 also_known_as = f"<also_known_as>{', '.join(aliases)}</also_known_as>" if aliases else ""
                 user_list.append(
-                    f"<user><user_id>{user_id}</user_id><nickname>{user_name}</nickname>{also_known_as}</user>"
+                    f"<member><member_id>{user_id}</member_id><member_name>{user_name}</member_name>{also_known_as}</member>"
                 )
 
             structured_prompt = f"""{BATCH_SUMMARIZE_DAILY_PROMPT}
 
-<target_users>
+<target_members>
 {chr(10).join(user_list)}
-</target_users>
+</target_members>
 <messages>
 {formatted_messages}
 </messages>"""
@@ -505,6 +498,15 @@ class MemoryManager:
 
             return aliases_map
 
+    async def _extract_aliases_for(self, guild_id: int, user_ids: list[int] | set[int]) -> dict[int, list[str]]:
+        """Fetch each member's stored facts and extract their aliases for identity resolution."""
+        user_facts = {}
+        for user_id in user_ids:
+            facts = await self._store.get_user_facts(guild_id, user_id)
+            if facts:
+                user_facts[user_id] = facts
+        return await self._extract_aliases(user_facts) if user_facts else {}
+
     async def build_memory_prompt(self, guild_id: int, user_ids: set[int] | list[int]) -> str:
         """Build formatted memory blocks for LLM prompts with outer tags.
 
@@ -513,7 +515,7 @@ class MemoryManager:
             user_ids: Set or list of user IDs to fetch memories for
 
         Returns:
-            Complete XML memories block (<memories>...</memories>), or empty string if no memories
+            Complete XML members block (<members>...</members>), or empty string if no memories
         """
         if not user_ids:
             return ""
@@ -527,21 +529,26 @@ class MemoryManager:
             user_ids_list = list(user_ids)
             memories_dict = await self.get_memories(guild_id, user_ids_list)
 
-            memory_blocks = []
+            aliases_map = await self._extract_aliases_for(guild_id, user_ids_list)
+
+            member_blocks = []
             for user_id in user_ids_list:
                 memories = memories_dict.get(user_id)
                 if memories:
                     display_name = await self._user_resolver.get_display_name(guild_id, user_id)
-                    memory_block = f"""<memory>
-<nickname>{display_name}</nickname>
+                    aliases = aliases_map.get(user_id, [])
+                    also_known_as = f"\n<also_known_as>{', '.join(aliases)}</also_known_as>" if aliases else ""
+                    member_block = f"""<memory>
+<member_id>{user_id}</member_id>
+<member_name>{display_name}</member_name>{also_known_as}
 <facts>{memories}</facts>
 </memory>"""
-                    memory_blocks.append(memory_block)
+                    member_blocks.append(member_block)
 
-            if not memory_blocks:
+            if not member_blocks:
                 return ""
 
-            memories_xml = "\n".join(memory_blocks)
+            memories_xml = "\n".join(member_blocks)
             return f"<memories>\n{memories_xml}\n</memories>"
 
     async def ingest_message(self, guild_id: int, message: MessageNode) -> None:

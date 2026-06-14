@@ -28,6 +28,7 @@ class AiRouter:
         fact_handler,
         conversation_formatter: ConversationFormatter,
         schedule_handler,
+        memory_manager,
     ):
         self.ai_client = ai_client
         self.telemetry = telemetry
@@ -37,6 +38,7 @@ class AiRouter:
         self.fact_handler = fact_handler
         self.conversation_formatter = conversation_formatter
         self.schedule_handler = schedule_handler
+        self.memory_manager = memory_manager
 
     def _build_route_selection_prompt(self, conversation_context: str = "") -> str:
         """Build focused prompt for route selection only (tier 1)."""
@@ -189,6 +191,12 @@ NOTSURE: When uncertain about routing decision
             conversation = await conversation_fetcher()
             if conversation:
                 conversation_context = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+                member_ids: set[int] = {msg.author_id for msg in conversation}
+                for msg in conversation:
+                    member_ids.update(msg.mentioned_user_ids)
+                memories_block = await self.memory_manager.build_memory_prompt(guild_id, member_ids)
+                if memories_block:
+                    conversation_context = f"{memories_block}\n{conversation_context}"
 
             # Start language detection in background while routing proceeds
             lang_task = asyncio.create_task(self.language_detector.detect_language(message))
@@ -243,7 +251,8 @@ NOTSURE: When uncertain about routing decision
                     span.set_attribute("temperature", params.temperature)
                 elif route_selection.route == "FACT":
                     span.set_attribute("fact_operation", params.operation)
-                    span.set_attribute("fact_user_mention", params.user_mention)
+                    if params.member_id is not None:
+                        span.set_attribute("fact_member_id", params.member_id)
                     span.set_attribute("fact_content", params.fact_content)
                 elif route_selection.route == "SCHEDULE":
                     span.set_attribute("schedule_operation", params.operation)

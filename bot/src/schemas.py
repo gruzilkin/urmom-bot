@@ -37,7 +37,7 @@ class FamousParams(BaseModel):
 class GeneralParams(BaseModel):
     """Parameters for general AI query requests."""
 
-    ai_backend: Literal["gemini_flash", "grok", "claude", "gemma", "codex", "deepseek"]
+    ai_backend: Literal["gemini_flash", "grok", "gemma", "codex", "deepseek"]
     temperature: float = Field(ge=0.0, le=1.0)
     cleaned_query: str = Field(description="User's request with 'BOT' mentions and routing instructions removed")
     language_code: str | None = Field(
@@ -59,8 +59,9 @@ class FactParams(BaseModel):
     operation: Literal["remember", "forget"] = Field(
         description="Memory operation type: 'remember' to store a fact, 'forget' to remove a fact"
     )
-    user_mention: str = Field(
-        description="User reference: Discord mention like '<@123456>' or nickname like 'gruzilkin'"
+    member_id: int | None = Field(
+        default=None,
+        description="Numeric Discord member ID of the member the fact is about, or null if it cannot be determined",
     )
     fact_content: str = Field(description="The specific fact to remember or forget about the user")
     language_code: str | None = Field(

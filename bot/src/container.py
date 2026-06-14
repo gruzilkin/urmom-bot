@@ -5,7 +5,6 @@ from general_query_generator import GeneralQueryGenerator
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
 from grok_client import GrokClient
-from claude_client import ClaudeClient
 from codex_client import CodexClient
 from deepseek_client import DeepSeekClient
 from country_resolver import CountryResolver
@@ -96,9 +95,6 @@ class Container:
             temperature=self.config.grok_temperature,
         )
 
-        self.claude = ClaudeClient(telemetry=self.telemetry, model_name="opus")
-        self.claude_haiku = ClaudeClient(telemetry=self.telemetry, model_name="haiku")
-
         self.codex = CodexClient(telemetry=self.telemetry, model_name="gpt-5.5")
         self.codex_mini = CodexClient(telemetry=self.telemetry, model_name="gpt-5.4-mini")
 
@@ -115,7 +111,7 @@ class Container:
         self.retrying_grok = RetryAIClient(self.grok, telemetry=self.telemetry, max_tries=3)
 
         self.lightweight_fallback = CompositeAIClient(
-            [self.gemma, self.codex_mini, self.retrying_gemma, self.claude_haiku, self.deepseek, self.retrying_grok],
+            [self.gemma, self.codex_mini, self.retrying_gemma, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
@@ -126,8 +122,8 @@ class Container:
             shuffle=True,
         )
 
-        self.codex_claude_deepseek_flash_fallback = CompositeAIClient(
-            [self.codex, self.claude_haiku, self.deepseek, self.gemini_flash],
+        self.codex_mini_deepseek_flash_fallback = CompositeAIClient(
+            [self.codex_mini, self.deepseek, self.gemini_flash],
             telemetry=self.telemetry,
         )
 
@@ -171,20 +167,19 @@ class Container:
         )
 
         fact_handler_client = CompositeAIClient(
-            [self.codex, self.retrying_gemma, self.claude_haiku, self.deepseek, self.retrying_grok],
+            [self.codex, self.retrying_gemma, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
         )
         self.fact_handler = FactHandler(
             ai_client=fact_handler_client,
             store=self.store,
             telemetry=self.telemetry,
-            user_resolver=self.user_resolver,
         )
 
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            summary_client=self.codex_claude_deepseek_flash_fallback,
+            summary_client=self.codex_mini_deepseek_flash_fallback,
             alias_client=self.lightweight_fallback,
             merge_client=self.lightweight_fallback,
             user_resolver=self.user_resolver,
@@ -228,7 +223,7 @@ class Container:
 
         # The router client will be a composite client that handles the NOTSURE fallback.
         router_client = CompositeAIClient(
-            [self.gemma, self.codex_mini, self.retrying_gemma, self.claude_haiku, self.deepseek, self.retrying_grok],
+            [self.gemma, self.codex_mini, self.retrying_gemma, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
@@ -242,6 +237,7 @@ class Container:
             self.fact_handler,
             self.conversation_formatter,
             self.schedule_handler,
+            self.memory_manager,
         )
 
         # Late-bound to break the engine → router → schedule_handler → engine cycle
@@ -295,7 +291,6 @@ class Container:
         """Create a composite client matching the fallback rules for general queries."""
         client_map: dict[str, AIClient] = {
             "gemini_flash": self.gemini_flash,
-            "claude": self.claude,
             "grok": self.retrying_grok,
             "gemma": self.retrying_gemma,
             "codex": self.codex,
@@ -305,7 +300,7 @@ class Container:
         if preferred_backend not in client_map:
             raise ValueError(f"Unknown ai_backend: {preferred_backend}")
 
-        fallback_order = ["codex", "claude", "deepseek", "gemini_flash", "grok"]
+        fallback_order = ["codex", "deepseek", "gemini_flash", "grok"]
         ordered_labels = [preferred_backend] + [label for label in fallback_order if label != preferred_backend]
 
         chain = [client_map[label] for label in ordered_labels]
