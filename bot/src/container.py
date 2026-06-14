@@ -138,9 +138,16 @@ class Container:
             self.telemetry,
         )
 
+        # Codex-mini-first chain keeps latency-sensitive language detection off gemma,
+        # whose occasional slow responses would stall request routing.
+        language_detection_client = CompositeAIClient(
+            [self.codex_mini, self.retrying_gemma, self.deepseek, self.retrying_grok],
+            telemetry=self.telemetry,
+        )
+
         # Initialize language detector early since it's needed by multiple components
         self.language_detector = LanguageDetector(
-            ai_client=self.lightweight_fallback,
+            ai_client=language_detection_client,
             telemetry=self.telemetry,
         )
 
