@@ -133,6 +133,12 @@ class Container:
             telemetry=self.telemetry,
         )
 
+        # Capable chain for precision-sensitive structured output (e.g. schedule metadata)
+        self.codex_deepseek_gemini_grok = CompositeAIClient(
+            [self.codex, self.deepseek, self.gemini_flash, self.retrying_grok],
+            telemetry=self.telemetry,
+        )
+
         self.response_summarizer = ResponseSummarizer(
             self.lightweight_fallback,
             self.telemetry,
@@ -214,7 +220,7 @@ class Container:
         )
 
         self.schedule_handler = ScheduleHandler(
-            ai_client=self.lightweight_fallback,
+            ai_client=self.codex_deepseek_gemini_grok,
             store=self.store,
             telemetry=self.telemetry,
             schedule_engine=self.schedule_engine,
