@@ -22,6 +22,8 @@ class AppConfig(BaseSettings):
     gemma_model: str = Field(env="GEMMA_MODEL")
     # Optional second Gemma model name; used alongside GEMMA_MODEL when set.
     gemma_model_2: str | None = Field(default=None, env="GEMMA_MODEL_2")
+    # Per-request wall-clock cap; on timeout the composite fails over to the next client.
+    gemma_timeout_seconds: int = Field(default=60, env="GEMMA_TIMEOUT_SECONDS")
 
     # Grok configuration
     grok_api_key: str = Field(env="GROK_API_KEY")

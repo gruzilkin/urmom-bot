@@ -285,6 +285,7 @@ class Container:
                 model_name=model_name,
                 telemetry=self.telemetry,
                 temperature=self.config.gemini_temperature,
+                timeout_seconds=self.config.gemma_timeout_seconds,
             )
             for model_name in model_names
         ]
