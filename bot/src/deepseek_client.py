@@ -39,7 +39,7 @@ class DeepSeekClient(OpenAIClient):
             temperature=temperature,
         )
 
-    def _generate_structured(
+    async def _generate_structured(
         self, messages: list[dict], response_schema: type[T], temperature: float, base_attrs: dict
     ) -> T:
         """Structured output via JSON mode, validated client-side with corrective retries."""
@@ -57,7 +57,7 @@ class DeepSeekClient(OpenAIClient):
             loop_attrs = {**base_attrs, "validation_retry": validation_retry}
             timer = self.telemetry.metrics.timer()
             try:
-                completion = self.model.chat.completions.create(
+                completion = await self.model.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
                     temperature=temperature,

@@ -1,7 +1,7 @@
 """Unit tests for GrokClient."""
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from openai import PermissionDeniedError
 
 from ai_client import BlockedException
@@ -15,7 +15,7 @@ class TestGrokClientExceptionHandling(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         """Set up test dependencies."""
-        patcher = patch("openai_client.OpenAI")
+        patcher = patch("openai_client.AsyncOpenAI")
         self.addCleanup(patcher.stop)
         self.mock_openai_cls = patcher.start()
         self.mock_openai = self.mock_openai_cls.return_value
@@ -44,7 +44,7 @@ class TestGrokClientExceptionHandling(unittest.IsolatedAsyncioTestCase):
             body={"error": "Content violates usage guidelines"},
         )
 
-        self.mock_openai.beta.chat.completions.parse = Mock(side_effect=permission_error)
+        self.mock_openai.beta.chat.completions.parse = AsyncMock(side_effect=permission_error)
 
         with self.assertRaises(BlockedException) as context:
             await self.client.generate_content(message="Test message", response_schema=YesNo)
@@ -66,7 +66,7 @@ class TestGrokClientExceptionHandling(unittest.IsolatedAsyncioTestCase):
             body={"error": "Content violates usage guidelines"},
         )
 
-        self.mock_openai.chat.completions.create = Mock(side_effect=permission_error)
+        self.mock_openai.chat.completions.create = AsyncMock(side_effect=permission_error)
 
         with self.assertRaises(BlockedException) as context:
             await self.client.generate_content(message="Test message")
@@ -76,7 +76,7 @@ class TestGrokClientExceptionHandling(unittest.IsolatedAsyncioTestCase):
     async def test_generic_exception_not_converted(self) -> None:
         """Test that generic exceptions are not converted to BlockedException."""
         generic_error = ValueError("Some other error")
-        self.mock_openai.chat.completions.create = Mock(side_effect=generic_error)
+        self.mock_openai.chat.completions.create = AsyncMock(side_effect=generic_error)
 
         with self.assertRaises(ValueError) as context:
             await self.client.generate_content(message="Test message")

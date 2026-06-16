@@ -2,7 +2,7 @@ import logging
 from collections.abc import Sequence
 from typing import TypeVar
 
-from openai import OpenAI, PermissionDeniedError
+from openai import AsyncOpenAI, PermissionDeniedError
 from openai.types.chat import ChatCompletion
 from opentelemetry.trace import SpanKind
 from pydantic import BaseModel
@@ -41,7 +41,7 @@ class OpenAIClient(AIClient):
         if not model_name:
             raise ValueError(f"{service} model name not provided!")
 
-        self.model = OpenAI(api_key=api_key, base_url=base_url)
+        self.model = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
         self.temperature = temperature
         self.telemetry = telemetry
@@ -118,14 +118,14 @@ class OpenAIClient(AIClient):
             actual_temperature = temperature if temperature is not None else self.temperature
 
             if response_schema:
-                return self._generate_structured(messages, response_schema, actual_temperature, base_attrs)
+                return await self._generate_structured(messages, response_schema, actual_temperature, base_attrs)
 
-            return self._generate_text(messages, actual_temperature, base_attrs)
+            return await self._generate_text(messages, actual_temperature, base_attrs)
 
-    def _generate_text(self, messages: list[dict], temperature: float, base_attrs: dict) -> str:
+    async def _generate_text(self, messages: list[dict], temperature: float, base_attrs: dict) -> str:
         timer = self.telemetry.metrics.timer()
         try:
-            completion = self.model.chat.completions.create(
+            completion = await self.model.chat.completions.create(
                 model=self.model_name, messages=messages, temperature=temperature
             )
             attrs = {**base_attrs, "outcome": "success"}
@@ -139,7 +139,7 @@ class OpenAIClient(AIClient):
 
         return completion.choices[0].message.content
 
-    def _generate_structured(
+    async def _generate_structured(
         self, messages: list[dict], response_schema: type[T], temperature: float, base_attrs: dict
     ) -> T:
         """Native structured output via OpenAI's strict ``json_schema`` response format.
@@ -149,7 +149,7 @@ class OpenAIClient(AIClient):
         logger.info(f"Structured output enabled with schema: {response_schema.__name__}")
         timer = self.telemetry.metrics.timer()
         try:
-            completion = self.model.beta.chat.completions.parse(
+            completion = await self.model.beta.chat.completions.parse(
                 model=self.model_name,
                 messages=messages,
                 temperature=temperature,
