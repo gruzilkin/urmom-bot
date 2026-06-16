@@ -115,6 +115,16 @@ class Container:
             telemetry=self.telemetry,
         )
 
+        # Fast chain for latency-critical per-message work (routing + language detection):
+        # deepseek leads (fast, cheap), escalating to codex_mini then grok. Gemma stays off this
+        # path - it's too slow/unreliable for realtime. The NOTSURE predicate drives the router's
+        # escalation and is inert for other schemas (no `route` attribute).
+        self.latency_critical = CompositeAIClient(
+            [self.deepseek, self.codex_mini, self.retrying_grok],
+            telemetry=self.telemetry,
+            is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
+        )
+
         # Shuffled composite for jokes and wisdom - gives both clients equal chance
         self.shuffled_grok_gemini = CompositeAIClient(
             [self.retrying_grok, self.gemini_flash],
@@ -146,7 +156,7 @@ class Container:
 
         # Initialize language detector early since it's needed by multiple components
         self.language_detector = LanguageDetector(
-            ai_client=self.lightweight_fallback,
+            ai_client=self.latency_critical,
             telemetry=self.telemetry,
         )
 
@@ -227,15 +237,8 @@ class Container:
             conversation_formatter=self.conversation_formatter,
         )
 
-        # The router client will be a composite client that handles the NOTSURE fallback.
-        router_client = CompositeAIClient(
-            [self.gemma, self.codex_mini, self.retrying_gemma, self.deepseek, self.retrying_grok],
-            telemetry=self.telemetry,
-            is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
-        )
-
         self.ai_router = AiRouter(
-            router_client,
+            self.latency_critical,
             self.telemetry,
             self.language_detector,
             self.famous_person_generator,
