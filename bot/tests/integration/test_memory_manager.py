@@ -1,9 +1,10 @@
 """
 Integration tests for MemoryManager with real AI clients and realistic physics data.
-These tests use actual Gemini/Gemma (and optionally Ollama Kimi) APIs and the full physics chat history.
+These tests use actual Gemini/Gemma APIs and the full physics chat history.
 """
 
 import os
+import shutil
 import time
 import unittest
 from dataclasses import dataclass
@@ -15,9 +16,9 @@ from dotenv import load_dotenv
 from memory_manager import MemoryManager
 from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
+from codex_client import CodexClient
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
-from ollama_client import OllamaClient
 from test_store import TestStore
 
 # Load environment variables from .env file
@@ -62,6 +63,14 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
         self.summary_profiles: list[Profile] = [Profile(name="gemini_flash", client=self.gemini_client)]
         self.merge_profiles: list[Profile] = []
 
+        # Codex runs on a subscription (not metered), so this isn't gated on ENABLE_PAID_TESTS —
+        # it runs wherever the Codex CLI is available. Mirrors production, where daily history
+        # parsing uses gpt-5.4-mini, and drives the nested DailySummaries schema through Codex.
+        if shutil.which("codex"):
+            self.summary_profiles.append(
+                Profile(name="codex_mini", client=CodexClient(telemetry=self.telemetry, model_name="gpt-5.4-mini"))
+            )
+
         gemma_api_key = os.getenv("GEMMA_API_KEY")
         gemma_model = os.getenv("GEMMA_MODEL")
         if gemma_api_key and gemma_model:
@@ -73,20 +82,8 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             )
             self.merge_profiles.append(Profile(name="gemma", client=gemma_client))
 
-        ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        if ollama_api_key:
-            kimi_model = os.getenv("OLLAMA_KIMI_MODEL", "kimi-k2:1t-cloud")
-            kimi_client = OllamaClient(
-                api_key=ollama_api_key,
-                model_name=kimi_model,
-                telemetry=self.telemetry,
-                temperature=0.0,
-            )
-            self.merge_profiles.append(Profile(name="ollama_kimi", client=kimi_client))
-            self.summary_profiles.append(Profile(name="ollama_kimi", client=kimi_client))
-
         if not self.merge_profiles:
-            self.skipTest("No merge-capable AI clients configured (Gemma or Kimi required).")
+            self.skipTest("No merge-capable AI clients configured (Gemma required).")
         self.default_merge_profile = self.merge_profiles[0]
 
     def _build_context(self, profile: Profile) -> MemoryTestContext:
@@ -99,6 +96,7 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             merge_client=profile.client,
             user_resolver=store.user_resolver,
             redis_cache=NullRedisCache(),
+            timeout=None,
         )
         return MemoryTestContext(
             memory_manager=memory_manager,
@@ -116,6 +114,7 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
             merge_client=self.default_merge_profile.client,
             user_resolver=store.user_resolver,
             redis_cache=NullRedisCache(),
+            timeout=None,
         )
         return MemoryTestContext(memory_manager=memory_manager, store=store)
 

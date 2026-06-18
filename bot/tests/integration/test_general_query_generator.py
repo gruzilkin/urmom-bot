@@ -71,9 +71,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         self.mock_bot_user.name = "urmom-bot"
         self.mock_bot_user.id = 99999
 
-        self.mock_requesting_user = Mock()
-        self.mock_requesting_user.id = 1000
-        self.mock_requesting_user.display_name = "TestUser"
+        self.requesting_user_id = 1000
 
         self.conversation_formatter = ConversationFormatter(self.mock_user_resolver)
 
@@ -125,7 +123,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user=self.mock_requesting_user,
+            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertIsInstance(result, str)
@@ -156,7 +154,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user=self.mock_requesting_user,
+            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertIsInstance(result, str)
@@ -186,7 +184,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             mock_conversation_fetcher,
             guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user=self.mock_requesting_user,
+            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertIsInstance(result, str)

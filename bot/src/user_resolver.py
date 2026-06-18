@@ -18,7 +18,6 @@ class UserResolver:
         """Initializes the UserResolver with telemetry."""
         self._bot: Optional[nextcord.Client] = None
         self._display_name_cache = LRUCache(maxsize=500)
-        self._user_id_cache = LRUCache(maxsize=500)
         self.telemetry = telemetry
 
     def set_bot_client(self, bot: nextcord.Client):
@@ -28,7 +27,6 @@ class UserResolver:
             return
         self._bot = bot
         self._display_name_cache.clear()
-        self._user_id_cache.clear()
         logger.info("UserResolver initialized with bot client.")
 
     async def get_display_name(self, guild_id: int, user_id: int) -> str:
@@ -129,90 +127,6 @@ class UserResolver:
                     1, {"guild_id": str(guild_id), "outcome": "error", "reason": "user_not_found"}
                 )
                 return fallback
-
-    async def resolve_user_id(self, guild_id: int, user_mention_or_name: str) -> Optional[int]:
-        """Resolves a user mention, ID, or name/nickname to a user ID."""
-        async with self.telemetry.async_create_span("resolve_user_id", SpanKind.CLIENT) as span:
-            span.set_attribute("guild_id", guild_id)
-            span.set_attribute("user_mention_or_name", user_mention_or_name)
-
-            cache_key = (guild_id, user_mention_or_name)
-            if cache_key in self._user_id_cache:
-                span.set_attribute("cache_hit", True)
-                cached_result = self._user_id_cache[cache_key]
-                span.set_attribute("user_id", cached_result if cached_result is not None else "none")
-                self.telemetry.metrics.user_resolution.add(
-                    1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"}
-                )
-                return cached_result
-
-            span.set_attribute("cache_hit", False)
-
-            if self._bot is None:
-                logger.error("UserResolver has not been initialized with the bot client.")
-                self._user_id_cache[cache_key] = None
-                span.set_status(Status(StatusCode.ERROR, "Bot client not initialized"))
-                self.telemetry.metrics.user_resolution.add(
-                    1, {"guild_id": str(guild_id), "outcome": "error", "reason": "bot_uninitialized"}
-                )
-                return None
-
-            # Handle Discord mention format <@user_id> or <@!user_id>
-            discord_mention_match = re.match(r"<@!?(\d+)>", user_mention_or_name)
-            if discord_mention_match:
-                user_id = int(discord_mention_match.group(1))
-                self._user_id_cache[cache_key] = user_id
-                span.set_attribute("resolution_method", "discord_mention")
-                span.set_attribute("user_id", user_id)
-                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "success"})
-                return user_id
-
-            # Handle raw user ID
-            if user_mention_or_name.isdigit():
-                user_id = int(user_mention_or_name)
-                self._user_id_cache[cache_key] = user_id
-                span.set_attribute("resolution_method", "raw_user_id")
-                span.set_attribute("user_id", user_id)
-                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "success"})
-                return user_id
-
-            guild = self._bot.get_guild(guild_id)
-            if not guild:
-                logger.warning(f"Could not find guild with ID {guild_id} for user resolution")
-                self._user_id_cache[cache_key] = None
-                span.set_status(Status(StatusCode.ERROR, f"Guild {guild_id} not found"))
-                return None
-
-            # Search by name#discriminator in cache first
-            member = guild.get_member_named(user_mention_or_name)
-            if member:
-                self._user_id_cache[cache_key] = member.id
-                span.set_attribute("resolution_method", "member_named")
-                span.set_attribute("user_id", member.id)
-                self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "success"})
-                return member.id
-
-            # Fallback to searching cached members by name/nickname
-            members = guild.members
-            for m in members:
-                if m.name.lower() == user_mention_or_name.lower() or (
-                    m.nick and m.nick.lower() == user_mention_or_name.lower()
-                ):
-                    self._user_id_cache[cache_key] = m.id
-                    span.set_attribute("resolution_method", "member_search")
-                    span.set_attribute("user_id", m.id)
-                    self.telemetry.metrics.user_resolution.add(1, {"guild_id": str(guild_id), "outcome": "success"})
-                    return m.id
-
-            # If not found in cache, we could make API calls but that's expensive
-            # For name-based resolution, we'll rely on the cached member list
-            logger.warning(f"Could not resolve '{user_mention_or_name}' to a user in guild {guild_id}")
-            self._user_id_cache[cache_key] = None
-            span.set_status(Status(StatusCode.ERROR, f"Could not resolve '{user_mention_or_name}' to a user"))
-            self.telemetry.metrics.user_resolution.add(
-                1, {"guild_id": str(guild_id), "outcome": "error", "reason": "not_resolved"}
-            )
-            return None
 
     async def replace_user_mentions_with_names(self, text: str, guild_id: int) -> str:
         """Replace Discord user mentions <@user_id> in text with actual display names."""

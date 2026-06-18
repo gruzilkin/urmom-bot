@@ -46,9 +46,7 @@ class ResponseSummarizer:
         # Calculate target length as 90% of max length, rounded down to nearest 100 for clarity
         target_length = int(max_length * 0.9 // 100) * 100
 
-        logger.info(
-            f"Response length {len(original_response)} exceeds limit of {max_length}, attempting summarization"
-        )
+        logger.info(f"Response length {len(original_response)} exceeds limit of {max_length}, attempting summarization")
 
         async with self.telemetry.async_create_span("summarize_long_response", kind=SpanKind.CLIENT) as span:
             span.set_attribute("original_length", len(original_response))

@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, timezone
 
@@ -88,6 +89,7 @@ class MemoryManager:
         merge_client: AIClient,
         user_resolver: UserResolver,
         redis_cache: RedisCache,
+        timeout: float | None = 1.0,
     ):
         self._telemetry = telemetry
         self._store = store
@@ -96,9 +98,36 @@ class MemoryManager:
         self._merge_client = merge_client
         self._user_resolver = user_resolver
         self._redis_cache = redis_cache
+        self._timeout = timeout
+        # In-process single-flight registries: concurrent callers for the same key await one
+        # shared build instead of recomputing it. Valid because the bot is a single event loop.
+        self._date_inflight: dict[tuple[int, date], asyncio.Task[dict[int, str]]] = {}
+        self._member_inflight: dict[tuple[int, int], asyncio.Task[str | None]] = {}
+
+    def _coalesce(self, registry: dict, key: tuple, factory: Callable[[], Awaitable]) -> asyncio.Task:
+        """Return the in-flight task for ``key`` or start one, so concurrent callers share a
+        single build (await-not-skip) rather than each recomputing it."""
+        task = registry.get(key)
+        if task is None or task.done():
+            task = asyncio.create_task(factory())
+            registry[key] = task
+            task.add_done_callback(lambda t: self._discard(registry, key, t))
+        return task
+
+    def _discard(self, registry: dict, key: tuple, task: asyncio.Task) -> None:
+        if registry.get(key) is task:
+            registry.pop(key, None)
+        if not task.cancelled():
+            task.exception()  # retrieve to suppress "exception was never retrieved" warnings
 
     async def get_memories(self, guild_id: int, user_ids: list[int]) -> dict[int, str | None]:
-        """Get memories for multiple users with concurrent processing."""
+        """Get memories for multiple users, bounding each member build by the timeout.
+
+        Each member's memory is produced by a coalesced single-flight build raced against
+        ``timeout``; if it doesn't finish in time, the last-known-good value
+        (``memory_latest``, else raw facts) is served while the shielded build keeps running and
+        warms the cache for the next read. Routing therefore never blocks on an LLM merge.
+        """
         async with self._telemetry.async_create_span("get_memories") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("user_count", len(user_ids))
@@ -107,14 +136,25 @@ class MemoryManager:
             if not user_ids:
                 return {}
 
-            today = datetime.now(timezone.utc).date()
-            all_dates = [today] + [today - timedelta(days=i) for i in range(1, 7)]
+            memories = await asyncio.gather(*[self._get_member_memory(guild_id, user_id) for user_id in user_ids])
+            return dict(zip(user_ids, memories))
 
-            # Step 1: Get all daily summaries
-            daily_summaries_by_date = await self._fetch_all_daily_summaries(guild_id, all_dates)
+    async def _get_member_memory(self, guild_id: int, user_id: int) -> str | None:
+        """Build a member's memory within the timeout, falling back to the last-known-good value."""
+        task = self._coalesce(
+            self._member_inflight, (guild_id, user_id), lambda: self._build_member_memory(guild_id, user_id)
+        )
 
-            # Step 2: Create combined memories with all daily summaries
-            return await self._create_combined_memories(guild_id, user_ids, daily_summaries_by_date)
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout=self._timeout)
+        except asyncio.TimeoutError:
+            self._telemetry.metrics.memory_merges.add(
+                1, {"guild_id": str(guild_id), "cache_outcome": "timeout_fallback", "outcome": "success"}
+            )
+            latest = await self._redis_cache.get_memory_latest(guild_id, user_id)
+            if latest is not None:
+                return latest
+            return await self._store.get_user_facts(guild_id, user_id)
 
     async def get_memory(self, guild_id: int, user_id: int) -> str | None:
         """Get memory for a single user (backward compatibility wrapper)."""
@@ -141,34 +181,26 @@ class MemoryManager:
 
             return daily_summaries_by_date
 
-    async def _create_combined_memories(
-        self, guild_id: int, user_ids: list[int], daily_summaries_by_date: dict[date, dict[int, str]]
-    ) -> dict[int, str | None]:
-        """Create combined memories for all users by merging facts with all daily summaries."""
-        async with self._telemetry.async_create_span("create_combined_memories"):
-            merge_tasks = []
-            for user_id in user_ids:
-                # Get facts (fast DB operation)
-                facts = await self._store.get_user_facts(guild_id, user_id)
+    async def _build_member_memory(self, guild_id: int, user_id: int) -> str | None:
+        """Synchronously build one member's memory: facts merged with the 7-day summary window.
 
-                # Extract user's daily summaries from all dates
-                user_daily_summaries = {}
-                for date, daily_batch in daily_summaries_by_date.items():
-                    if user_id in daily_batch:
-                        user_daily_summaries[date] = daily_batch[user_id]
+        Correctness over latency — this may block on a synchronous daily-summary rebuild and an
+        LLM merge. The daily fetch lives here (inside the timeout-bounded region) so its date builds,
+        shared across members via the coalescing registry, are covered by the caller's timeout.
+        """
+        async with self._telemetry.async_create_span("build_member_memory") as span:
+            span.set_attribute("guild_id", guild_id)
+            span.set_attribute("user_id", user_id)
 
-                # Add merge task
-                merge_tasks.append(self._create_user_memory(guild_id, user_id, facts, user_daily_summaries))
+            today = datetime.now(timezone.utc).date()
+            all_dates = [today] + [today - timedelta(days=i) for i in range(1, 7)]
+            daily_summaries_by_date = await self._fetch_all_daily_summaries(guild_id, all_dates)
 
-            # Concurrently merge contexts for all users
-            memories = await asyncio.gather(*merge_tasks)
-
-            # Build result dictionary
-            result = {}
-            for user_id, memory in zip(user_ids, memories):
-                result[user_id] = memory
-
-            return result
+            facts = await self._store.get_user_facts(guild_id, user_id)
+            user_daily_summaries = {
+                day: batch[user_id] for day, batch in daily_summaries_by_date.items() if user_id in batch
+            }
+            return await self._create_user_memory(guild_id, user_id, facts, user_daily_summaries)
 
     async def _create_user_memory(
         self, guild_id: int, user_id: int, facts: str | None, daily_summaries: dict[date, str]
@@ -205,136 +237,78 @@ class MemoryManager:
             return None
 
     async def _daily_summary(self, guild_id: int, for_date: date) -> dict[int, str]:
-        """Get daily summaries for all users on a given date."""
+        """Return all users' summaries for a date, building synchronously (coalesced) on a miss.
+
+        The current day is cached in Redis with a staleness window (a value fresher than
+        STALENESS_THRESHOLD is reused); historical days are immutable in the DB. A miss — or a
+        stale current-day entry — triggers a single-flight synchronous rebuild rather than
+        serving an empty result, so a merge is never built on a known-incomplete summary set.
+        """
         async with self._telemetry.async_create_span("daily_summary") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
 
-            outcome = "success"
-
-            # Determine if this is current day or historical
-            current_date = datetime.now(timezone.utc).date()
-            is_current_day = for_date == current_date
+            is_current_day = for_date == datetime.now(timezone.utc).date()
 
             if is_current_day:
-                # Current day: Redis-backed staleness caching with async rebuild
-                # Check Redis cache first
                 cached = await self._redis_cache.get_daily_summary(guild_id, for_date)
                 if cached is not None:
                     summaries, created_at = cached
-                    now = datetime.now(timezone.utc)
-                    age = now - created_at
-
-                    if age < STALENESS_THRESHOLD:
-                        # Fresh cache (< 1 hour)
+                    if datetime.now(timezone.utc) - created_at < STALENESS_THRESHOLD:
                         span.set_attribute("cache_hit", True)
                         self._telemetry.metrics.daily_summary_jobs.add(
-                            1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": outcome}
+                            1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"}
                         )
                         return summaries
-
-                    # Stale (>= 1 hour) - return stale + trigger async rebuild
-                    span.set_attribute("cache_hit", True)
-                    self._telemetry.metrics.daily_summary_jobs.add(
-                        1, {"guild_id": str(guild_id), "cache_outcome": "stale_hit", "outcome": outcome}
-                    )
-                    self._trigger_async_rebuild(guild_id, for_date)
-                    return summaries
-
-                span.set_attribute("cache_hit", False)
-
-                # Cache miss - return empty + trigger async rebuild
-                self._telemetry.metrics.daily_summary_jobs.add(
-                    1,
-                    {
-                        "guild_id": str(guild_id),
-                        "cache_outcome": "miss",
-                        "outcome": outcome,
-                    },
-                )
-                self._trigger_async_rebuild(guild_id, for_date)
-                return {}
             else:
-                # Historical day: Database-first approach (caching handled by Store)
-
-                # Check if any messages exist for this date
-                has_messages = await self._store.has_chat_messages_for_date(guild_id, for_date)
-                if not has_messages:
+                if not await self._store.has_chat_messages_for_date(guild_id, for_date):
                     span.set_attribute("has_messages", False)
-                    empty_dict: dict[int, str] = {}
-                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "outcome": outcome})
-                    return empty_dict
+                    self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "outcome": "success"})
+                    return {}
 
                 span.set_attribute("has_messages", True)
-
-                # Check database for existing summaries (Store handles caching)
                 db_summaries = await self._store.get_daily_summaries(guild_id, for_date)
                 if db_summaries:
                     span.set_attribute("cache_hit", True)
                     self._telemetry.metrics.daily_summary_jobs.add(
-                        1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": outcome}
+                        1, {"guild_id": str(guild_id), "cache_outcome": "hit", "outcome": "success"}
                     )
                     return db_summaries
 
-                span.set_attribute("cache_hit", False)
-                # Messages exist but no summaries = needs processing
-                try:
-                    batch_summaries = await self._create_daily_summaries(guild_id, for_date)
-                except BlockedException as blocked:
-                    outcome = "blocked"
-                    span.record_exception(blocked)
-                    span.set_attribute("blocked_reason", blocked.reason)
-                    logger.warning(
-                        "Daily summary blocked for guild %s on %s: %s",
-                        guild_id,
-                        for_date,
-                        blocked.reason,
-                    )
-                    batch_summaries = {}
+            span.set_attribute("cache_hit", False)
+            self._telemetry.metrics.daily_summary_jobs.add(
+                1, {"guild_id": str(guild_id), "cache_outcome": "miss", "outcome": "success"}
+            )
+            return await self._coalesce(
+                self._date_inflight, (guild_id, for_date), lambda: self._build_date_summary(guild_id, for_date)
+            )
 
-                self._telemetry.metrics.daily_summary_jobs.add(
-                    1,
-                    {
-                        "guild_id": str(guild_id),
-                        "cache_outcome": "miss",
-                        "outcome": outcome,
-                    },
-                )
+    async def _build_date_summary(self, guild_id: int, for_date: date) -> dict[int, str]:
+        """Generate a date's summaries and persist them. Current day → Redis (timestamped for
+        staleness); historical → DB. The target is decided at execution time so a build that
+        straddles midnight persists according to what the date has become."""
+        async with self._telemetry.async_create_span("build_date_summary") as span:
+            span.set_attribute("guild_id", guild_id)
+            span.set_attribute("for_date", str(for_date))
 
-                await self._store.save_daily_summaries(guild_id, for_date, batch_summaries)
-                return batch_summaries
-
-    def _trigger_async_rebuild(self, guild_id: int, for_date: date) -> None:
-        """Trigger fire-and-forget async rebuild of daily summary using Redis lock for deduplication."""
-        asyncio.create_task(self._async_rebuild_daily_summary(guild_id, for_date))
-
-    async def _async_rebuild_daily_summary(self, guild_id: int, for_date: date) -> None:
-        """Background task to rebuild daily summary asynchronously with Redis-based locking."""
-        acquired = await self._redis_cache.try_acquire_build_lock(guild_id, for_date)
-        if not acquired:
-            return
-
-        async with self._telemetry.async_create_span("async_rebuild_daily_summary") as span:
+            is_current_day = for_date == datetime.now(timezone.utc).date()
             try:
-                batch_summaries = await self._create_daily_summaries(guild_id, for_date)
-
-                await self._redis_cache.set_daily_summary(
-                    guild_id, for_date, batch_summaries, datetime.now(timezone.utc)
-                )
-
-                # Rebuild memories for affected users to warm context cache
-                if batch_summaries:
-                    await self.get_memories(guild_id, list(batch_summaries.keys()))
-
+                summaries = await self._create_daily_summaries(guild_id, for_date)
             except BlockedException as blocked:
                 span.record_exception(blocked)
                 span.set_attribute("blocked_reason", blocked.reason)
-                logger.warning("Async rebuild blocked for guild %s on %s: %s", guild_id, for_date, blocked.reason)
-            except Exception as e:
-                span.record_exception(e)
-                logger.error(f"Async rebuild failed for guild {guild_id} on {for_date}: {e}", exc_info=True)
-            finally:
-                await self._redis_cache.release_build_lock(guild_id, for_date)
+                logger.warning("Daily summary blocked for guild %s on %s: %s", guild_id, for_date, blocked.reason)
+                # Persist empty only for historical dates so a refused generation isn't retried
+                # forever; the current day is left uncached so the next read attempts a rebuild.
+                if not is_current_day:
+                    await self._store.save_daily_summaries(guild_id, for_date, {})
+                return {}
+
+            if is_current_day:
+                await self._redis_cache.set_daily_summary(guild_id, for_date, summaries, datetime.now(timezone.utc))
+            else:
+                await self._store.save_daily_summaries(guild_id, for_date, summaries)
+            return summaries
 
     async def _create_daily_summaries(self, guild_id: int, for_date: date) -> dict[int, str]:
         """Generate daily summaries for all active users in a single API call. Pure generation method - no caching."""
@@ -368,14 +342,7 @@ class MemoryManager:
             formatter = ConversationFormatter(self._user_resolver)
             formatted_messages = await formatter.format_to_xml(guild_id, conversation_messages)
 
-            # Fetch facts and extract aliases for identity resolution
-            user_facts = {}
-            for user_id in active_user_ids:
-                facts = await self._store.get_user_facts(guild_id, user_id)
-                if facts:
-                    user_facts[user_id] = facts
-
-            aliases_map = await self._extract_aliases(user_facts) if user_facts else {}
+            aliases_map = await self._extract_aliases_for(guild_id, active_user_ids)
 
             # Create user list with names and aliases for context
             user_list = []
@@ -384,14 +351,14 @@ class MemoryManager:
                 aliases = aliases_map.get(user_id, [])
                 also_known_as = f"<also_known_as>{', '.join(aliases)}</also_known_as>" if aliases else ""
                 user_list.append(
-                    f"<user><user_id>{user_id}</user_id><nickname>{user_name}</nickname>{also_known_as}</user>"
+                    f"<member><member_id>{user_id}</member_id><member_name>{user_name}</member_name>{also_known_as}</member>"
                 )
 
             structured_prompt = f"""{BATCH_SUMMARIZE_DAILY_PROMPT}
 
-<target_users>
+<target_members>
 {chr(10).join(user_list)}
-</target_users>
+</target_members>
 <messages>
 {formatted_messages}
 </messages>"""
@@ -418,7 +385,7 @@ class MemoryManager:
             summaries_concat = "".join(f"{date}:{summary}" for date, summary in sorted(daily_summaries.items()))
             summaries_hash = hashlib.md5(summaries_concat.encode()).hexdigest()
 
-            cached = await self._redis_cache.get_context(guild_id, user_id, facts_hash, summaries_hash)
+            cached = await self._redis_cache.get_memory(guild_id, user_id, facts_hash, summaries_hash)
             if cached is not None:
                 span.set_attribute("cache_hit", True)
                 self._telemetry.metrics.memory_merges.add(
@@ -460,7 +427,7 @@ class MemoryManager:
                 1, {"guild_id": str(guild_id), "cache_outcome": "miss", "outcome": "success"}
             )
 
-            await self._redis_cache.set_context(guild_id, user_id, facts_hash, summaries_hash, merged_context)
+            await self._redis_cache.set_memory(guild_id, user_id, facts_hash, summaries_hash, merged_context)
             return merged_context
 
     async def _extract_aliases(self, user_facts: dict[int, str]) -> dict[int, list[str]]:
@@ -505,6 +472,15 @@ class MemoryManager:
 
             return aliases_map
 
+    async def _extract_aliases_for(self, guild_id: int, user_ids: list[int] | set[int]) -> dict[int, list[str]]:
+        """Fetch each member's stored facts and extract their aliases for identity resolution."""
+        user_facts = {}
+        for user_id in user_ids:
+            facts = await self._store.get_user_facts(guild_id, user_id)
+            if facts:
+                user_facts[user_id] = facts
+        return await self._extract_aliases(user_facts) if user_facts else {}
+
     async def build_memory_prompt(self, guild_id: int, user_ids: set[int] | list[int]) -> str:
         """Build formatted memory blocks for LLM prompts with outer tags.
 
@@ -513,7 +489,7 @@ class MemoryManager:
             user_ids: Set or list of user IDs to fetch memories for
 
         Returns:
-            Complete XML memories block (<memories>...</memories>), or empty string if no memories
+            Complete XML members block (<members>...</members>), or empty string if no memories
         """
         if not user_ids:
             return ""
@@ -527,21 +503,26 @@ class MemoryManager:
             user_ids_list = list(user_ids)
             memories_dict = await self.get_memories(guild_id, user_ids_list)
 
-            memory_blocks = []
+            aliases_map = await self._extract_aliases_for(guild_id, user_ids_list)
+
+            member_blocks = []
             for user_id in user_ids_list:
                 memories = memories_dict.get(user_id)
                 if memories:
                     display_name = await self._user_resolver.get_display_name(guild_id, user_id)
-                    memory_block = f"""<memory>
-<nickname>{display_name}</nickname>
+                    aliases = aliases_map.get(user_id, [])
+                    also_known_as = f"\n<also_known_as>{', '.join(aliases)}</also_known_as>" if aliases else ""
+                    member_block = f"""<memory>
+<member_id>{user_id}</member_id>
+<member_name>{display_name}</member_name>{also_known_as}
 <facts>{memories}</facts>
 </memory>"""
-                    memory_blocks.append(memory_block)
+                    member_blocks.append(member_block)
 
-            if not memory_blocks:
+            if not member_blocks:
                 return ""
 
-            memories_xml = "\n".join(memory_blocks)
+            memories_xml = "\n".join(member_blocks)
             return f"<memories>\n{memories_xml}\n</memories>"
 
     async def ingest_message(self, guild_id: int, message: MessageNode) -> None:

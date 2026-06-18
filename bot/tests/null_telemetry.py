@@ -48,7 +48,7 @@ class NullTelemetry:
         )
 
     @asynccontextmanager
-    async def async_create_span(self, name, kind=None, attributes=None):
+    async def async_create_span(self, name, kind=None, attributes=None, require_parent=False):
         """No-op span for async code"""
         yield SimpleNamespace(
             set_attribute=lambda *args: None, set_status=lambda *args: None, record_exception=lambda *args: None

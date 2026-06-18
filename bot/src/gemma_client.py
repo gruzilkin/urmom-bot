@@ -10,7 +10,7 @@ import logging
 from typing import TypeVar
 
 from google import genai
-from google.genai.types import GenerateContentConfig, GenerateContentResponse
+from google.genai.types import GenerateContentConfig, GenerateContentResponse, HttpOptions
 from google.genai import types
 from ai_client import AIClient, BlockedException
 from open_telemetry import Telemetry
@@ -23,13 +23,20 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class GemmaClient(AIClient):
-    def __init__(self, api_key: str, model_name: str, telemetry: Telemetry, temperature: float = 0.1):
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str,
+        telemetry: Telemetry,
+        temperature: float = 0.1,
+        timeout_seconds: int = 60,
+    ):
         if not api_key:
             raise ValueError("Gemma API key not provided!")
         if not model_name:
             raise ValueError("Gemma model name not provided!")
 
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(api_key=api_key, http_options=HttpOptions(timeout=timeout_seconds * 1000))
         self.temperature = temperature
         self.model_name = model_name
         self.telemetry = telemetry

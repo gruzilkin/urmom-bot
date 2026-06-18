@@ -16,7 +16,6 @@ from attachment_processor import AttachmentProcessor
 from gemma_client import GemmaClient
 from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
-from ollama_client import OllamaClient
 
 load_dotenv()
 
@@ -58,30 +57,8 @@ class TestAttachmentProcessorIntegration(unittest.IsolatedAsyncioTestCase):
                 )
             )
 
-        ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        qwen_model = os.getenv("OLLAMA_QWEN_VL_MODEL", "qwen3-vl:235b-cloud")
-
-        if ollama_api_key:
-            qwen_client = OllamaClient(
-                api_key=ollama_api_key,
-                model_name=qwen_model,
-                telemetry=self.telemetry,
-                temperature=0.0,
-            )
-            self.profiles.append(
-                ProcessorProfile(
-                    name="ollama_qwen3_vl",
-                    processor=AttachmentProcessor(
-                        ai_client=qwen_client,
-                        telemetry=self.telemetry,
-                        redis_cache=NullRedisCache(),
-                        max_file_size_mb=20,
-                    ),
-                )
-            )
-
         if not self.profiles:
-            self.skipTest("No attachment processor profiles configured; ensure Gemma or Ollama credentials are set.")
+            self.skipTest("No attachment processor profiles configured; ensure Gemma credentials are set.")
 
     async def test_process_image_attachment_from_url(self):
         """Test processing a real image from a URL."""

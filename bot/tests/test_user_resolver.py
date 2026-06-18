@@ -64,22 +64,6 @@ class TestUserResolver(UserResolver):
         # Replace Discord mentions <@123456> with names
         return re.sub(r"<@(\d+)>", replace_mention, text)
 
-    async def resolve_user_id(self, guild_id: int, user_mention: str) -> int | None:
-        """Resolve physicist name or mention to user ID."""
-        # Handle Discord mentions
-        if user_mention.startswith("<@") and user_mention.endswith(">"):
-            try:
-                return int(user_mention[2:-1])
-            except ValueError:
-                return None
-
-        # Handle name lookup
-        for user_id, name in self._physicists.items():
-            if name.lower() == user_mention.lower():
-                return user_id
-
-        return None
-
     @property
     def physicist_ids(self) -> dict[str, int]:
         """Get mapping of physicist names to IDs for test convenience."""

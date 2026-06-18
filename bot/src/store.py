@@ -650,7 +650,7 @@ class Store:
         - due_before: only tasks whose next_run_at <= due_before (engine's tick query).
         - limit: cap result count.
         """
-        async with self._telemetry.async_create_span("list_scheduled_tasks") as span:
+        async with self._telemetry.async_create_span("list_scheduled_tasks", require_parent=True) as span:
             if guild_id is not None:
                 span.set_attribute("guild_id", guild_id)
             if channel_id is not None:

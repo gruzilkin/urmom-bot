@@ -3,19 +3,15 @@ from ai_client import AIClient
 from open_telemetry import Telemetry
 from schemas import FactParams, MemoryUpdate, MemoryForget
 from store import Store
-from user_resolver import UserResolver
 
 logger = logging.getLogger(__name__)
 
 
 class FactHandler:
-    def __init__(
-        self, ai_client: AIClient, store: Store, telemetry: Telemetry, user_resolver: UserResolver
-    ):
+    def __init__(self, ai_client: AIClient, store: Store, telemetry: Telemetry):
         self.ai_client = ai_client
         self.store = store
         self.telemetry = telemetry
-        self.user_resolver = user_resolver
 
     def get_route_description(self) -> str:
         return """
@@ -74,9 +70,12 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         
         operation: "remember" or "forget" based on an EXPLICIT and IMPERATIVE
         command.
-        user_mention: Extract user reference (Discord ID for
-        <@1333878858138652682> or nickname).
-        Never extract "BOT" as user_mention.
+        member_id: The numeric Discord ID of the member the fact is about.
+        If they are mentioned directly with a tag like <@1234567890>, use that id.
+        If they are referred to only by a name (e.g. "Boris"), find that member
+        in the <memories> block and use their member_id. If you cannot find the
+        member there, output null. Never output a name or a <@...> wrapper, and
+        never use the bot ("BOT").
         fact_content: The specific fact to remember or forget, converted to
         third-person perspective using appropriate pronouns. Extract from
         the user message or infer from the conversation history when
@@ -88,44 +87,17 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         
         Only extract from imperative sentences that command an action.
         
-        Examples:
-        - "Bot remember that gruzilkin is Sergey"
-          → operation: "remember", user_mention: "gruzilkin",
-          fact_content: "He is Sergey"
-        - "Bot, remember this about Florent: he likes pizza"
-          → operation: "remember", user_mention: "Florent",
-          fact_content: "he likes pizza"
-        - "Bot forget that <@1333878858138652682> likes pizza"
-          → operation: "forget", user_mention: "1333878858138652682",
-          fact_content: "they like pizza"
-        - "remember Florent works at Google"
-          → operation: "remember", user_mention: "Florent",
-          fact_content: "they work at Google"
-        - "Bot remember I live in Tokyo" (about speaker)
-          → operation: "remember",
-          user_mention: "[infer from context]",
-          fact_content: "they live in Tokyo"
-        - "БОТ запомни что gruzilkin так же известен как Медвед"
-          → operation: "remember", user_mention: "gruzilkin",
-          fact_content: "он также известен как Медвед"
-        - "запомни что <@123456> живёт в Москве"
-          → operation: "remember", user_mention: "123456",
-          fact_content: "они живут в Москве"
-        - "Bot oublie que Pierre aime le fromage"
-          → operation: "forget", user_mention: "Pierre",
-          fact_content: "il aime le fromage"
-        - "remember this about John" (where "this" refers to
-          something in conversation)
-          → Extract the fact from conversation context
+        Example:
+        - "Bot remember that <@1234567890> is from Moscow"
+          → operation: "remember", member_id: 1234567890,
+          fact_content: "They are from Moscow"
         
         For fact_content conversion to third-person perspective:
         - Use appropriate third person forms for the language when
           gender is unknown
         {context_section}"""
 
-    async def _remember_fact(
-        self, guild_id: int, user_id: int, fact_content: str, language_name: str
-    ) -> str:
+    async def _remember_fact(self, guild_id: int, user_id: int, fact_content: str, language_name: str) -> str:
         """Add or update a fact about a user.
 
         Fact content is already in third-person perspective from parameter extraction.
@@ -197,9 +169,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
             # Return the language-appropriate confirmation message from the schema
             return memory_response.confirmation_message
 
-    async def _forget_fact(
-        self, guild_id: int, user_id: int, fact_content: str, language_name: str
-    ) -> str:
+    async def _forget_fact(self, guild_id: int, user_id: int, fact_content: str, language_name: str) -> str:
         """Remove a specific fact about a user.
 
         Fact content is already in third-person perspective from parameter extraction.
@@ -284,7 +254,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         Handle a fact operation request using the provided parameters.
 
         Args:
-            params (FactParams): Parameters containing operation, user_mention, and fact_content
+            params (FactParams): Parameters containing operation, member_id, and fact_content
             guild_id (int): Discord guild ID for context
 
         Returns:
@@ -292,14 +262,9 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         """
         logger.info(f"Processing fact request with params: {params}")
 
-        # Resolve user mention to user ID
-        user_id = await self.user_resolver.resolve_user_id(guild_id, params.user_mention)
-        if user_id is None:
-            return (
-                f"I couldn't identify the user '{params.user_mention}'. "
-                "Please use a standard Discord mention, user ID, "
-                "or a recognizable nickname."
-            )
+        if params.member_id is None:
+            return "I couldn't identify the member. Please reference them with a Discord mention."
+        user_id = params.member_id
 
         if params.operation == "remember":
             return await self._remember_fact(guild_id, user_id, params.fact_content, params.language_name)

@@ -1,6 +1,5 @@
 import logging
-from typing import Callable
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 
 import nextcord
 
@@ -52,8 +51,7 @@ class GeneralQueryGenerator:
         - Commands to the bot: "спой осанну Медведу"
         - Questions with names: "для чего Алексею нужна голова?"
         - May contain AI backend specifications such as
-          "ask grok to...", "use claude to...",
-          "have gemini explain..."
+          "ask grok to...", "have gemini explain..."
         - Invalid: Simple reactions like "lol", "nice",
           "haha that's funny"
         """
@@ -82,17 +80,18 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         Extract parameters for a general AI query request.
         
         ai_backend selection:
-        * claude: General queries, coding, technical explanations,
-          detailed analysis, complex reasoning, fact-checking,
-          internet search
+        * codex: DEFAULT for general queries, coding, technical
+          explanations, detailed analysis, complex reasoning,
+          fact-checking, research, current events, internet search
+          (also select for "chatgpt"/"openai" requests)
         * gemini_flash: Creative writing, songs, poems,
           artistic content, extensive internet search
         * grok: Uncensored content, wild requests, crazy talk
-        * codex: Research topics, analysis, current events
-          (select for "chatgpt"/"openai" requests)
+        * deepseek: Do not select unless explicitly requested;
+          no internet access
         * gemma: Do not select unless explicitly requested
         * Handle explicit requests: "ask grok about...",
-          "use gemini flash for...", "ask claude to..."
+          "use gemini flash for...", "ask deepseek to..."
         
         temperature selection:
         * Use a low temperature (<= 0.3) for factual data,
@@ -193,12 +192,9 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
 
             conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation)
 
-            requesting_user_name = await self.user_resolver.get_display_name(guild_id, requesting_user_id)
-
             # Format the user message in the same XML structure as conversation_history
             user_message_xml = f"""<request>
-<author_id>{requesting_user_id}</author_id>
-<author>{requesting_user_name}</author>
+<member_id>{requesting_user_id}</member_id>
 <content>{params.cleaned_query}</content>
 </request>"""
 
@@ -211,7 +207,7 @@ and independent analysis to the discussion.
 Your Discord Bot Identity:
 - You are present in this conversation as "{bot_user.name}"
   (user ID {bot_user.id})
-- Messages in the conversation history from author_id
+- Messages in the conversation history from member_id
   {bot_user.id} are your own previous responses
 - Use this context to understand what you've already contributed
   to avoid repetition
@@ -224,7 +220,7 @@ Message Attribution - CRITICAL:
 - NEVER guess or assume who said something - ALWAYS trace
   statements back to <conversation_history> or <memories>
 - Each message has exactly ONE author. When quoting or
-  referencing what someone said, verify the author_id matches
+  referencing what someone said, verify the member_id matches
 - If you cannot find attribution for a statement in the
   conversation history or memories, do not claim anyone
   specific said it

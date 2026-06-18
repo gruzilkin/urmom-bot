@@ -407,8 +407,17 @@ class Telemetry:
             raise
 
     @asynccontextmanager
-    async def async_create_span(self, name, kind=SpanKind.INTERNAL, attributes=None):
-        """Create a span as an async context manager for async operations"""
+    async def async_create_span(self, name, kind=SpanKind.INTERNAL, attributes=None, require_parent=False):
+        """Create a span as an async context manager for async operations.
+
+        When require_parent is set, the span is only started if there is an active
+        trace; a parent-less call yields the current (non-recording) span instead of
+        forking a new root trace.
+        """
+        if require_parent and not trace.get_current_span().get_span_context().is_valid:
+            yield trace.get_current_span()
+            return
+
         span = self.tracer.start_span(name, kind=kind, attributes=attributes or {})
         try:
             with trace.use_span(span, end_on_exit=False):

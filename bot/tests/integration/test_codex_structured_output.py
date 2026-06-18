@@ -8,14 +8,34 @@ Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards
 import base64
 import unittest
 from codex_client import CodexClient
-from schemas import YesNo
+from schemas import GeneralParams, YesNo
 from null_telemetry import NullTelemetry
+
+_ALLOWED_BACKENDS = set(GeneralParams.model_json_schema()["properties"]["ai_backend"]["enum"])
+
+
+async def _assert_general_params_extracted(test: unittest.IsolatedAsyncioTestCase, client: CodexClient) -> None:
+    """Codex strict mode must accept a schema with optional/default fields and numeric
+    bounds — regression for the missing-`required` / unsupported-keyword 400."""
+    prompt = (
+        "Extract parameters for a general AI query. Choose an ai_backend, a temperature "
+        "between 0 and 1, and a cleaned_query with the 'BOT' mention removed."
+    )
+    message = "BOT explain how photosynthesis works"
+
+    result = await client.generate_content(message=message, prompt=prompt, response_schema=GeneralParams)
+
+    test.assertIsInstance(result, GeneralParams)
+    test.assertIn(result.ai_backend, _ALLOWED_BACKENDS)
+    test.assertGreaterEqual(result.temperature, 0.0)
+    test.assertLessEqual(result.temperature, 1.0)
+    test.assertTrue(result.cleaned_query.strip())
 
 
 class TestCodexStructuredOutput(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.client = CodexClient(telemetry=self.telemetry, model_name="gpt-5.4")
+        self.client = CodexClient(telemetry=self.telemetry, model_name="gpt-5.5")
 
     async def test_yes_no_structured_output_yes(self):
         message = "Is the sky blue?"
@@ -41,6 +61,9 @@ class TestCodexStructuredOutput(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsInstance(result, str)
         self.assertIn("blue", result.lower())
+
+    async def test_general_params_optional_fields(self):
+        await _assert_general_params_extracted(self, self.client)
 
 
 class TestCodexMiniStructuredOutput(unittest.IsolatedAsyncioTestCase):
@@ -87,6 +110,9 @@ class TestCodexMiniStructuredOutput(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsInstance(result, str)
         self.assertIn("red", result.lower())
+
+    async def test_general_params_optional_fields(self):
+        await _assert_general_params_extracted(self, self.client)
 
 
 if __name__ == "__main__":

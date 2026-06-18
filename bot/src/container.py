@@ -5,8 +5,8 @@ from general_query_generator import GeneralQueryGenerator
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
 from grok_client import GrokClient
-from claude_client import ClaudeClient
 from codex_client import CodexClient
+from deepseek_client import DeepSeekClient
 from country_resolver import CountryResolver
 from open_telemetry import Telemetry
 from ai_router import AiRouter
@@ -22,7 +22,6 @@ from conversation_formatter import ConversationFormatter
 from config import AppConfig
 from ai_client_wrappers import CompositeAIClient, RetryAIClient
 from ai_client import AIClient
-from ollama_client import OllamaClient
 from wisdom_generator import WisdomGenerator
 from devils_advocate_generator import DevilsAdvocateGenerator
 from cobalt_client import CobaltClient
@@ -87,12 +86,7 @@ class Container:
             temperature=self.config.gemini_temperature,
         )
 
-        self.gemma = GemmaClient(
-            api_key=self.config.gemma_api_key,
-            model_name=self.config.gemma_model,
-            telemetry=self.telemetry,
-            temperature=self.config.gemini_temperature,
-        )
+        self.gemma = self._build_gemma_client()
 
         self.grok = GrokClient(
             api_key=self.config.grok_api_key,
@@ -101,59 +95,57 @@ class Container:
             temperature=self.config.grok_temperature,
         )
 
-        self.claude = ClaudeClient(telemetry=self.telemetry, model_name="opus")
-        self.claude_haiku = ClaudeClient(telemetry=self.telemetry, model_name="haiku")
-
-        self.codex = CodexClient(telemetry=self.telemetry, model_name="gpt-5.4")
+        self.codex = CodexClient(telemetry=self.telemetry, model_name="gpt-5.5")
         self.codex_mini = CodexClient(telemetry=self.telemetry, model_name="gpt-5.4-mini")
 
-        self.ollama_kimi_long_timeout = OllamaClient(
-            api_key=self.config.ollama_api_key,
-            model_name=self.config.ollama_kimi_model,
+        self.deepseek = DeepSeekClient(
+            api_key=self.config.deepseek_api_key,
+            model_name=self.config.deepseek_model,
             telemetry=self.telemetry,
-            base_url=self.config.ollama_base_url,
-            temperature=self.config.ollama_temperature,
-            timeout=90.0,
+            base_url=self.config.deepseek_base_url,
+            temperature=self.config.deepseek_temperature,
         )
 
         # Apply retry policy for rate-limited services (Gemma/Grok only)
         self.retrying_gemma = RetryAIClient(self.gemma, telemetry=self.telemetry, max_time=60, jitter=True)
         self.retrying_grok = RetryAIClient(self.grok, telemetry=self.telemetry, max_tries=3)
 
-        self.shuffled_haiku_codex_mini = CompositeAIClient(
-            [self.claude_haiku, self.codex_mini],
-            telemetry=self.telemetry,
-            shuffle=True,
-        )
-
-        # gemma → [shuffled haiku, codex_mini] → retrying gemma → grok
         self.lightweight_fallback = CompositeAIClient(
-            [self.gemma, self.shuffled_haiku_codex_mini, self.retrying_gemma, self.retrying_grok],
+            [self.gemma, self.codex_mini, self.retrying_gemma, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
-        # Shuffled composite for jokes - gives both clients equal chance
+        # Fast chain for latency-critical per-message work (routing + language detection):
+        # deepseek leads (fast, cheap), escalating to codex_mini then grok. Gemma stays off this
+        # path - it's too slow/unreliable for realtime. The NOTSURE predicate drives the router's
+        # escalation and is inert for other schemas (no `route` attribute).
+        self.latency_critical = CompositeAIClient(
+            [self.deepseek, self.codex_mini, self.retrying_grok],
+            telemetry=self.telemetry,
+            is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
+        )
+
+        # Shuffled composite for jokes and wisdom - gives both clients equal chance
         self.shuffled_grok_gemini = CompositeAIClient(
             [self.retrying_grok, self.gemini_flash],
             telemetry=self.telemetry,
             shuffle=True,
         )
 
-        # Shuffled composite for wisdom - gives both clients equal chance
-        self.shuffled_grok_kimi = CompositeAIClient(
-            [self.retrying_grok, self.ollama_kimi_long_timeout],
-            telemetry=self.telemetry,
-            shuffle=True,
-        )
-
-        self.claude_codex_flash_fallback = CompositeAIClient(
-            [self.claude, self.codex, self.gemini_flash],
+        self.codex_mini_deepseek_flash_fallback = CompositeAIClient(
+            [self.codex_mini, self.deepseek, self.gemini_flash],
             telemetry=self.telemetry,
         )
 
-        # Composite for devil's advocate: claude → gemini → kimi_long → grok
-        self.claude_gemini_kimi_grok = CompositeAIClient(
-            [self.claude, self.gemini_flash, self.ollama_kimi_long_timeout, self.retrying_grok],
+        # Composite for the devil's advocate generator
+        self.codex_gemini_grok = CompositeAIClient(
+            [self.codex, self.gemini_flash, self.retrying_grok],
+            telemetry=self.telemetry,
+        )
+
+        # Capable chain for precision-sensitive structured output (e.g. schedule metadata)
+        self.codex_deepseek_gemini_grok = CompositeAIClient(
+            [self.codex, self.deepseek, self.gemini_flash, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
@@ -164,7 +156,7 @@ class Container:
 
         # Initialize language detector early since it's needed by multiple components
         self.language_detector = LanguageDetector(
-            ai_client=self.lightweight_fallback,
+            ai_client=self.latency_critical,
             telemetry=self.telemetry,
         )
 
@@ -191,20 +183,19 @@ class Container:
         )
 
         fact_handler_client = CompositeAIClient(
-            [self.claude, self.codex, self.retrying_gemma, self.retrying_grok],
+            [self.codex, self.retrying_gemma, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
         )
         self.fact_handler = FactHandler(
             ai_client=fact_handler_client,
             store=self.store,
             telemetry=self.telemetry,
-            user_resolver=self.user_resolver,
         )
 
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            summary_client=self.claude_codex_flash_fallback,
+            summary_client=self.codex_mini_deepseek_flash_fallback,
             alias_client=self.lightweight_fallback,
             merge_client=self.lightweight_fallback,
             user_resolver=self.user_resolver,
@@ -239,22 +230,15 @@ class Container:
         )
 
         self.schedule_handler = ScheduleHandler(
-            ai_client=self.lightweight_fallback,
+            ai_client=self.codex_deepseek_gemini_grok,
             store=self.store,
             telemetry=self.telemetry,
             schedule_engine=self.schedule_engine,
             conversation_formatter=self.conversation_formatter,
         )
 
-        # The router client will be a composite client that handles the NOTSURE fallback.
-        router_client = CompositeAIClient(
-            [self.gemma, self.shuffled_haiku_codex_mini, self.retrying_gemma, self.retrying_grok],
-            telemetry=self.telemetry,
-            is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
-        )
-
         self.ai_router = AiRouter(
-            router_client,
+            self.latency_critical,
             self.telemetry,
             self.language_detector,
             self.famous_person_generator,
@@ -262,6 +246,7 @@ class Container:
             self.fact_handler,
             self.conversation_formatter,
             self.schedule_handler,
+            self.memory_manager,
         )
 
         # Late-bound to break the engine → router → schedule_handler → engine cycle
@@ -270,7 +255,7 @@ class Container:
         self.country_resolver = CountryResolver(self.lightweight_fallback, self.telemetry)
 
         self.wisdom_generator = WisdomGenerator(
-            ai_client=self.shuffled_grok_kimi,
+            ai_client=self.shuffled_grok_gemini,
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
@@ -279,7 +264,7 @@ class Container:
         )
 
         self.devils_advocate_generator = DevilsAdvocateGenerator(
-            ai_client=self.claude_gemini_kimi_grok,
+            ai_client=self.codex_gemini_grok,
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
@@ -287,20 +272,45 @@ class Container:
             telemetry=self.telemetry,
         )
 
+    def _build_gemma_client(self) -> AIClient:
+        """Build the Gemma client, shuffling across two models when GEMMA_MODEL_2 is set.
+
+        The two Gemma models have independent rate-limit quotas, so a shuffled composite
+        doubles the effective free tier.
+        """
+        model_names = [self.config.gemma_model]
+        if self.config.gemma_model_2:
+            model_names.append(self.config.gemma_model_2)
+
+        clients = [
+            GemmaClient(
+                api_key=self.config.gemma_api_key,
+                model_name=model_name,
+                telemetry=self.telemetry,
+                temperature=self.config.gemini_temperature,
+                timeout_seconds=self.config.gemma_timeout_seconds,
+            )
+            for model_name in model_names
+        ]
+
+        if len(clients) == 1:
+            return clients[0]
+        return CompositeAIClient(clients, telemetry=self.telemetry, shuffle=True)
+
     def _build_general_ai_client(self, preferred_backend: str) -> AIClient:
         """Create a composite client matching the fallback rules for general queries."""
         client_map: dict[str, AIClient] = {
             "gemini_flash": self.gemini_flash,
-            "claude": self.claude,
             "grok": self.retrying_grok,
             "gemma": self.retrying_gemma,
             "codex": self.codex,
+            "deepseek": self.deepseek,
         }
 
         if preferred_backend not in client_map:
             raise ValueError(f"Unknown ai_backend: {preferred_backend}")
 
-        fallback_order = ["claude", "codex", "gemini_flash", "grok"]
+        fallback_order = ["codex", "deepseek", "gemini_flash", "grok"]
         ordered_labels = [preferred_backend] + [label for label in fallback_order if label != preferred_backend]
 
         chain = [client_map[label] for label in ordered_labels]

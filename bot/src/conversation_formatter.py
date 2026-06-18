@@ -26,15 +26,13 @@ class ConversationFormatter:
 
         message_blocks = []
         for msg in conversation:
-            author_name = await self._user_resolver.get_display_name(guild_id, msg.author_id)
             content_with_names = await self._user_resolver.replace_user_mentions_with_names(msg.content, guild_id)
 
             message_block = f"""<message>
 <id>{msg.message_id}</id>
 {f"<reply_to>{msg.reply_to_id}</reply_to>" if msg.reply_to_id else ""}
 <timestamp>{msg.timestamp}</timestamp>
-<author_id>{msg.author_id}</author_id>
-<author>{author_name}</author>
+<member_id>{msg.author_id}</member_id>
 <content>{content_with_names}</content>
 </message>"""
             message_blocks.append(message_block)

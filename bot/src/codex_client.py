@@ -21,11 +21,55 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
+# Validation/annotation keywords that OpenAI's strict structured-output mode rejects.
+# Pydantic emits these from Field constraints (e.g. ge/le -> minimum/maximum) and defaults.
+_STRICT_UNSUPPORTED_KEYWORDS = (
+    "default",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minLength",
+    "maxLength",
+    "pattern",
+    "format",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+)
+
+
+def _make_strict_schema(node: object) -> None:
+    """Recursively rewrite a Pydantic JSON schema in place to satisfy OpenAI strict mode.
+
+    Codex's ``--output-schema`` forwards the schema to the Responses API with
+    ``strict: true`` but, unlike the OpenAI SDK's Pydantic path, applies none of the
+    fixups strict mode demands. So at every object — including nested ``$defs`` and array
+    items — extra properties are forbidden and ``required`` must list every key in
+    ``properties`` (optional fields remain accepted because they are typed nullable), and
+    unsupported validation keywords are dropped.
+    """
+    if isinstance(node, dict):
+        for keyword in _STRICT_UNSUPPORTED_KEYWORDS:
+            node.pop(keyword, None)
+        if node.get("type") == "object" or "properties" in node:
+            node["additionalProperties"] = False
+            properties = node.get("properties")
+            if isinstance(properties, dict):
+                node["required"] = list(properties.keys())
+        for value in node.values():
+            _make_strict_schema(value)
+    elif isinstance(node, list):
+        for item in node:
+            _make_strict_schema(item)
+
+
 class CodexClient(AIClient):
     def __init__(
         self,
         telemetry: Telemetry,
-        model_name: str = "gpt-5.4",
+        model_name: str = "gpt-5.5",
         enable_web_search: bool = True,
     ):
         self.model_name = model_name
@@ -107,7 +151,7 @@ class CodexClient(AIClient):
             if response_schema:
                 schema_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
                 schema = response_schema.model_json_schema()
-                schema["additionalProperties"] = False
+                _make_strict_schema(schema)
                 json.dump(schema, schema_file)
                 schema_file.close()
                 codex_cmd.extend(["--output-schema", schema_file.name])
