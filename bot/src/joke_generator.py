@@ -70,7 +70,7 @@ class JokeGenerator:
         memories_block = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
 
         # Create the prompt using format string
-        russian_note = " In Russian, use the slang form 'твоя мамка'." if language == "ru" else ""
+        russian_note = " In Russian, use the slang form 'твоя мамка' in the correct case for the sentence (e.g. твою мамку, твоей мамке)." if language == "ru" else ""
         prompt = f"""You are a chatbot that generates jokes in response to messages.
 Read the message, conversation context, and any user memories,
 then pick whichever joke format below produces the funniest
