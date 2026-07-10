@@ -95,8 +95,16 @@ class Container:
             temperature=self.config.grok_temperature,
         )
 
-        self.codex = CodexClient(telemetry=self.telemetry, model_name="gpt-5.5")
-        self.codex_mini = CodexClient(telemetry=self.telemetry, model_name="gpt-5.4-mini")
+        self.codex = CodexClient(
+            telemetry=self.telemetry,
+            model_name="gpt-5.6-sol",
+            model_reasoning_effort="xhigh",
+        )
+        self.codex_mini = CodexClient(
+            telemetry=self.telemetry,
+            model_name="gpt-5.6-luna",
+            model_reasoning_effort="xhigh",
+        )
 
         self.deepseek = DeepSeekClient(
             api_key=self.config.deepseek_api_key,

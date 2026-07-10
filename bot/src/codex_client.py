@@ -69,10 +69,12 @@ class CodexClient(AIClient):
     def __init__(
         self,
         telemetry: Telemetry,
-        model_name: str = "gpt-5.5",
+        model_name: str = "gpt-5.6-sol",
+        model_reasoning_effort: str | None = None,
         enable_web_search: bool = True,
     ):
         self.model_name = model_name
+        self.model_reasoning_effort = model_reasoning_effort
         self.telemetry = telemetry
         self.service = "CODEX"
         self.enable_web_search = enable_web_search
@@ -135,6 +137,9 @@ class CodexClient(AIClient):
                 "-m",
                 self.model_name,
             ]
+
+            if self.model_reasoning_effort:
+                codex_cmd.extend(["-c", f'model_reasoning_effort="{self.model_reasoning_effort}"'])
 
             if self.enable_web_search or enable_grounding:
                 codex_cmd.extend(["-c", 'web_search="live"'])

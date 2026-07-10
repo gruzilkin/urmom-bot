@@ -35,7 +35,11 @@ async def _assert_general_params_extracted(test: unittest.IsolatedAsyncioTestCas
 class TestCodexStructuredOutput(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.client = CodexClient(telemetry=self.telemetry, model_name="gpt-5.5")
+        self.client = CodexClient(
+            telemetry=self.telemetry,
+            model_name="gpt-5.6-sol",
+            model_reasoning_effort="xhigh",
+        )
 
     async def test_yes_no_structured_output_yes(self):
         message = "Is the sky blue?"
@@ -69,7 +73,11 @@ class TestCodexStructuredOutput(unittest.IsolatedAsyncioTestCase):
 class TestCodexMiniStructuredOutput(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.telemetry = NullTelemetry()
-        self.client = CodexClient(telemetry=self.telemetry, model_name="gpt-5.4-mini")
+        self.client = CodexClient(
+            telemetry=self.telemetry,
+            model_name="gpt-5.6-luna",
+            model_reasoning_effort="xhigh",
+        )
 
     async def test_yes_no_structured_output_yes(self):
         message = "Is the sky blue?"
