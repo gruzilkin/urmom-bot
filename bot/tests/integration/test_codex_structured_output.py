@@ -38,7 +38,7 @@ class TestCodexStructuredOutput(unittest.IsolatedAsyncioTestCase):
         self.client = CodexClient(
             telemetry=self.telemetry,
             model_name="gpt-5.6-sol",
-            model_reasoning_effort="xhigh",
+            model_reasoning_effort="medium",
         )
 
     async def test_yes_no_structured_output_yes(self):

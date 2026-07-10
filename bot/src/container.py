@@ -98,7 +98,7 @@ class Container:
         self.codex = CodexClient(
             telemetry=self.telemetry,
             model_name="gpt-5.6-sol",
-            model_reasoning_effort="xhigh",
+            model_reasoning_effort="medium",
         )
         self.codex_mini = CodexClient(
             telemetry=self.telemetry,
