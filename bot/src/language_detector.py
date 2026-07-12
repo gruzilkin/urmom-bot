@@ -56,23 +56,20 @@ class LanguageDetector:
         """
         async with self.telemetry.async_create_span("detect_language_with_llm") as span:
             span.set_attribute("text", text)
-            prompt = f"""Analyze the text and determine its primary language. Return only the ISO 639-1 code.
+            prompt = """Detect the language the user is writing in. Return its lowercase
+ISO 639-1 code in the required schema.
 
-Text: "{text}"
+Focus on the words and grammar the user uses to ask the question, give the instruction,
+or make the statement. A message can contain names, foreign words, quotations, code,
+URLs, or text from another language. Ignore that included content when the surrounding
+message is written in a different language.
 
-IMPORTANT INSTRUCTIONS:
-1.  Determine language by the SENTENCE STRUCTURE (grammar, function words, word order),
-    not by embedded foreign words, proper nouns, or non-Latin terms.
-    A sentence written in one language may contain words or names
-    from another language or script — the surrounding grammar defines the language.
-2.  When the text contains a quote or reference in another language,
-    the OUTER sentence determines the language, not the quoted content.
-3.  If the sentence structure is in a Cyrillic-script language but ambiguous
-    between Cyrillic-based languages (e.g., Russian, Ukrainian, Bulgarian),
-    gravitate towards Russian ('ru').
-4.  If the text uses Latin letters and is ambiguous (e.g., "ok", "ciao"),
-    gravitate towards English ('en') or the most common language
-    (e.g., Italian 'it' for "ciao").
+If the message is only a word or short phrase, identify the language in which it is
+normally used. If there is still no clear answer, prefer Russian for Cyrillic text and
+English for Latin text.
+
+Detect only the language of the user's message. Do not answer the message, and do not
+choose a language merely because the message mentions or discusses it.
 """
 
             response = await self.ai_client.generate_content(
