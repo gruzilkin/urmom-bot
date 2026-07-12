@@ -182,7 +182,10 @@ class Telemetry:
                 5.0,  # Quick replies (1-5 seconds)
                 10.0,
                 15.0,
-                30.0,  # Medium responses (10-30 seconds)
+                20.0,
+                25.0,
+                30.0,
+                45.0,  # Medium responses (10-45 seconds)
                 60.0,
                 120.0,
                 180.0,

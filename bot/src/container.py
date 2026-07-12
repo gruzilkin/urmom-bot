@@ -100,10 +100,17 @@ class Container:
             model_name="gpt-5.6-sol",
             model_reasoning_effort="medium",
         )
-        self.codex_mini = CodexClient(
+        self.codex_light = CodexClient(
+            telemetry=self.telemetry,
+            model_name="gpt-5.6-luna",
+            model_reasoning_effort="medium",
+            enable_web_search=False,
+        )
+        self.codex_summary = CodexClient(
             telemetry=self.telemetry,
             model_name="gpt-5.6-luna",
             model_reasoning_effort="xhigh",
+            enable_web_search=False,
         )
 
         self.deepseek = DeepSeekClient(
@@ -119,16 +126,17 @@ class Container:
         self.retrying_grok = RetryAIClient(self.grok, telemetry=self.telemetry, max_tries=3)
 
         self.lightweight_fallback = CompositeAIClient(
-            [self.gemma, self.codex_mini, self.retrying_gemma, self.deepseek, self.retrying_grok],
+            [self.gemma, self.codex_light, self.retrying_gemma, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
         # Fast chain for latency-critical per-message work (routing + language detection):
-        # deepseek leads (fast, cheap), escalating to codex_mini then grok. Gemma stays off this
-        # path - it's too slow/unreliable for realtime. The NOTSURE predicate drives the router's
-        # escalation and is inert for other schemas (no `route` attribute).
+        # Luna-medium leads for reliable routing and language detection, then falls back to
+        # DeepSeek and Grok. Gemma stays off this path - it's too slow/unreliable for realtime.
+        # The NOTSURE predicate drives the router's escalation and is inert for other schemas
+        # (which have no `route` attribute).
         self.latency_critical = CompositeAIClient(
-            [self.deepseek, self.codex_mini, self.retrying_grok],
+            [self.codex_light, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
@@ -140,8 +148,8 @@ class Container:
             shuffle=True,
         )
 
-        self.codex_mini_deepseek_flash_fallback = CompositeAIClient(
-            [self.codex_mini, self.deepseek, self.gemini_flash],
+        self.codex_summary_deepseek_flash_fallback = CompositeAIClient(
+            [self.codex_summary, self.deepseek, self.gemini_flash],
             telemetry=self.telemetry,
         )
 
@@ -203,7 +211,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            summary_client=self.codex_mini_deepseek_flash_fallback,
+            summary_client=self.codex_summary_deepseek_flash_fallback,
             alias_client=self.lightweight_fallback,
             merge_client=self.lightweight_fallback,
             user_resolver=self.user_resolver,

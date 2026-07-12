@@ -79,6 +79,11 @@ class CodexClient(AIClient):
         self.service = "CODEX"
         self.enable_web_search = enable_web_search
 
+    def __repr__(self) -> str:
+        """Identify Codex clients by both model and configured reasoning effort."""
+        effort = self.model_reasoning_effort or "default"
+        return f"{type(self).__name__}({self.model_name}, reasoning_effort={effort})"
+
     def _get_image_extension(self, mime_type: str | None) -> str:
         """Get file extension from MIME type."""
         mime_to_ext = {
@@ -100,7 +105,11 @@ class CodexClient(AIClient):
         image_data: bytes | None = None,
         image_mime_type: str | None = None,
     ) -> str | T:
-        base_attrs = {"service": self.service, "model": self.model_name}
+        base_attrs = {
+            "service": self.service,
+            "model": self.model_name,
+            "reasoning_effort": self.model_reasoning_effort or "default",
+        }
 
         async with self.telemetry.async_create_span(
             "generate_content",
@@ -198,9 +207,7 @@ class CodexClient(AIClient):
                         return parsed_result
                     except (json.JSONDecodeError, ValueError) as e:
                         logger.error(f"Failed to parse structured response: {e}")
-                        self.telemetry.metrics.structured_output_failures.add(
-                            1, {"service": self.service, "model": self.model_name}
-                        )
+                        self.telemetry.metrics.structured_output_failures.add(1, base_attrs)
                         raise ValueError(
                             f"Failed to parse response with schema {response_schema.__name__}: {response_text}"
                         )
