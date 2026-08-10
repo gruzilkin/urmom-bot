@@ -13,12 +13,12 @@ A Discord bot that responds with "ur mom" jokes when messages are reacted to wit
 - **Video Auto-Embedding**: Extracts and embeds videos from X/Twitter, Instagram Reels, and Reddit posts, with ffmpeg compression for oversized videos
 - **Self-Cleaning**: Auto-archives jokes, removes them after a set time, or when downvoted by the community
 - **Multi-Language Support**: Works in any language (English, Russian, French, Japanese, etc.)
+- **Scheduled Tasks**: Create recurring or one-off AI tasks in plain language — daily reports, reminders, digests
 - **Multiple AI Providers**: Uses different AI models for different tasks with automatic fallback
   - Claude: Analytical tasks
   - Gemini Flash: General queries and information retrieval
   - Grok: Creative tasks
   - Gemma: Language detection and structured operations
-  - Ollama Cloud: Routing, summarization, and image analysis
 
 ## Adaptive Learning
 The bot features an adaptive learning system that improves its joke generation over time:
@@ -55,9 +55,6 @@ GEMMA_MODEL=gemma-3-27b-it                # Gemma model name
 GROK_API_KEY=your_grok_api_key            # Get from xAI platform
 GROK_MODEL=grok-3-mini                    # Grok model name
 
-# Ollama Cloud Configuration (Required)
-OLLAMA_API_KEY=your_ollama_api_key        # Get from Ollama Cloud
-
 # TinyURL Configuration (Optional - fallback for very large videos)
 TINYURL_API_TOKEN=your_tinyurl_api_token  # Get from TinyURL API Settings
 ```
@@ -66,7 +63,6 @@ TINYURL_API_TOKEN=your_tinyurl_api_token  # Get from TinyURL API Settings
 - Discord token: [Discord Developer Portal](https://discord.com/developers/applications)
 - Gemini API key: [Google AI Studio](https://aistudio.google.com)
 - Grok API key: [xAI Platform](https://console.x.ai/)
-- Ollama API key: [Ollama Cloud](https://ollama.com) - Sign up and create an API key
 - TinyURL API token: [TinyURL API Settings](https://tinyurl.com/app/settings/api)
 
 **Note**: All AI provider keys are required for full functionality.
@@ -104,6 +100,7 @@ The following commands are available:
 - `@urmom-bot deleteJokesAfterMinutes X` - 0 for disabled, otherwise bot will delete jokes after X minutes
 - `@urmom-bot deleteJokesWhenDownvoted X` - Delete jokes if downvotes - upvotes >= X, 0 to disable
 - `@urmom-bot enableCountryJokes true/false` - Enable/disable country-specific jokes
+- `@urmom-bot setDefaultTimezone Asia/Tokyo` - Set default IANA timezone for scheduled tasks
 
 ## Bot Behavior
 What can this bot do?
@@ -111,7 +108,15 @@ What can this bot do?
 ### General AI Assistant
 - **Answer any question**: `@urmom-bot explain quantum physics`
 - **Query memories**: `@urmom-bot what do you remember about John?`
-- **Choose AI backend**: `@urmom-bot ask grok about creative writing` or `@urmom-bot have claude explain this code`
+- **Choose AI backend**: `@urmom-bot ask grok about creative writing` or `@urmom-bot have codex explain this code`
+
+### Scheduled Tasks
+Ask the bot to run any prompt on a schedule, in plain language — recurring or one-off. The task fires in the channel where it was created:
+- `@urmom-bot set up a daily task to report on semiconductor stocks after NYSE close`
+- `@urmom-bot set up a daily task to read Trump's tweets — who is he threatening next?`
+- `@urmom-bot remind me tomorrow at 3pm to actually go outside`
+
+Manage existing tasks the same way: `what's scheduled here?`, `change task 5 to run at 8am`, `run task 5 now`, `delete task 5`. Scheduling is timezone-aware — say "9am Tokyo time" and it just works; if no timezone is mentioned, the guild's default applies (see `setDefaultTimezone`).
 
 ### Celebrity Impersonation
 - Respond as famous personalities with `@urmom-bot what would <famous person> say?`
