@@ -10,7 +10,7 @@ from deepseek_client import DeepSeekClient
 from country_resolver import CountryResolver
 from open_telemetry import Telemetry
 from ai_router import AiRouter
-from response_summarizer import ResponseSummarizer
+from response_summarizer import ResponseSummarizer, is_unusable_summary
 from attachment_processor import AttachmentProcessor
 from fact_handler import FactHandler
 from schedule_handler import ScheduleHandler
@@ -165,8 +165,16 @@ class Container:
             telemetry=self.telemetry,
         )
 
+        # Summarization chain: a summary that is still over the Discord limit is as
+        # useless as an API failure, so is_bad_response falls through to a smarter model.
+        self.summarizer_fallback = CompositeAIClient(
+            [self.gemma, self.codex_summary, self.codex, self.retrying_grok],
+            telemetry=self.telemetry,
+            is_bad_response=is_unusable_summary,
+        )
+
         self.response_summarizer = ResponseSummarizer(
-            self.lightweight_fallback,
+            self.summarizer_fallback,
             self.telemetry,
         )
 

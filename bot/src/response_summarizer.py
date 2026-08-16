@@ -13,6 +13,13 @@ from opentelemetry.trace import SpanKind
 
 logger = logging.getLogger(__name__)
 
+DISCORD_MESSAGE_LIMIT = 2000
+
+
+def is_unusable_summary(response: str) -> bool:
+    """Fallback predicate: a summary we can't post is equivalent to a client failure."""
+    return not response.strip() or len(response) > DISCORD_MESSAGE_LIMIT
+
 
 class ResponseSummarizer:
     """Handles summarization of long responses."""
@@ -29,7 +36,7 @@ class ResponseSummarizer:
         self.telemetry = telemetry
         self.summarization_temperature = 0.1
 
-    async def process_response(self, original_response: str, max_length: int = 2000) -> str:
+    async def process_response(self, original_response: str, max_length: int = DISCORD_MESSAGE_LIMIT) -> str:
         """
         Process a response, summarizing if too long, or truncating as fallback.
 
