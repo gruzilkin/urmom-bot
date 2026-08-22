@@ -5,7 +5,7 @@ from cobalt_client import CobaltClient, VideoResult
 from null_telemetry import NullTelemetry
 from tinyurl_client import TinyURLClient
 from video_compressor import CropBox, VideoCompressor
-from video_embedder import VideoEmbedder
+from video_embedder import MAX_FILE_SIZE_BYTES, VideoEmbedder
 
 
 class TestFindVideoUrls(unittest.TestCase):
@@ -65,7 +65,7 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
 
     @patch.object(VideoEmbedder, "_download_video")
     async def test_oversized_tunnel_video_compresses_successfully(self, mock_download: AsyncMock):
-        large_data = b"x" * (11 * 1024 * 1024)
+        large_data = b"x" * (MAX_FILE_SIZE_BYTES + 1)
         mock_download.return_value = large_data
 
         cobalt = Mock(spec=CobaltClient)
@@ -91,7 +91,7 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
 
     @patch.object(VideoEmbedder, "_download_video")
     async def test_oversized_redirect_falls_back_to_tinyurl(self, mock_download: AsyncMock):
-        large_data = b"x" * (11 * 1024 * 1024)
+        large_data = b"x" * (MAX_FILE_SIZE_BYTES + 1)
         mock_download.return_value = large_data
 
         cobalt = Mock(spec=CobaltClient)
@@ -116,7 +116,7 @@ class TestProcessUrl(unittest.IsolatedAsyncioTestCase):
 
     @patch.object(VideoEmbedder, "_download_video")
     async def test_compression_fails_tunnel_returns_none(self, mock_download: AsyncMock):
-        large_data = b"x" * (11 * 1024 * 1024)
+        large_data = b"x" * (MAX_FILE_SIZE_BYTES + 1)
         mock_download.return_value = large_data
 
         cobalt = Mock(spec=CobaltClient)

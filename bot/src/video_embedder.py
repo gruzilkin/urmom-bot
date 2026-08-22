@@ -27,8 +27,8 @@ URL_PATTERNS = [
     re.compile(r"https?://redd\.it/\w+"),
 ]
 
-# 10MB limit for Discord attachments (non-Nitro)
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+# 20MB limit for Discord attachments (non-Nitro)
+MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
 
 # Hard ceiling for downloads before attempting compression
 MAX_DOWNLOAD_SIZE_BYTES = 200 * 1024 * 1024
@@ -57,7 +57,8 @@ class VideoEmbedder:
     Service to extract and embed videos from social media links.
 
     Detects X/Twitter and Instagram links, extracts direct video URLs,
-    and either downloads the video (if < 8MB) or compresses it with ffmpeg.
+    and either downloads the video (if within Discord's attachment limit) or
+    compresses it with ffmpeg.
     """
 
     def __init__(
