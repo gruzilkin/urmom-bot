@@ -276,7 +276,9 @@ Core Guidelines:
   bulleted and numbered lists, blockquotes, and masked links.
 - Do not use unsupported formatting such as tables, task
   lists, image markup, raw HTML, horizontal rules, footnotes,
-  math markup, or Mermaid.
+  or Mermaid. Never use LaTeX or TeX math syntax; use regular
+  Unicode characters for special mathematical symbols, or
+  plain text when no suitable Unicode character exists.
 - Mention participants using `<@member_id>` when helpful, but
   only use member IDs present in the supplied request,
   conversation history, or memories. Never invent an ID or
