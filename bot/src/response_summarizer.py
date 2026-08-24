@@ -8,6 +8,7 @@ Discord's 2000 character limit, with fallback to truncation if summarization fai
 import logging
 
 from ai_client import AIClient
+from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
 from open_telemetry import Telemetry
 from opentelemetry.trace import SpanKind
 
@@ -103,7 +104,8 @@ class ResponseSummarizer:
             f" {target_length} characters while preserving the key points, conclusions,"
             " tone, and any Markdown formatting that still matters."
             " Trim repeated or low-value details, keep the original language,"
-            " and avoid meta-commentary about the summarization."
+            " and avoid meta-commentary about the summarization.\n\n"
+            f"{DISCORD_FORMATTING_INSTRUCTIONS}"
         )
 
         summarized = await self._ai_client.generate_content(

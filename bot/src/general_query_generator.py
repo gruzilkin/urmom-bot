@@ -11,6 +11,7 @@ from schemas import GeneralParams
 from response_summarizer import ResponseSummarizer
 from store import Store
 from ai_client import AIClient
+from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
 from user_resolver import UserResolver
 
 logger = logging.getLogger(__name__)
@@ -270,16 +271,7 @@ Core Guidelines:
   the opening clause, then add tightly edited support using
   Discord-supported Markdown structure to improve
   readability.
-- Discord formatting supported here: bold, italics, bold
-  italics, underline, strikethrough, spoilers, inline and
-  fenced code, headings (`#` through `###`), subtext,
-  bulleted and numbered lists, blockquotes, and masked links.
-- Do not use unsupported formatting such as tables, task
-  lists, image markup, raw HTML, horizontal rules, footnotes,
-  or Mermaid. Never use TeX or LaTeX typesetting markup for
-  any purpose, including mathematical, logical, or other
-  symbolic notation. Write such notation as plain Discord
-  text using regular Unicode symbols and ordinary punctuation.
+{DISCORD_FORMATTING_INSTRUCTIONS}
 - Mention participants using `<@member_id>` when helpful, but
   only use member IDs present in the supplied request,
   conversation history, or memories. Never invent an ID or

@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import AsyncMock, Mock
+from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
 from general_query_generator import GeneralQueryGenerator
 from schemas import GeneralParams
 from conversation_graph import ConversationMessage
@@ -98,6 +99,8 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "Quick answer!")
         self.mock_gemini_flash.generate_content.assert_called_once()
         self.mock_response_summarizer.process_response.assert_called_once()
+        prompt = self.mock_gemini_flash.generate_content.await_args.kwargs["prompt"]
+        self.assertIn(DISCORD_FORMATTING_INSTRUCTIONS, prompt)
 
     async def test_handle_request_with_grok(self):
         """Test handling request with grok backend"""

@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import AsyncMock, Mock
+from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
 from response_summarizer import DISCORD_MESSAGE_LIMIT, ResponseSummarizer, is_unusable_summary
 from null_telemetry import NullTelemetry
 
@@ -51,6 +52,8 @@ class TestResponseSummarizer(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, summarized_response)
         self.mock_ai_client.generate_content.assert_called_once()
+        prompt = self.mock_ai_client.generate_content.await_args.kwargs["prompt"]
+        self.assertIn(DISCORD_FORMATTING_INSTRUCTIONS, prompt)
 
     async def test_summarization_still_too_long_fallback(self):
         """Test fallback to truncation when summarization is still too long"""
