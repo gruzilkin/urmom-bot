@@ -168,7 +168,7 @@ class Container:
         # Summarization chain: a summary that is still over the Discord limit is as
         # useless as an API failure, so is_bad_response falls through to a smarter model.
         self.summarizer_fallback = CompositeAIClient(
-            [self.gemma, self.codex_summary, self.codex, self.retrying_grok],
+            [self.codex_summary, self.codex, self.gemma, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=is_unusable_summary,
         )
