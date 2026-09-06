@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 async def traced_reply(message: nextcord.Message, *args, **kwargs) -> nextcord.Message:
+    kwargs.setdefault("suppress_embeds", True)
     async with container.telemetry.async_create_span("reply"):
         return await message.reply(*args, **kwargs)
 
@@ -232,7 +233,7 @@ async def process_video_embeds(message: nextcord.Message) -> None:
                 await traced_reply(message, file=file, mention_author=False)
             elif embed.short_url:
                 # Send shortened URL for videos too large to compress
-                await traced_reply(message, embed.short_url, mention_author=False)
+                await traced_reply(message, embed.short_url, mention_author=False, suppress_embeds=False)
         except Exception as e:
             logger.error(f"Failed to send video embed: {e}", exc_info=True)
 
@@ -594,7 +595,7 @@ async def process_joke_request(payload: nextcord.RawReactionActionEvent, country
             archive_channel = await bot.fetch_channel(config.archive_channel_id)
             message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
             archive_response = f"**Original message**: {message_link}\n{joke}"
-            await archive_channel.send(archive_response)
+            await archive_channel.send(archive_response, suppress_embeds=True)
         except Exception as e:
             logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
 
@@ -631,7 +632,7 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
             archive_channel = await bot.fetch_channel(config.archive_channel_id)
             message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
             archive_response = f"**Original message**: {message_link}\n{wisdom}"
-            await archive_channel.send(archive_response)
+            await archive_channel.send(archive_response, suppress_embeds=True)
         except Exception as e:
             logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
 
@@ -664,7 +665,7 @@ async def process_devils_advocate_request(payload: nextcord.RawReactionActionEve
             archive_channel = await bot.fetch_channel(config.archive_channel_id)
             message_link = f"https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id}"
             archive_response = f"**Original message**: {message_link}\n{counter_argument}"
-            await archive_channel.send(archive_response)
+            await archive_channel.send(archive_response, suppress_embeds=True)
         except Exception as e:
             logger.error(f"Failed to send to archive channel: {e}", exc_info=True)
 

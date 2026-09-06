@@ -174,7 +174,7 @@ class ScheduleEngine:
                     logger.warning(f"Task {task.task_id}: generator returned None")
                     return
 
-                await channel.send(response)
+                await channel.send(response, suppress_embeds=True)
                 await self.store.mark_task_last_run(task.task_id, actual_run_at)
                 span.set_attribute("status", "success")
             except Exception as e:
