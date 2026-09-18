@@ -133,9 +133,6 @@ class CodexClient(AIClient):
 
             logger.info(f"Codex CLI input: {full_conversation}")
 
-            if temperature is not None:
-                logger.warning("Temperature control not supported by Codex CLI")
-
             codex_cmd = [
                 "codex",
                 "exec",
