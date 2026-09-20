@@ -7,7 +7,13 @@ from memory_manager import MemoryManager
 from conversation_graph import ConversationMessage
 from conversation_formatter import ConversationFormatter
 from open_telemetry import Telemetry
-from schemas import GeneralParams
+from research_handoff import (
+    HANDOFF_CONTEXT_INSTRUCTIONS,
+    HANDOFF_INSTRUCTIONS,
+    ProcessorResult,
+    ResearchHandoffService,
+)
+from schemas import GeneralParams, GeneralQueryResponse
 from response_summarizer import ResponseSummarizer
 from store import Store
 from ai_client import AIClient
@@ -27,6 +33,7 @@ class GeneralQueryGenerator:
         conversation_formatter: ConversationFormatter,
         memory_manager: MemoryManager,
         user_resolver: UserResolver,
+        handoff_service: ResearchHandoffService,
     ) -> None:
         self._client_selector = client_selector
         self.response_summarizer = response_summarizer
@@ -35,6 +42,7 @@ class GeneralQueryGenerator:
         self.conversation_formatter = conversation_formatter
         self.memory_manager = memory_manager
         self.user_resolver = user_resolver
+        self.handoff_service = handoff_service
 
     def get_route_description(self) -> str:
         return """
@@ -152,7 +160,7 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         bot_user: nextcord.User,
         requesting_user_id: int,
         extra_user_ids: set[int] | None = None,
-    ) -> str | None:
+    ) -> ProcessorResult | None:
         """
         Handle a general query request using the provided parameters.
 
@@ -173,8 +181,9 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
                 channels so the bot can reference recent guild activity.
 
         Returns:
-            str | None: The response string ready to be sent
-                by the caller, or None if no response should be sent
+            ProcessorResult | None: The Discord-ready reply text plus an
+                optional research handoff for the caller to persist against
+                the sent message, or None if no response should be sent
         """
         logger.info(f"Processing general request with params: {params}")
 
@@ -195,7 +204,8 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
             span.set_attribute("memory_user_count", len(user_ids))
             memories_block = await self.memory_manager.build_memory_prompt(guild_id, user_ids)
 
-            conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+            handoffs = await self.handoff_service.load_for_conversation(conversation, bot_user.id)
+            conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation, handoffs)
 
             # Format the user message in the same XML structure as conversation_history
             user_message_xml = f"""<request>
@@ -328,6 +338,8 @@ content in <embedding> tags:
   - User says "explain this code" with code image →
     analyze the code as if you can see it
 
+{HANDOFF_CONTEXT_INSTRUCTIONS}
+
 Information Boundaries:
 - Use your external knowledge freely to provide information,
   analysis, and insights on any topic
@@ -371,6 +383,8 @@ Memory Usage:
 - Be honest about the limitations of your memories - if you
   don't have information about someone or something,
   acknowledge it rather than guessing
+
+{HANDOFF_INSTRUCTIONS}
 </system_instructions>
 
 {memories_block}
@@ -386,16 +400,18 @@ Memory Usage:
                 prompt=prompt,
                 temperature=params.temperature,
                 enable_grounding=True,  # Enable grounding for general queries to get current information
+                response_schema=GeneralQueryResponse,
             )
 
             logger.info(f"Generated response: {response}")
 
-            # If AI client returns None, don't send a response
-            if response is None:
-                logger.warning("AI client returned None response, not replying")
+            # If AI client returns None or an empty reply, don't send a response
+            if response is None or not response.reply.strip():
+                logger.warning("AI client returned no reply, not responding")
                 return None
 
-            # Process response (summarize if too long, or truncate as fallback)
-            processed_response = await self.response_summarizer.process_response(response)
+            span.set_attribute("handoff_chars", len(response.handoff or ""))
 
-            return processed_response
+            processed_response = await self.response_summarizer.process_response(response.reply)
+
+            return ProcessorResult(text=processed_response, handoff=response.handoff)

@@ -78,6 +78,7 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 - **user_resolver.py**: Resolves user IDs to display names, handles mentions
 - **attachment_processor.py**: Processes images and attachments for AI analysis
 - **response_summarizer.py**: Condenses long AI responses to fit Discord limits
+- **research_handoff.py**: Message-attached research notes passed between bot responses via Redis
 
 ## Project Structure
 - Main code: `bot/src/`

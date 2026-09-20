@@ -153,11 +153,12 @@ async def on_message(message: nextcord.Message):
         elif route == "GENERAL":
             conversation_fetcher = create_conversation_fetcher(message)
 
-            response = await container.general_query_generator.handle_request(
+            result = await container.general_query_generator.handle_request(
                 params, conversation_fetcher, message.guild.id, bot.user, message.author.id
             )
-            if response is not None:
-                reply = await traced_reply(message, response)
+            if result is not None:
+                reply = await traced_reply(message, result.text)
+                await container.handoff_service.save(reply.id, result.handoff)
 
         elif route == "FACT" and params:
             response = await container.fact_handler.handle_request(params, message.guild.id)

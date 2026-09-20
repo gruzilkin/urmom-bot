@@ -278,3 +278,23 @@ class UserAliases(BaseModel):
     """Schema for extracting known names/aliases from factual memory."""
 
     aliases: list[str] = Field(description="Known real names, nicknames, or alternative names for the user")
+
+
+class GeneralQueryResponse(BaseModel):
+    """Structured output for general queries: the public Discord reply plus an optional research handoff."""
+
+    reply: str = Field(
+        description=(
+            "The Discord reply to send to the user. Follow the system instructions for style, language,"
+            " and formatting exactly; this is the only text the user sees."
+        )
+    )
+    handoff: str | None = Field(
+        default=None,
+        description=(
+            "Compact plain-text research handoff for a future assistant handling follow-up questions:"
+            " newly obtained findings with sources, evidence-based exclusions, uncertainties, and leads"
+            " not already in the reply or supplied context. Null when there is nothing useful to preserve,"
+            " which is the normal outcome for simple questions."
+        ),
+    )

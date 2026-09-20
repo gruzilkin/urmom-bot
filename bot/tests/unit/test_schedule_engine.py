@@ -8,6 +8,7 @@ from null_telemetry import NullTelemetry
 
 from ai_router import AiRouter
 from general_query_generator import GeneralQueryGenerator
+from research_handoff import ProcessorResult, ResearchHandoffService
 from schedule_engine import CATCHUP_STALENESS, ScheduleEngine
 from schemas import GeneralParams
 from store import ScheduledTask, Store
@@ -45,7 +46,10 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_active_user_ids = AsyncMock(return_value=[])
 
         self.mock_gqg = MagicMock(spec=GeneralQueryGenerator)
-        self.mock_gqg.handle_request = AsyncMock(return_value="response text")
+        self.mock_gqg.handle_request = AsyncMock(return_value=ProcessorResult(text="response text"))
+
+        self.mock_handoff_service = MagicMock(spec=ResearchHandoffService)
+        self.mock_handoff_service.save = AsyncMock()
 
         self.mock_router = MagicMock(spec=AiRouter)
         self.mock_router.extract_general_params = AsyncMock(
@@ -62,12 +66,13 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
             store=self.mock_store,
             telemetry=NullTelemetry(),
             general_query_generator=self.mock_gqg,
+            handoff_service=self.mock_handoff_service,
         )
         self.engine.ai_router = self.mock_router
 
         # Stub bot and channel fetcher
         self.mock_channel = MagicMock()
-        self.mock_channel.send = AsyncMock()
+        self.mock_channel.send = AsyncMock(return_value=SimpleNamespace(id=555))
         self.mock_bot = MagicMock()
         self.mock_bot.get_channel = MagicMock(return_value=self.mock_channel)
         self.mock_bot.user = SimpleNamespace(id=999, name="bot")
@@ -237,6 +242,19 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
 
         self.mock_bot.fetch_channel.assert_awaited_once_with(task.channel_id)
         self.mock_channel.send.assert_awaited_once_with("response text", suppress_embeds=True)
+
+    async def test_execute_saves_handoff_against_sent_message(self):
+        # The handoff must be associated with the message the engine actually sent,
+        # not with the task or any triggering message.
+        handoff = "Verified: X was introduced in version B (https://example.com/notes)."
+        self.mock_gqg.handle_request.return_value = ProcessorResult(text="response text", handoff=handoff)
+        task = _make_task()
+
+        await self.engine._execute(task, intended_run_at=task.next_run_at, scheduled=True)
+
+        self.mock_channel.send.assert_awaited_once_with("response text", suppress_embeds=True)
+        self.mock_handoff_service.save.assert_awaited_once_with(555, handoff)
+        self.mock_store.mark_task_last_run.assert_awaited_once()
 
     async def test_execute_passes_creator_user_id_to_generator(self):
         # The engine passes the task creator's user ID through to GeneralQueryGenerator,

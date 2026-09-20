@@ -188,6 +188,49 @@ class RedisCache:
                 span.record_exception(e)
                 logger.error(f"Redis set_aliases failed: {e}", exc_info=True)
 
+    # ── research handoffs ───────────────────────────────────────────
+
+    def _handoff_key(self, message_id: int) -> str:
+        return f"handoff:{message_id}"
+
+    async def get_handoffs(self, message_ids: list[int]) -> dict[int, str]:
+        """Fetch stored research handoffs for the given bot message IDs in one round-trip.
+
+        Returns a mapping of message_id -> handoff text for the IDs that had an entry.
+        Missing or expired entries are simply absent; any Redis failure yields an empty mapping.
+        """
+        async with self._telemetry.async_create_span("redis.get_handoffs") as span:
+            span.set_attribute("requested", len(message_ids))
+            if not message_ids:
+                span.set_attribute("hit", False)
+                return {}
+            keys = [self._handoff_key(message_id) for message_id in message_ids]
+            try:
+                raw_values = await self._redis.mget(keys)
+                found = {
+                    message_id: raw
+                    for message_id, raw in zip(message_ids, raw_values)
+                    if raw is not None and raw.strip()
+                }
+                span.set_attribute("hit", bool(found))
+                span.set_attribute("found", len(found))
+                return found
+            except Exception as e:
+                span.record_exception(e)
+                logger.error(f"Redis get_handoffs failed: {e}", exc_info=True)
+                return {}
+
+    async def set_handoff(self, message_id: int, handoff: str, ttl_seconds: int) -> None:
+        """Store research handoff text under a sent bot message ID with the given expiry."""
+        async with self._telemetry.async_create_span("redis.set_handoff") as span:
+            key = self._handoff_key(message_id)
+            span.set_attribute("key", key)
+            try:
+                await self._redis.set(key, handoff, ex=ttl_seconds)
+            except Exception as e:
+                span.record_exception(e)
+                logger.error(f"Redis set_handoff failed: {e}", exc_info=True)
+
     # ── lifecycle ───────────────────────────────────────────────────
 
     async def close(self) -> None:

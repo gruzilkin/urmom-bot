@@ -2,7 +2,13 @@ import unittest
 from unittest.mock import AsyncMock, Mock
 from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
 from general_query_generator import GeneralQueryGenerator
-from schemas import GeneralParams
+from research_handoff import (
+    HANDOFF_CONTEXT_INSTRUCTIONS,
+    HANDOFF_INSTRUCTIONS,
+    ProcessorResult,
+    ResearchHandoffService,
+)
+from schemas import GeneralParams, GeneralQueryResponse
 from conversation_graph import ConversationMessage
 from null_telemetry import NullTelemetry
 
@@ -55,6 +61,10 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
 
         self.telemetry = NullTelemetry()
 
+        # No stored handoffs by default
+        self.mock_handoff_service = Mock(spec=ResearchHandoffService)
+        self.mock_handoff_service.load_for_conversation = AsyncMock(return_value={})
+
         def selector(backend: str):
             try:
                 return self.client_map[backend]
@@ -69,11 +79,12 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             conversation_formatter=self.mock_conversation_formatter,
             memory_manager=self.mock_memory_manager,
             user_resolver=self.mock_user_resolver,
+            handoff_service=self.mock_handoff_service,
         )
 
     async def test_handle_request_with_gemini_flash(self):
         """Test handling request with gemini_flash backend"""
-        self.mock_gemini_flash.generate_content.return_value = "Quick answer!"
+        self.mock_gemini_flash.generate_content.return_value = GeneralQueryResponse(reply="Quick answer!")
 
         params = GeneralParams(ai_backend="gemini_flash", temperature=0.3, cleaned_query="Simple question?")
 
@@ -96,15 +107,20 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             requesting_user_id=self.requesting_user_id,
         )
 
-        self.assertEqual(result, "Quick answer!")
+        self.assertIsInstance(result, ProcessorResult)
+        self.assertEqual(result.text, "Quick answer!")
+        self.assertIsNone(result.handoff)
         self.mock_gemini_flash.generate_content.assert_called_once()
         self.mock_response_summarizer.process_response.assert_called_once()
-        prompt = self.mock_gemini_flash.generate_content.await_args.kwargs["prompt"]
-        self.assertIn(DISCORD_FORMATTING_INSTRUCTIONS, prompt)
+        call_kwargs = self.mock_gemini_flash.generate_content.await_args.kwargs
+        self.assertIn(DISCORD_FORMATTING_INSTRUCTIONS, call_kwargs["prompt"])
+        self.assertIn(HANDOFF_INSTRUCTIONS, call_kwargs["prompt"])
+        self.assertIn(HANDOFF_CONTEXT_INSTRUCTIONS, call_kwargs["prompt"])
+        self.assertIs(call_kwargs["response_schema"], GeneralQueryResponse)
 
     async def test_handle_request_with_grok(self):
         """Test handling request with grok backend"""
-        self.mock_grok.generate_content.return_value = "Creative response!"
+        self.mock_grok.generate_content.return_value = GeneralQueryResponse(reply="Creative response!")
 
         params = GeneralParams(ai_backend="grok", temperature=0.8, cleaned_query="Be creative!")
 
@@ -128,7 +144,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             requesting_user_id=self.requesting_user_id,
         )
 
-        self.assertEqual(result, "Creative response!")
+        self.assertEqual(result.text, "Creative response!")
         self.mock_grok.generate_content.assert_called_once()
         self.mock_response_summarizer.process_response.assert_called_once()
 
@@ -200,7 +216,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         # tasks (where the creator is rarely present in recent history) lose all
         # personalization.
         params = GeneralParams(ai_backend="gemini_flash", temperature=0.3, cleaned_query="hi")
-        self.mock_gemini_flash.generate_content.return_value = "Hello"
+        self.mock_gemini_flash.generate_content.return_value = GeneralQueryResponse(reply="Hello")
 
         async def mock_conversation_fetcher():
             return [
@@ -232,7 +248,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
                 )
             ]
 
-        self.mock_gemini_flash.generate_content.return_value = "Hi"
+        self.mock_gemini_flash.generate_content.return_value = GeneralQueryResponse(reply="Hi")
 
         await self.generator.handle_request(
             params,
@@ -243,6 +259,76 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         )
 
         self.mock_gemini_flash.generate_content.assert_called_once()
+
+    # ---- research handoff ----
+
+    async def _run(self, params: GeneralParams) -> ProcessorResult | None:
+        async def mock_conversation_fetcher():
+            return [
+                ConversationMessage(
+                    message_id=1, author_id=123, content="Question", timestamp="2024-01-01", mentioned_user_ids=[]
+                )
+            ]
+
+        return await self.generator.handle_request(
+            params,
+            mock_conversation_fetcher,
+            guild_id=12345,
+            bot_user=self.mock_bot_user,
+            requesting_user_id=self.requesting_user_id,
+        )
+
+    async def test_handoff_is_returned_alongside_reply(self):
+        handoff = (
+            "Verified: version B added it (release notes, https://example.com/notes)."
+            " Unverified: behavior on the mobile client."
+        )
+        self.mock_gemini_flash.generate_content.return_value = GeneralQueryResponse(
+            reply="Short answer", handoff=handoff
+        )
+        params = GeneralParams(ai_backend="gemini_flash", temperature=0.3, cleaned_query="Which version added it?")
+
+        result = await self._run(params)
+
+        self.assertEqual(result.text, "Short answer")
+        self.assertEqual(result.handoff, handoff)
+
+    async def test_summarization_affects_reply_only(self):
+        handoff = "Kept intact"
+        self.mock_gemini_flash.generate_content.return_value = GeneralQueryResponse(
+            reply="A very long reply", handoff=handoff
+        )
+        self.mock_response_summarizer.process_response = AsyncMock(return_value="Condensed reply")
+        params = GeneralParams(ai_backend="gemini_flash", temperature=0.3, cleaned_query="Explain")
+
+        result = await self._run(params)
+
+        self.mock_response_summarizer.process_response.assert_awaited_once_with("A very long reply")
+        self.assertEqual(result.text, "Condensed reply")
+        self.assertEqual(result.handoff, handoff)
+
+    async def test_stored_handoffs_are_embedded_in_conversation(self):
+        handoffs = {42: "Verified: version B added it (https://example.com/notes)."}
+        self.mock_handoff_service.load_for_conversation.return_value = handoffs
+        self.mock_gemini_flash.generate_content.return_value = GeneralQueryResponse(reply="Follow-up answer")
+        params = GeneralParams(ai_backend="gemini_flash", temperature=0.3, cleaned_query="And on mobile?")
+
+        await self._run(params)
+
+        passed_conversation, passed_bot_id = self.mock_handoff_service.load_for_conversation.await_args.args
+        self.assertEqual(passed_bot_id, self.mock_bot_user.id)
+        self.assertEqual(len(passed_conversation), 1)
+        # Handoffs travel into the conversation XML so each one sits inside its own message
+        self.mock_conversation_formatter.format_to_xml.assert_awaited_once_with(12345, passed_conversation, handoffs)
+
+    async def test_empty_reply_is_treated_as_no_response(self):
+        self.mock_gemini_flash.generate_content.return_value = GeneralQueryResponse(reply="   ")
+        params = GeneralParams(ai_backend="gemini_flash", temperature=0.3, cleaned_query="hi")
+
+        result = await self._run(params)
+
+        self.assertIsNone(result)
+        self.mock_response_summarizer.process_response.assert_not_called()
 
 
 if __name__ == "__main__":

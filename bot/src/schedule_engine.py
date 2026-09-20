@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from ai_router import AiRouter
 from conversation_graph import ConversationMessage
 from general_query_generator import GeneralQueryGenerator
+from research_handoff import ResearchHandoffService
 from open_telemetry import Telemetry
 from schemas import GeneralParams
 from store import ScheduledTask, Store
@@ -29,10 +30,12 @@ class ScheduleEngine:
         store: Store,
         telemetry: Telemetry,
         general_query_generator: GeneralQueryGenerator,
+        handoff_service: ResearchHandoffService,
     ) -> None:
         self.store = store
         self.telemetry = telemetry
         self.general_query_generator = general_query_generator
+        self.handoff_service = handoff_service
         # Set by the container after AiRouter construction; constructor injection
         # would be circular (engine → router → schedule_handler → engine).
         self.ai_router: AiRouter | None = None
@@ -160,7 +163,7 @@ class ScheduleEngine:
                 extra_user_ids = set(active_user_ids)
                 span.set_attribute("extra_user_count", len(extra_user_ids))
 
-                response = await self.general_query_generator.handle_request(
+                result = await self.general_query_generator.handle_request(
                     params,
                     fetch_conversation,
                     task.guild_id,
@@ -169,12 +172,13 @@ class ScheduleEngine:
                     extra_user_ids=extra_user_ids,
                 )
 
-                if response is None:
+                if result is None:
                     span.set_attribute("status", "no_response")
                     logger.warning(f"Task {task.task_id}: generator returned None")
                     return
 
-                await channel.send(response, suppress_embeds=True)
+                sent_message = await channel.send(result.text, suppress_embeds=True)
+                await self.handoff_service.save(sent_message.id, result.handoff)
                 await self.store.mark_task_last_run(task.task_id, actual_run_at)
                 span.set_attribute("status", "success")
             except Exception as e:

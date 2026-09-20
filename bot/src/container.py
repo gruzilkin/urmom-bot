@@ -28,6 +28,7 @@ from cobalt_client import CobaltClient
 from tinyurl_client import TinyURLClient
 from video_compressor import VideoCompressor
 from redis_cache import RedisCache
+from research_handoff import ResearchHandoffService
 from video_embedder import MAX_FILE_SIZE_BYTES, VideoEmbedder
 
 
@@ -237,6 +238,11 @@ class Container:
             sample_count=self.config.sample_jokes_count,
         )
 
+        self.handoff_service = ResearchHandoffService(
+            redis_cache=self.redis_cache,
+            telemetry=self.telemetry,
+        )
+
         self.general_query_generator = GeneralQueryGenerator(
             client_selector=self._build_general_ai_client,
             response_summarizer=self.response_summarizer,
@@ -245,12 +251,14 @@ class Container:
             conversation_formatter=self.conversation_formatter,
             memory_manager=self.memory_manager,
             user_resolver=self.user_resolver,
+            handoff_service=self.handoff_service,
         )
 
         self.schedule_engine = ScheduleEngine(
             store=self.store,
             telemetry=self.telemetry,
             general_query_generator=self.general_query_generator,
+            handoff_service=self.handoff_service,
         )
 
         self.schedule_handler = ScheduleHandler(
