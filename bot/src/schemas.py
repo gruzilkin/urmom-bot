@@ -292,9 +292,8 @@ class GeneralQueryResponse(BaseModel):
     handoff: str | None = Field(
         default=None,
         description=(
-            "Compact plain-text research handoff for a future assistant handling follow-up questions:"
-            " newly obtained findings with sources, evidence-based exclusions, uncertainties, and leads"
-            " not already in the reply or supplied context. Null when there is nothing useful to preserve,"
-            " which is the normal outcome for simple questions."
+            "Freeform notes for follow-ups: useful information left out of the reply or expensive to"
+            " reproduce, such as search findings and investigation results. Add only new information"
+            " from this request. Null if there is nothing useful to save."
         ),
     )
