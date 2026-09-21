@@ -336,6 +336,7 @@ class Container:
             "grok": self.retrying_grok,
             "gemma": self.retrying_gemma,
             "codex": self.codex,
+            "codex_light": self.codex_light,
             "deepseek": self.deepseek,
         }
 

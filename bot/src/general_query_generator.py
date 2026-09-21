@@ -93,6 +93,13 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
           explanations, detailed analysis, complex reasoning,
           fact-checking, research, current events, internet search
           (also select for "chatgpt"/"openai" requests)
+        * codex_light: Cheaper model for self-contained tasks
+          with a single direct answer and no analysis: simple
+          fact lookup, news check without interpretation, easy
+          linguistic questions (word meaning, translation, usage).
+          Do not select it when the message continues a substantive
+          thread, asks why, or asks for comparison, opinion,
+          or verification.
         * gemini_flash: Creative writing, songs, poems,
           artistic content, extensive internet search
         * grok: Uncensored content, wild requests, crazy talk
