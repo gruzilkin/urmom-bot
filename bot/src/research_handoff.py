@@ -33,16 +33,23 @@ class ProcessorResult:
 
 
 HANDOFF_INSTRUCTIONS = """Research Handoff:
-- Use `handoff` to leave useful information for the next assistant
-  handling a follow-up: details that did not make it into your reply,
-  or work that would be expensive to repeat, such as search findings
-  and investigation results. Include useful source links.
-- Use your judgment about what is worth carrying forward and how much
-  detail it needs. Freeform notes are fine. Leave it null if there is
-  nothing useful to save.
-- Add only new information from this request. Avoid repeating your
-  reply or copying information already supplied, including earlier
-  handoffs.
+- This is an ongoing conversation. Follow-up questions are common,
+  and the research behind this reply is otherwise lost. Use `handoff`
+  to save what you learned so the next assistant can answer follow-ups
+  without repeating the searches and reading.
+- Select by usefulness to a follow-up, not by relevance to the current
+  question. Research usually turns up far more than the reply uses,
+  and the material you set aside as off-topic is exactly what later
+  questions tend to ask about. Each source you read holds more than
+  the point you took from it; save the rest too.
+- Record concrete facts: figures, quotes with attribution, dates,
+  names, and a source link for each. Also note what you looked for and
+  could not find, so it is not retried.
+- Freeform notes are fine; use your judgment about depth. Leave it
+  null only when you did no research and learned nothing new, such as
+  casual conversation.
+- Add only new information from this request. Do not repeat the reply
+  or copy earlier handoffs.
 - Save findings and conclusions, not private internal reasoning.
   Make uncertainty clear where it matters."""
 
