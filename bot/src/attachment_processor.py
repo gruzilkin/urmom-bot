@@ -19,6 +19,8 @@ from redis_cache import RedisCache
 
 logger = logging.getLogger(__name__)
 
+DOWNLOAD_TIMEOUT_SECONDS = 10
+
 
 @dataclass
 class AttachmentData:
@@ -87,7 +89,8 @@ class AttachmentProcessor:
             span.set_attribute("url", url)
 
             try:
-                async with aiohttp.ClientSession() as session:
+                timeout = aiohttp.ClientTimeout(total=DOWNLOAD_TIMEOUT_SECONDS)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
                     headers = {
                         "User-Agent": (
                             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
