@@ -2,10 +2,13 @@ import os
 import unittest
 from dataclasses import dataclass
 
+from unittest.mock import AsyncMock
+
 from dotenv import load_dotenv
 
 from deepseek_client import DeepSeekClient
 from gemma_client import GemmaClient
+from jev_client import JevClient
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
 
@@ -18,6 +21,7 @@ class DetectorProfile:
 
     name: str
     client: object
+    jev_client: JevClient | None = None
 
 
 class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
@@ -54,12 +58,29 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
             )
             self.profiles.append(DetectorProfile(name="deepseek", client=deepseek_client))
 
+        # Jev profile: Jev answers first; OTHER falls back to the first LLM profile (or fails loudly
+        # when none is configured, so a wrong fallback can't masquerade as a Jev answer).
+        jev_api_key = os.getenv("JEV_API_KEY")
+        if jev_api_key:
+            if self.profiles:
+                fallback_llm = self.profiles[0].client
+            else:
+                fallback_llm = AsyncMock()
+                fallback_llm.generate_content.side_effect = AssertionError("No LLM fallback configured for OTHER")
+            jev_client = JevClient(api_key=jev_api_key, telemetry=self.telemetry, timeout_seconds=15.0)
+            self.profiles.append(DetectorProfile(name="jev", client=fallback_llm, jev_client=jev_client))
+
         if not self.profiles:
-            self.skipTest("No language detector AI clients configured; ensure Gemma credentials are set.")
+            self.skipTest("No language detector AI clients configured; set Gemma or Jev credentials.")
+
+    async def asyncTearDown(self) -> None:
+        for profile in self.profiles:
+            if profile.jev_client is not None:
+                await profile.jev_client.aclose()
 
     def _build_detector(self, profile: DetectorProfile) -> LanguageDetector:
-        """Return a fresh LanguageDetector per profile to avoid cache sharing."""
-        return LanguageDetector(ai_client=profile.client, telemetry=self.telemetry)
+        """Return a fresh LanguageDetector per profile."""
+        return LanguageDetector(ai_client=profile.client, telemetry=self.telemetry, jev_client=profile.jev_client)
 
     async def test_llm_fallback_for_short_ambiguous_text(self):
         test_cases = {
@@ -181,12 +202,10 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             detector = self._build_detector(profile)
             with self.subTest(profile=profile.name):
-                if language_code in detector._language_names:
-                    del detector._language_names[language_code]
+                detector._language_names.pop(language_code, None)
 
                 language_name = await detector.get_language_name(language_code)
                 self.assertEqual(language_name, expected_name)
-                self.assertIn(language_code, detector._language_names)
                 self.assertEqual(detector._language_names[language_code], expected_name)
 
     async def test_caching_behavior_with_real_ai(self):
@@ -203,7 +222,6 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertIn(language_code, detector._language_names)
 
                 result2 = await detector.get_language_name(language_code)
-                self.assertEqual(result2, expected_name)
                 self.assertEqual(result1, result2)
 
 

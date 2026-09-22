@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock
-from language_detector import LanguageDetector
+
+from language_detector import LanguageCode, LanguageDecision, LanguageDetector
 from null_telemetry import NullTelemetry
 
 
@@ -80,6 +81,44 @@ class TestLanguageDetector(unittest.IsolatedAsyncioTestCase):
         result = await self.detector.get_language_name("xyz")
 
         self.assertEqual(result, "Language-xyz")
+
+    # Jev Tests
+
+    async def test_jev_answer_is_used_without_llm(self):
+        jev_client = AsyncMock()
+        jev_client.ask.return_value = LanguageDecision(
+            language={"choice": "de", "probabilities": {"de": 0.97, "en": 0.03}, "confidence": 0.96}
+        )
+        detector = LanguageDetector(ai_client=self.mock_ai_client, telemetry=self.telemetry, jev_client=jev_client)
+
+        result = await detector.detect_language("Guten Tag")
+
+        self.assertEqual(result, "de")
+        self.mock_ai_client.generate_content.assert_not_called()
+
+    async def test_jev_other_falls_back_to_llm(self):
+        jev_client = AsyncMock()
+        jev_client.ask.return_value = LanguageDecision(
+            language={"choice": "OTHER", "probabilities": {"OTHER": 0.8, "en": 0.2}, "confidence": 0.7}
+        )
+        self.mock_ai_client.generate_content.return_value = LanguageCode(language_code="uk")
+        detector = LanguageDetector(ai_client=self.mock_ai_client, telemetry=self.telemetry, jev_client=jev_client)
+
+        result = await detector.detect_language("Привіт, як справи?")
+
+        self.assertEqual(result, "uk")
+        self.mock_ai_client.generate_content.assert_called_once()
+
+    async def test_jev_failure_falls_back_to_llm(self):
+        jev_client = AsyncMock()
+        jev_client.ask.side_effect = RuntimeError("jev down")
+        self.mock_ai_client.generate_content.return_value = LanguageCode(language_code="fr")
+        detector = LanguageDetector(ai_client=self.mock_ai_client, telemetry=self.telemetry, jev_client=jev_client)
+
+        result = await detector.detect_language("Bonjour")
+
+        self.assertEqual(result, "fr")
+        self.mock_ai_client.generate_content.assert_called_once()
 
 
 if __name__ == "__main__":

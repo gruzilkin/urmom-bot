@@ -10,6 +10,13 @@ from deepseek_client import DeepSeekClient
 from country_resolver import CountryResolver
 from open_telemetry import Telemetry
 from ai_router import AiRouter
+from jev_client import JevClient
+from route_selector import (
+    CompositeRouteSelector,
+    JevRouteSelector,
+    LlmRouteSelector,
+    build_route_descriptions,
+)
 from response_summarizer import ResponseSummarizer, is_unusable_summary
 from attachment_processor import AttachmentProcessor
 from fact_handler import FactHandler
@@ -180,9 +187,19 @@ class Container:
         )
 
         # Initialize language detector early since it's needed by multiple components
+        self.jev_client: JevClient | None = None
+        if self.config.jev_api_key:
+            self.jev_client = JevClient(
+                api_key=self.config.jev_api_key,
+                telemetry=self.telemetry,
+                model=self.config.jev_model,
+                timeout_seconds=self.config.jev_timeout_seconds,
+            )
+
         self.language_detector = LanguageDetector(
             ai_client=self.latency_critical,
             telemetry=self.telemetry,
+            jev_client=self.jev_client,
         )
 
         self.attachment_processor = AttachmentProcessor(
@@ -236,6 +253,7 @@ class Container:
             conversation_formatter=self.conversation_formatter,
             memory_manager=self.memory_manager,
             sample_count=self.config.sample_jokes_count,
+            jev_client=self.jev_client,
         )
 
         self.handoff_service = ResearchHandoffService(
@@ -269,6 +287,19 @@ class Container:
             conversation_formatter=self.conversation_formatter,
         )
 
+        route_descriptions = build_route_descriptions(
+            self.famous_person_generator,
+            self.general_query_generator,
+            self.fact_handler,
+            self.schedule_handler,
+        )
+        llm_route_selector = LlmRouteSelector(self.latency_critical, route_descriptions, self.telemetry)
+        if self.jev_client is not None:
+            jev_route_selector = JevRouteSelector(self.jev_client, route_descriptions, self.telemetry)
+            self.route_selector = CompositeRouteSelector([jev_route_selector, llm_route_selector], self.telemetry)
+        else:
+            self.route_selector = llm_route_selector
+
         self.ai_router = AiRouter(
             self.latency_critical,
             self.telemetry,
@@ -279,6 +310,7 @@ class Container:
             self.conversation_formatter,
             self.schedule_handler,
             self.memory_manager,
+            route_selector=self.route_selector,
         )
 
         # Late-bound to break the engine → router → schedule_handler → engine cycle

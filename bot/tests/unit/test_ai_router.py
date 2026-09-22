@@ -11,6 +11,7 @@ from ai_router import AiRouter
 from ai_client_wrappers import CompositeAIClient
 from conversation_formatter import ConversationFormatter
 from conversation_graph import ConversationMessage
+from route_selector import LlmRouteSelector, build_route_descriptions
 from schemas import RouteSelection, GeneralParams
 from null_telemetry import NullTelemetry
 
@@ -62,9 +63,15 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         self.memory_manager = Mock()
         self.memory_manager.build_memory_prompt = AsyncMock(return_value="")
 
+        route_descriptions = build_route_descriptions(
+            self.famous_generator, self.general_generator, self.fact_handler, self.schedule_handler
+        )
+        route_selector = LlmRouteSelector(router_client, route_descriptions, self.telemetry)
+
         # Create router with mocked dependencies
         self.router = AiRouter(
             ai_client=router_client,
+            route_selector=route_selector,
             telemetry=self.telemetry,
             language_detector=self.language_detector,
             famous_generator=self.famous_generator,

@@ -57,6 +57,11 @@ class AppConfig(BaseSettings):
     # TinyURL configuration
     tinyurl_api_token: str = Field(env="TINYURL_API_TOKEN")
 
+    # Jev (TypeSafe AI System One) configuration; routing falls back to LLMs when the key is absent
+    jev_api_key: str | None = Field(default=None, env="JEV_API_KEY")
+    jev_model: str = Field(default="jev-latest", env="JEV_MODEL")
+    jev_timeout_seconds: float = Field(default=5.0, env="JEV_TIMEOUT_SECONDS")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
