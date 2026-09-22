@@ -204,7 +204,7 @@ class Container:
 
         self.attachment_processor = AttachmentProcessor(
             ai_client=CompositeAIClient(
-                [self.codex, self.retrying_gemma],
+                [self.codex_light, self.retrying_gemma],
                 telemetry=self.telemetry,
             ),
             telemetry=self.telemetry,
