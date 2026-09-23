@@ -16,7 +16,6 @@ class TestAppConfig(unittest.TestCase):
             postgres_password="test",
             postgres_db="test",
             gemini_api_key="test-key",
-            gemini_flash_model="gemini-1.5-flash",
             gemma_api_key="test-gemma-key",
             gemma_model="gemma-3-27b-it",
             grok_api_key="test-grok-key",
@@ -30,7 +29,8 @@ class TestAppConfig(unittest.TestCase):
 
         self.assertEqual(config.postgres_host, "localhost")
         self.assertEqual(config.postgres_port, 5432)
-        self.assertEqual(config.deepseek_model, "deepseek-v4-flash")
+        self.assertEqual(config.gemini_flash_model, "gemini-flash-latest")
+        self.assertEqual(config.deepseek_model, "deepseek-flash")
         self.assertEqual(config.deepseek_base_url, "https://api.deepseek.com")
 
     def test_port_validation(self):

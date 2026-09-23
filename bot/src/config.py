@@ -14,7 +14,7 @@ class AppConfig(BaseSettings):
 
     # Gemini configuration
     gemini_api_key: str = Field(env="GEMINI_API_KEY")
-    gemini_flash_model: str = Field(env="GEMINI_FLASH_MODEL")
+    gemini_flash_model: str = Field(default="gemini-flash-latest", env="GEMINI_FLASH_MODEL")
     gemini_temperature: float = Field(default=0.7, env="GEMINI_TEMPERATURE")
 
     # Gemma configuration (separate API key for free-tier access)
@@ -32,7 +32,7 @@ class AppConfig(BaseSettings):
 
     # DeepSeek configuration (OpenAI-compatible API)
     deepseek_api_key: str = Field(env="DEEPSEEK_API_KEY")
-    deepseek_model: str = Field(default="deepseek-v4-flash", env="DEEPSEEK_MODEL")
+    deepseek_model: str = Field(default="deepseek-flash", env="DEEPSEEK_MODEL")
     deepseek_base_url: str = Field(default="https://api.deepseek.com", env="DEEPSEEK_BASE_URL")
     deepseek_temperature: float = Field(default=0.7, env="DEEPSEEK_TEMPERATURE")
 

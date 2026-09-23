@@ -39,6 +39,7 @@ class TestGrokStructuredOutput(unittest.IsolatedAsyncioTestCase):
             api_key=self.api_key,
             model_name=self.model_name,
             temperature=0.1,  # Fixed temperature for test stability
+            reasoning_effort="low",
             telemetry=self.telemetry,
         )
 

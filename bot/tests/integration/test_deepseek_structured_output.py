@@ -28,7 +28,7 @@ class TestDeepSeekStructuredOutput(unittest.IsolatedAsyncioTestCase):
             self.skipTest("Paid tests disabled (set ENABLE_PAID_TESTS=true to enable)")
 
         self.api_key = os.getenv("DEEPSEEK_API_KEY")
-        self.model_name = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+        self.model_name = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
 
         if not self.api_key:
             self.skipTest("DEEPSEEK_API_KEY environment variable not set")
@@ -37,6 +37,7 @@ class TestDeepSeekStructuredOutput(unittest.IsolatedAsyncioTestCase):
             api_key=self.api_key,
             model_name=self.model_name,
             temperature=0.1,  # Fixed temperature for test stability
+            reasoning_effort="low",
             telemetry=self.telemetry,
         )
 

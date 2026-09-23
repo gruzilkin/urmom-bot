@@ -35,6 +35,7 @@ class OpenAIClient(AIClient):
         base_url: str,
         service: str,
         temperature: float = 0.1,
+        reasoning_effort: str | None = None,
     ):
         if not api_key:
             raise ValueError(f"{service} API key not provided!")
@@ -44,8 +45,12 @@ class OpenAIClient(AIClient):
         self.model = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
         self.telemetry = telemetry
         self.service = service
+
+    def _request_options(self) -> dict:
+        return {"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}
 
     def _track_completion_metrics(self, completion: ChatCompletion, method_name: str, **additional_attributes):
         """Track metrics from completion response with detailed attributes"""
@@ -126,7 +131,7 @@ class OpenAIClient(AIClient):
         timer = self.telemetry.metrics.timer()
         try:
             completion = await self.model.chat.completions.create(
-                model=self.model_name, messages=messages, temperature=temperature
+                model=self.model_name, messages=messages, temperature=temperature, **self._request_options()
             )
             attrs = {**base_attrs, "outcome": "success"}
             self.telemetry.metrics.llm_latency.record(timer(), attrs)
@@ -154,6 +159,7 @@ class OpenAIClient(AIClient):
                 messages=messages,
                 temperature=temperature,
                 response_format=response_schema,
+                **self._request_options(),
             )
             attrs = {**base_attrs, "outcome": "success"}
             self.telemetry.metrics.llm_latency.record(timer(), attrs)

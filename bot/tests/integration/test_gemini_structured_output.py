@@ -34,6 +34,7 @@ class TestGeminiStructuredOutput(unittest.IsolatedAsyncioTestCase):
         self.client = GeminiClient(
             api_key=self.api_key,
             model_name=self.model_name,
+            thinking_level="low",
             telemetry=self.telemetry,
             temperature=0.1,  # Fixed temperature for test stability
         )

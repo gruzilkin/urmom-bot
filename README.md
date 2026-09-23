@@ -45,15 +45,15 @@ DISCORD_TOKEN=your_discord_bot_token      # Get from Discord Developer Portal
 
 # Gemini Configuration (Required)
 GEMINI_API_KEY=your_gemini_api_key        # Get from Google AI Studio
-GEMINI_FLASH_MODEL=gemini-2.5-flash      # Flash model name
+GEMINI_FLASH_MODEL=gemini-3.8-flash       # Flash model name
 
 # Gemma Configuration (Required)
 GEMMA_API_KEY=your_gemma_api_key          # Get from Google AI Studio (separate key)
-GEMMA_MODEL=gemma-3-27b-it                # Gemma model name
+GEMMA_MODEL=gemma-4-26b-a4b-it            # Gemma model name
 
 # Grok Configuration (Required)
 GROK_API_KEY=your_grok_api_key            # Get from xAI platform
-GROK_MODEL=grok-3-mini                    # Grok model name
+GROK_MODEL=grok-4.7                       # Grok model name
 
 # TinyURL Configuration (Optional - fallback for very large videos)
 TINYURL_API_TOKEN=your_tinyurl_api_token  # Get from TinyURL API Settings

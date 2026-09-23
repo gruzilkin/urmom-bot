@@ -91,6 +91,7 @@ class Container:
             model_name=self.config.gemini_flash_model,
             telemetry=self.telemetry,
             temperature=self.config.gemini_temperature,
+            thinking_level="low",
         )
 
         self.gemma = self._build_gemma_client()
@@ -100,6 +101,7 @@ class Container:
             model_name=self.config.grok_model,
             telemetry=self.telemetry,
             temperature=self.config.grok_temperature,
+            reasoning_effort="low",
         )
 
         self.codex = CodexClient(
@@ -125,6 +127,7 @@ class Container:
             telemetry=self.telemetry,
             base_url=self.config.deepseek_base_url,
             temperature=self.config.deepseek_temperature,
+            reasoning_effort="low",
         )
 
         self.retrying_gemma = RetryAIClient(self.gemma, telemetry=self.telemetry, max_time=60, jitter=True)
