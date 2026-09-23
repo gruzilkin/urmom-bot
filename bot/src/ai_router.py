@@ -124,7 +124,7 @@ class AiRouter:
 
             logger.info(f"Final route selection: {route_selection.route}, Reason: {route_selection.reason}")
             span.set_attribute("route", route_selection.route)
-            span.set_attribute("reason", route_selection.reason)
+            span.set_attribute("route_reason", route_selection.reason)
 
             # Tier 2: Parameter extraction (starts immediately, doesn't wait for language detection)
             try:
@@ -160,6 +160,7 @@ class AiRouter:
                     span.set_attribute("famous_person", params.famous_person)
                 elif route_selection.route == "GENERAL":
                     span.set_attribute("ai_backend", params.ai_backend)
+                    span.set_attribute("ai_backend_reason", params.reason)
                     span.set_attribute("temperature", params.temperature)
                 elif route_selection.route == "FACT":
                     span.set_attribute("fact_operation", params.operation)

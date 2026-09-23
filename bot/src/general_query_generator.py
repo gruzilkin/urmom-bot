@@ -197,7 +197,6 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
 
         async with self.telemetry.async_create_span("generate_general_response") as span:
             span.set_attribute("ai_backend", params.ai_backend)
-            span.set_attribute("reason", params.reason)
             span.set_attribute("temperature", params.temperature)
             span.set_attribute("cleaned_query", params.cleaned_query)
 
