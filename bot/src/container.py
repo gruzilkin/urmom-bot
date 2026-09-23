@@ -86,7 +86,6 @@ class Container:
             weight_coef=self.config.sample_jokes_coef,
         )
 
-        # Gemini Flash client for general queries and daily summaries
         self.gemini_flash = GeminiClient(
             api_key=self.config.gemini_api_key,
             model_name=self.config.gemini_flash_model,
@@ -108,16 +107,15 @@ class Container:
             model_name="gpt-6-astra",
             model_reasoning_effort="low",
         )
-        self.codex_light = CodexClient(
+        self.codex_luna = CodexClient(
             telemetry=self.telemetry,
             model_name="gpt-5.6-luna",
-            model_reasoning_effort="medium",
-            enable_web_search=False,
+            model_reasoning_effort="high",
         )
-        self.codex_summary = CodexClient(
+        self.codex_luna_offline = CodexClient(
             telemetry=self.telemetry,
             model_name="gpt-5.6-luna",
-            model_reasoning_effort="xhigh",
+            model_reasoning_effort="high",
             enable_web_search=False,
         )
 
@@ -129,54 +127,45 @@ class Container:
             temperature=self.config.deepseek_temperature,
         )
 
-        # Apply retry policy for rate-limited services (Gemma/Grok only)
         self.retrying_gemma = RetryAIClient(self.gemma, telemetry=self.telemetry, max_time=60, jitter=True)
         self.retrying_grok = RetryAIClient(self.grok, telemetry=self.telemetry, max_tries=3)
 
         self.lightweight_fallback = CompositeAIClient(
-            [self.gemma, self.codex_light, self.retrying_gemma, self.deepseek, self.retrying_grok],
+            [self.gemma, self.codex_luna_offline, self.retrying_gemma, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
-        # Fast chain for latency-critical per-message work (routing + language detection):
-        # Luna-medium leads for reliable routing and language detection, then falls back to
-        # DeepSeek and Grok. Gemma stays off this path - it's too slow/unreliable for realtime.
-        # The NOTSURE predicate drives the router's escalation and is inert for other schemas
-        # (which have no `route` attribute).
+        # NOTSURE from the LLM route selector falls through to the next client; inert for other schemas.
         self.latency_critical = CompositeAIClient(
-            [self.codex_light, self.deepseek, self.retrying_grok],
+            [self.codex_luna_offline, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
 
-        # Shuffled composite for jokes and wisdom - gives both clients equal chance
         self.shuffled_grok_gemini = CompositeAIClient(
             [self.retrying_grok, self.gemini_flash],
             telemetry=self.telemetry,
             shuffle=True,
         )
 
-        self.codex_summary_deepseek_flash_fallback = CompositeAIClient(
-            [self.codex_summary, self.deepseek, self.gemini_flash],
+        self.luna_offline_deepseek_flash_fallback = CompositeAIClient(
+            [self.codex_luna_offline, self.deepseek, self.gemini_flash],
             telemetry=self.telemetry,
         )
 
-        # Composite for the devil's advocate generator
         self.codex_gemini_grok = CompositeAIClient(
             [self.codex, self.gemini_flash, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
-        # Capable chain for precision-sensitive structured output (e.g. schedule metadata)
         self.codex_deepseek_gemini_grok = CompositeAIClient(
             [self.codex, self.deepseek, self.gemini_flash, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
-        # Summarization chain: a summary that is still over the Discord limit is as
-        # useless as an API failure, so is_bad_response falls through to a smarter model.
+        # A summary still over the Discord limit is treated like a failure and falls through.
         self.summarizer_fallback = CompositeAIClient(
-            [self.codex_summary, self.codex, self.gemma, self.retrying_grok],
+            [self.codex_luna_offline, self.codex, self.gemma, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=is_unusable_summary,
         )
@@ -186,7 +175,6 @@ class Container:
             self.telemetry,
         )
 
-        # Initialize language detector early since it's needed by multiple components
         self.jev_client: JevClient | None = None
         if self.config.jev_api_key:
             self.jev_client = JevClient(
@@ -204,7 +192,7 @@ class Container:
 
         self.attachment_processor = AttachmentProcessor(
             ai_client=CompositeAIClient(
-                [self.codex_light, self.retrying_gemma],
+                [self.codex_luna_offline, self.retrying_gemma],
                 telemetry=self.telemetry,
             ),
             telemetry=self.telemetry,
@@ -212,7 +200,6 @@ class Container:
             max_file_size_mb=10,
         )
 
-        # UserResolver is initialized here but needs bot client to be set later
         self.user_resolver = UserResolver(self.telemetry)
 
         self.conversation_formatter = ConversationFormatter(self.user_resolver)
@@ -237,7 +224,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            summary_client=self.codex_summary_deepseek_flash_fallback,
+            summary_client=self.luna_offline_deepseek_flash_fallback,
             alias_client=self.lightweight_fallback,
             merge_client=self.lightweight_fallback,
             user_resolver=self.user_resolver,
@@ -368,7 +355,7 @@ class Container:
             "grok": self.retrying_grok,
             "gemma": self.retrying_gemma,
             "codex": self.codex,
-            "codex_light": self.codex_light,
+            "codex_light": self.codex_luna,
             "deepseek": self.deepseek,
         }
 

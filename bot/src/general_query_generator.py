@@ -89,17 +89,15 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         Extract parameters for a general AI query request.
         
         ai_backend selection:
-        * codex: DEFAULT for general queries, coding, technical
-          explanations, detailed analysis, complex reasoning,
-          fact-checking, research, current events, internet search
-          (also select for "chatgpt"/"openai" requests)
-        * codex_light: Cheaper model for self-contained tasks
-          with a single direct answer and no analysis: simple
-          fact lookup, news check without interpretation, easy
-          linguistic questions (word meaning, translation, usage).
-          Do not select it when the message continues a substantive
-          thread, asks why, or asks for comparison, opinion,
-          or verification.
+        * codex_light: DEFAULT. Straightforward requests with a
+          direct answer: fact lookup, fetching news and current
+          events, internet search, linguistic questions (word
+          meaning, translation, usage), brief explanations.
+        * codex: Requests that need thinking: opinions and
+          judgement calls, analysis or interpretation of events,
+          in-depth programming questions, math and calculations,
+          verification across several sources, long-form research
+          or detailed technical analysis.
         * gemini_flash: Creative writing, songs, poems,
           artistic content, extensive internet search
         * grok: Uncensored content, wild requests, crazy talk
