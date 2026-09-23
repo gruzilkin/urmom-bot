@@ -163,9 +163,9 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         )
 
         if not result.prompt or not result.timezone:
-            return result.reason
+            return result.answer
         if not result.cron_expression and not result.first_run_phrase:
-            return result.reason
+            return result.answer
 
         try:
             task_tz = ZoneInfo(result.timezone)
@@ -191,7 +191,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
             next_run_at=next_run_at,
         )
 
-        return f"{result.reason} (task #{task_id})"
+        return f"{result.answer} (task #{task_id})"
 
     async def _list(
         self,
@@ -241,9 +241,9 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         )
 
         if result.task_id is None:
-            return result.reason
+            return result.answer
         if not result.prompt or not result.timezone:
-            return result.reason
+            return result.answer
 
         existing = next((t for t in tasks if t.task_id == result.task_id), None)
         if existing is None:
@@ -286,7 +286,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
             timezone=result.timezone,
             next_run_at=next_run_at,
         )
-        return result.reason
+        return result.answer
 
     async def _delete(
         self,
@@ -308,14 +308,14 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         )
 
         if result.task_id is None:
-            return result.reason
+            return result.answer
 
         task = next((t for t in tasks if t.task_id == result.task_id), None)
         if task is None:
             return f"Task {result.task_id} doesn't belong to this channel."
 
         await self.store.delete_scheduled_task(result.task_id)
-        return result.reason
+        return result.answer
 
     async def _run_now(
         self,
@@ -337,14 +337,14 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
         )
 
         if result.task_id is None:
-            return result.reason
+            return result.answer
 
         task = next((t for t in tasks if t.task_id == result.task_id), None)
         if task is None:
             return f"Task {result.task_id} doesn't belong to this channel."
 
         asyncio.create_task(self.schedule_engine.fire_task(task))
-        return result.reason
+        return result.answer
 
     def _compute_next_run_at(
         self,
@@ -472,36 +472,36 @@ Fields:
       use explicit clock times like "tomorrow at 8am", "tomorrow at 7pm"
     - bare ordinals like "the 1st at 9am" — use "June 1 at 9am"
 - timezone: IANA name. If the user did not specify one, use {default_tz_name}.
-- reason: confirmation in {language_name} echoing the resolved schedule.
+- answer: confirmation in {language_name} echoing the resolved schedule.
 
 If the request cannot be parsed, set prompt / cron_expression / first_run_phrase / timezone
-to null and explain in reason.
+to null and explain in answer.
 
 Examples:
 - "schedule a weekly summary every Monday 9am"
   → prompt: "post a weekly summary of the channel",
     cron_expression: "0 9 * * 1", first_run_phrase: null, timezone: "{default_tz_name}",
-    reason: "Scheduled a weekly summary every Monday at 9:00 ({default_tz_name})."
+    answer: "Scheduled a weekly summary every Monday at 9:00 ({default_tz_name})."
 - "remind me to call mom tomorrow at 3pm"
   → prompt: "remind us to call mom",
     cron_expression: null, first_run_phrase: "tomorrow at 3pm",
     timezone: "{default_tz_name}",
-    reason: "I'll fire once tomorrow at 3pm ({default_tz_name})."
+    answer: "I'll fire once tomorrow at 3pm ({default_tz_name})."
 - "every day at 10am Tokyo starting tomorrow, post haiku"
   → prompt: "post a haiku",
     cron_expression: "0 10 * * *", first_run_phrase: "tomorrow at 10am",
     timezone: "Asia/Tokyo",
-    reason: "Scheduled a daily haiku at 10:00 Asia/Tokyo, first firing tomorrow."
+    answer: "Scheduled a daily haiku at 10:00 Asia/Tokyo, first firing tomorrow."
 - "напомни мне позвонить маме завтра в 3 дня"
   → prompt: "напомни нам позвонить маме",
     cron_expression: null, first_run_phrase: "tomorrow at 3pm",
     timezone: "{default_tz_name}",
-    reason: "Напомню один раз завтра в 15:00 ({default_tz_name})."
+    answer: "Напомню один раз завтра в 15:00 ({default_tz_name})."
 - "смотри новости по будням в 9"
   → prompt: "посмотри новости",
     cron_expression: "0 9 * * 1-5", first_run_phrase: null,
     timezone: "{default_tz_name}",
-    reason: "Запланировано: новости по будням в 9:00 ({default_tz_name})."
+    answer: "Запланировано: новости по будням в 9:00 ({default_tz_name})."
 
 Respond in {language_name}.
 """
@@ -550,9 +550,9 @@ Steps:
    deictic references.
 
 If the task or change cannot be identified, set task_id and all data fields to null and
-explain in reason.
+explain in answer.
 
-reason: confirmation of the change or explanation of failure, in {language_name}.
+answer: confirmation of the change or explanation of failure, in {language_name}.
 """
 
     def _build_resolution_prompt(self, tasks: list[ScheduledTask], action: str, language_name: str) -> str:
@@ -562,7 +562,7 @@ Identify which task the user wants to {action}.
 {self._render_tasks_xml(tasks)}
 
 Set task_id to the integer ID of the matching <task> entry. If no match, set task_id to null
-and explain in reason.
+and explain in answer.
 
-reason: confirmation of the action or explanation if not found, in {language_name}.
+answer: confirmation of the action or explanation if not found, in {language_name}.
 """

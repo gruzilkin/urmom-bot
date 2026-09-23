@@ -125,10 +125,10 @@ class ScheduleCreateParams(BaseModel):
 
     On a successful parse: prompt and timezone are populated, plus at least one of
     cron_expression / first_run_phrase. On failure (request unparseable, ambiguous,
-    or contradictory): all data fields are null and reason explains why.
+    or contradictory): all data fields are null and answer explains why.
     """
 
-    reason: str = Field(
+    answer: str = Field(
         description="User-facing outcome message describing success or failure, in the user's language."
     )
     prompt: str | None = Field(
@@ -173,10 +173,10 @@ class ScheduleEditParams(BaseModel):
     On a successful parse: task_id resolved against the channel's task list, plus the
     full updated task fields (unchanged fields carried forward verbatim from the existing
     task). On failure (task not found, or change request unparseable): task_id and data
-    fields are null and reason explains why.
+    fields are null and answer explains why.
     """
 
-    reason: str = Field(
+    answer: str = Field(
         description="User-facing outcome message describing success or failure, in the user's language."
     )
     task_id: int | None = Field(
@@ -223,7 +223,7 @@ class ScheduleTaskResolution(BaseModel):
             " Null if no matching task was found."
         ),
     )
-    reason: str = Field(
+    answer: str = Field(
         description="User-facing outcome message describing success or failure, in the user's language."
     )
 

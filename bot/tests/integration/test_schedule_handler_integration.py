@@ -5,7 +5,7 @@ schedule requests, verifying that:
 - "every X at Y" yields a valid cron expression
 - "tomorrow at 3pm" / "in 2 hours" produce a dateparser-compatible first_run_phrase
 - Timezone is extracted when mentioned, defaults to guild default otherwise
-- Failure path: gibberish input yields null fields + an explanatory reason
+- Failure path: gibberish input yields null fields + an explanatory answer
 """
 
 import os
@@ -132,7 +132,7 @@ class TestScheduleHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             creator_user_id=300,
         )
 
-        # Either the LLM bails out (null fields → reason returned), or validation rejects.
+        # Either the LLM bails out (null fields → answer returned), or validation rejects.
         # Either way, nothing should be persisted.
         self.mock_store.create_scheduled_task.assert_not_called()
 

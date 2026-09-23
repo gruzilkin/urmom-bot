@@ -118,7 +118,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
     async def test_create_success(self):
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleCreateParams(
-                reason="Scheduled a weekly summary every Monday at 9am Asia/Tokyo.",
+                answer="Scheduled a weekly summary every Monday at 9am Asia/Tokyo.",
                 prompt="post a weekly summary",
                 cron_expression="0 9 * * 1",
                 first_run_phrase=None,
@@ -140,9 +140,9 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["cron_expression"], "0 9 * * 1")
         self.assertEqual(kwargs["timezone"], "Asia/Tokyo")
 
-    async def test_create_llm_failure_returns_reason_without_persisting(self):
+    async def test_create_llm_failure_returns_answer_without_persisting(self):
         self.mock_ai.generate_content = AsyncMock(
-            return_value=ScheduleCreateParams(reason="I couldn't understand your schedule.")
+            return_value=ScheduleCreateParams(answer="I couldn't understand your schedule.")
         )
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
@@ -158,7 +158,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
     async def test_create_invalid_timezone_rejected(self):
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleCreateParams(
-                reason="OK",
+                answer="OK",
                 prompt="do thing",
                 cron_expression="0 9 * * *",
                 first_run_phrase=None,
@@ -179,7 +179,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
     async def test_create_invalid_cron_rejected(self):
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleCreateParams(
-                reason="OK",
+                answer="OK",
                 prompt="do thing",
                 cron_expression="not a cron",
                 first_run_phrase=None,
@@ -234,7 +234,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         task = _make_task(task_id=5)
         self.mock_store.list_scheduled_tasks.return_value = [task]
         self.mock_ai.generate_content = AsyncMock(
-            return_value=ScheduleTaskResolution(task_id=5, reason="Deleted task 5.")
+            return_value=ScheduleTaskResolution(task_id=5, answer="Deleted task 5.")
         )
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
@@ -250,7 +250,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
     async def test_delete_unresolved(self):
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]
         self.mock_ai.generate_content = AsyncMock(
-            return_value=ScheduleTaskResolution(reason="I couldn't find that task.")
+            return_value=ScheduleTaskResolution(answer="I couldn't find that task.")
         )
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
@@ -267,7 +267,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         # LLM hallucinates a task_id that's not in the channel list
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]
         self.mock_ai.generate_content = AsyncMock(
-            return_value=ScheduleTaskResolution(task_id=999, reason="Deleting...")
+            return_value=ScheduleTaskResolution(task_id=999, answer="Deleting...")
         )
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
@@ -286,7 +286,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         task = _make_task(task_id=5)
         self.mock_store.list_scheduled_tasks.return_value = [task]
         self.mock_ai.generate_content = AsyncMock(
-            return_value=ScheduleTaskResolution(task_id=5, reason="Running task 5 now.")
+            return_value=ScheduleTaskResolution(task_id=5, answer="Running task 5 now.")
         )
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
@@ -310,7 +310,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_scheduled_tasks.return_value = [existing]
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleEditParams(
-                reason="Updated task 5's prompt.",
+                answer="Updated task 5's prompt.",
                 task_id=5,
                 prompt="new prompt",
                 cron_expression="0 9 * * 1",
@@ -347,7 +347,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_scheduled_tasks.return_value = [existing]
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleEditParams(
-                reason="Updated task 5's prompt.",
+                answer="Updated task 5's prompt.",
                 task_id=5,
                 prompt="new prompt",
                 cron_expression="0 9 * * *",  # LLM copied verbatim from XML
@@ -376,7 +376,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_scheduled_tasks.return_value = [existing]
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleEditParams(
-                reason="Updated schedule.",
+                answer="Updated schedule.",
                 task_id=5,
                 prompt="do thing",
                 cron_expression="0 9 * * 1",  # changed from daily to weekly
@@ -404,7 +404,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_scheduled_tasks.return_value = [existing]
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleEditParams(
-                reason="Updated task 8's prompt.",
+                answer="Updated task 8's prompt.",
                 task_id=8,
                 prompt="new prompt",
                 cron_expression=None,
@@ -430,7 +430,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
 
     async def test_edit_unresolved_task(self):
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]
-        self.mock_ai.generate_content = AsyncMock(return_value=ScheduleEditParams(reason="Couldn't find the task."))
+        self.mock_ai.generate_content = AsyncMock(return_value=ScheduleEditParams(answer="Couldn't find the task."))
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
@@ -495,11 +495,11 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
 
     # ---- _create edge cases ----
 
-    async def test_create_with_only_prompt_returns_reason_without_persisting(self):
+    async def test_create_with_only_prompt_returns_answer_without_persisting(self):
         # LLM returns prompt + tz but NO cron and NO phrase — invalid combination.
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleCreateParams(
-                reason="Need a schedule.",
+                answer="Need a schedule.",
                 prompt="do thing",
                 cron_expression=None,
                 first_run_phrase=None,
@@ -522,7 +522,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.get_guild_config.return_value = GuildConfig(guild_id=100, default_timezone="Made/Up")
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleCreateParams(
-                reason="Scheduled.",
+                answer="Scheduled.",
                 prompt="do thing",
                 cron_expression="0 9 * * *",
                 first_run_phrase=None,
@@ -557,7 +557,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
     async def test_edit_llm_returns_null_data_fields(self):
         existing = _make_task(task_id=5)
         self.mock_store.list_scheduled_tasks.return_value = [existing]
-        self.mock_ai.generate_content = AsyncMock(return_value=ScheduleEditParams(reason="Edit unclear.", task_id=5))
+        self.mock_ai.generate_content = AsyncMock(return_value=ScheduleEditParams(answer="Edit unclear.", task_id=5))
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
@@ -574,7 +574,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleEditParams(
-                reason="OK",
+                answer="OK",
                 task_id=999,
                 prompt="new",
                 cron_expression="0 9 * * *",
@@ -597,7 +597,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleEditParams(
-                reason="OK",
+                answer="OK",
                 task_id=5,
                 prompt="new prompt",
                 cron_expression="0 9 * * *",
@@ -620,7 +620,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleEditParams(
-                reason="OK",
+                answer="OK",
                 task_id=5,
                 prompt="new prompt",
                 cron_expression="not a cron",
@@ -644,7 +644,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]
         self.mock_ai.generate_content = AsyncMock(
             return_value=ScheduleEditParams(
-                reason="Updated.",
+                answer="Updated.",
                 task_id=5,
                 prompt="new prompt",
                 cron_expression="0 9 * * *",
@@ -692,7 +692,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
 
     async def test_run_now_unresolved(self):
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]
-        self.mock_ai.generate_content = AsyncMock(return_value=ScheduleTaskResolution(reason="Not found."))
+        self.mock_ai.generate_content = AsyncMock(return_value=ScheduleTaskResolution(answer="Not found."))
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
@@ -706,7 +706,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
 
     async def test_run_now_resolved_to_wrong_channel_rejected(self):
         self.mock_store.list_scheduled_tasks.return_value = [_make_task(task_id=5)]
-        self.mock_ai.generate_content = AsyncMock(return_value=ScheduleTaskResolution(task_id=999, reason="OK"))
+        self.mock_ai.generate_content = AsyncMock(return_value=ScheduleTaskResolution(task_id=999, answer="OK"))
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
