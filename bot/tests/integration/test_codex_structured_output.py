@@ -75,8 +75,8 @@ class TestCodexMiniStructuredOutput(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         self.client = CodexClient(
             telemetry=self.telemetry,
-            model_name="gpt-5.6-luna",
-            model_reasoning_effort="xhigh",
+            model_name="gpt-6-luna",
+            model_reasoning_effort="high",
         )
 
     async def test_yes_no_structured_output_yes(self):

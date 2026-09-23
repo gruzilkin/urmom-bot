@@ -111,12 +111,12 @@ class Container:
         )
         self.codex_luna = CodexClient(
             telemetry=self.telemetry,
-            model_name="gpt-5.6-luna",
+            model_name="gpt-6-luna",
             model_reasoning_effort="high",
         )
         self.codex_luna_offline = CodexClient(
             telemetry=self.telemetry,
-            model_name="gpt-5.6-luna",
+            model_name="gpt-6-luna",
             model_reasoning_effort="high",
             enable_web_search=False,
         )
