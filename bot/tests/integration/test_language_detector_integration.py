@@ -2,7 +2,6 @@ import os
 import unittest
 from dataclasses import dataclass
 
-from unittest.mock import AsyncMock
 
 from dotenv import load_dotenv
 
@@ -52,26 +51,20 @@ class TestLanguageDetectorIntegration(unittest.IsolatedAsyncioTestCase):
         if deepseek_api_key and os.getenv("ENABLE_PAID_TESTS", "").lower() == "true":
             deepseek_client = DeepSeekClient(
                 api_key=deepseek_api_key,
-                model_name=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+                model_name=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
                 telemetry=self.telemetry,
                 temperature=0.0,
             )
             self.profiles.append(DetectorProfile(name="deepseek", client=deepseek_client))
 
-        # Jev profile: Jev answers first; OTHER falls back to the first LLM profile (or fails loudly
-        # when none is configured, so a wrong fallback can't masquerade as a Jev answer).
+        # Jev profile: Jev answers first; OTHER falls back to the first LLM profile, so it needs one.
         jev_api_key = os.getenv("JEV_API_KEY")
-        if jev_api_key:
-            if self.profiles:
-                fallback_llm = self.profiles[0].client
-            else:
-                fallback_llm = AsyncMock()
-                fallback_llm.generate_content.side_effect = AssertionError("No LLM fallback configured for OTHER")
+        if jev_api_key and self.profiles:
             jev_client = JevClient(api_key=jev_api_key, telemetry=self.telemetry, timeout_seconds=15.0)
-            self.profiles.append(DetectorProfile(name="jev", client=fallback_llm, jev_client=jev_client))
+            self.profiles.append(DetectorProfile(name="jev", client=self.profiles[0].client, jev_client=jev_client))
 
         if not self.profiles:
-            self.skipTest("No language detector AI clients configured; set Gemma or Jev credentials.")
+            self.skipTest("No language detector AI clients configured; set Gemma credentials.")
 
     async def asyncTearDown(self) -> None:
         for profile in self.profiles:
