@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import AsyncMock, Mock
-from joke_generator import JokeGenerator
+from joke_generator import JokeDecision, JokeGenerator
 from language_detector import LanguageDetector
 from conversation_formatter import ConversationFormatter
 from memory_manager import MemoryManager
@@ -71,6 +71,43 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         result = await joke_generator.is_joke("original message", "serious response")
 
         self.assertFalse(result)
+
+    def _generator_with_jev(self, jev_client, llm_answer: str = "NO") -> tuple[JokeGenerator, Mock]:
+        ai_client = Mock()
+        ai_client.generate_content = AsyncMock(return_value=YesNo(answer=llm_answer))
+        telemetry = NullTelemetry()
+        language_detector = LanguageDetector(ai_client=Mock(), telemetry=telemetry)
+        generator = JokeGenerator(
+            joke_writer_client=ai_client,
+            joke_classifier_client=ai_client,
+            store=MockStore(),
+            telemetry=telemetry,
+            language_detector=language_detector,
+            conversation_formatter=Mock(spec=ConversationFormatter),
+            memory_manager=Mock(spec=MemoryManager),
+            jev_client=jev_client,
+        )
+        return generator, ai_client
+
+    async def test_is_joke_uses_jev_probability_threshold(self):
+        """With Jev configured, the LLM is not consulted and 0.8 is the cut-off."""
+        jev_client = AsyncMock()
+        jev_client.ask.return_value = JokeDecision(is_joke={"probability": 0.81})
+        generator, ai_client = self._generator_with_jev(jev_client)
+        self.assertTrue(await generator.is_joke("o", "r"))
+
+        jev_client.ask.return_value = JokeDecision(is_joke={"probability": 0.79})
+        self.assertFalse(await generator.is_joke("o", "r"))
+
+        ai_client.generate_content.assert_not_called()
+
+    async def test_is_joke_falls_back_to_llm_when_jev_fails(self):
+        jev_client = AsyncMock()
+        jev_client.ask.side_effect = RuntimeError("jev down")
+        generator, ai_client = self._generator_with_jev(jev_client, llm_answer="YES")
+
+        self.assertTrue(await generator.is_joke("o", "r"))
+        ai_client.generate_content.assert_called_once()
 
     async def test_is_joke_caching(self):
         """Test that is_joke caches results properly"""

@@ -1,8 +1,11 @@
 import logging
 from collections.abc import Callable, Awaitable
 
+from pydantic import BaseModel
+
 from ai_client import AIClient
 from conversation_graph import ConversationMessage
+from jev_client import JevClient, Noul, noul
 from open_telemetry import Telemetry
 from store import Store
 from language_detector import LanguageDetector
@@ -13,6 +16,25 @@ from opentelemetry.trace import SpanKind
 
 
 logger = logging.getLogger(__name__)
+
+JOKE_INSTRUCTIONS = """Determine if the response is clearly intended
+as a joke or humorous remark directed at the original message.
+
+Only answer YES if the response is obviously humorous, a clear joke,
+or deliberate wordplay. Regular conversation, even if slightly
+playful or witty, should be NO."""
+
+JOKE_PROBABILITY_THRESHOLD = 0.8
+
+
+class JokeDecision(BaseModel):
+    """Jev question: is the response a joke aimed at the original message?"""
+
+    is_joke: Noul = noul(
+        instructions="Is the response clearly intended as a joke or humorous remark directed at the original message?",
+        true="Obviously humorous, a clear joke, or deliberate wordplay aimed at the original message",
+        false="Regular conversation, even if slightly playful or witty",
+    )
 
 
 class JokeGenerator:
@@ -26,9 +48,11 @@ class JokeGenerator:
         conversation_formatter: ConversationFormatter,
         memory_manager: MemoryManager,
         sample_count: int = 10,
+        jev_client: JevClient | None = None,
     ):
         self._joke_writer_client = joke_writer_client
         self._joke_classifier_client = joke_classifier_client
+        self._jev_client = jev_client
         self.store = store
         self.sample_count = sample_count
         self.telemetry = telemetry
@@ -70,7 +94,12 @@ class JokeGenerator:
         memories_block = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
 
         # Create the prompt using format string
-        russian_note = " In Russian, use the slang form 'твоя мамка' in the correct case for the sentence (e.g. твою мамку, твоей мамке)." if language == "ru" else ""
+        russian_note = (
+            " In Russian, use the slang form 'твоя мамка' in the correct case for the sentence"
+            " (e.g. твою мамку, твоей мамке)."
+            if language == "ru"
+            else ""
+        )
         prompt = f"""You are a chatbot that generates jokes in response to messages.
 Read the message, conversation context, and any user memories,
 then pick whichever joke format below produces the funniest
@@ -166,35 +195,43 @@ Apply stereotypes and cliches about the country."""
         if message_id is not None and message_id in self._joke_cache:
             return self._joke_cache[message_id]
 
-        async with self.telemetry.async_create_span("is_joke", kind=SpanKind.INTERNAL):
-            # Format messages in XML for clarity
-            message = f"""<messages>
-<original>{original_message}</original>
-<response>{response_message}</response>
-</messages>"""
-
-            prompt = """Determine if the response is clearly intended
-as a joke or humorous remark directed at the original message.
-
-Only answer YES if the response is obviously humorous, a clear joke,
-or deliberate wordplay. Regular conversation, even if slightly
-playful or witty, should be NO."""
-
+        async with self.telemetry.async_create_span("is_joke", kind=SpanKind.INTERNAL) as span:
             logger.info("Checking if message is a joke:")
             logger.info(f"Original: {original_message}")
             logger.info(f"Response: {response_message}")
 
-            response = await self._joke_classifier_client.generate_content(
-                message=message, prompt=prompt, response_schema=YesNo
-            )
+            result: bool | None = None
+            if self._jev_client is not None:
+                try:
+                    decision = await self._jev_client.ask(
+                        state={"original": original_message, "response": response_message},
+                        questions=JokeDecision,
+                    )
+                    probability = decision.is_joke.probability
+                    result = probability >= JOKE_PROBABILITY_THRESHOLD
+                    span.set_attribute("classifier", "jev")
+                    span.set_attribute("joke_probability", probability)
+                except Exception as e:
+                    logger.error(f"Jev joke classification failed, falling back to LLM: {e}", exc_info=True)
+                    span.record_exception(e)
 
-            result = response.answer == "YES"
+            if result is None:
+                message = f"""<messages>
+<original>{original_message}</original>
+<response>{response_message}</response>
+</messages>"""
+                response = await self._joke_classifier_client.generate_content(
+                    message=message, prompt=JOKE_INSTRUCTIONS, response_schema=YesNo
+                )
+                result = response.answer == "YES"
+                span.set_attribute("classifier", "llm")
+
+            span.set_attribute("is_joke", result)
 
             # Cache the result if message_id is provided
             if message_id is not None:
                 self._joke_cache[message_id] = result
 
-            logger.info(f"AI response: {response.answer}")
             logger.info(f"Is joke: {result}")
             return result
 

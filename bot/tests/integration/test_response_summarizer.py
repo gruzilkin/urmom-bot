@@ -51,7 +51,7 @@ class TestResponseSummarizerIntegration(unittest.IsolatedAsyncioTestCase):
         if deepseek_api_key and os.getenv("ENABLE_PAID_TESTS", "").lower() == "true":
             deepseek_client = DeepSeekClient(
                 api_key=deepseek_api_key,
-                model_name=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+                model_name=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
                 telemetry=self.telemetry,
                 temperature=0.0,
             )

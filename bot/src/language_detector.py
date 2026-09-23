@@ -1,20 +1,53 @@
 """
-Language detection service using Gemma LLM for accurate detection.
+Language detection service.
 
-Uses AI-powered detection for all text lengths, optimized for Discord messages.
+Detects the language of Discord messages with Jev (a single choice over the most spoken languages
+plus OTHER) when a JevClient is configured. OTHER, a Jev failure, or no Jev client all fall back to
+an LLM, which also resolves language names for codes outside the Jev list.
 """
 
 import logging
 import re
-from ai_client import AIClient
-from open_telemetry import Telemetry
+
 from pydantic import BaseModel, Field
+
+from ai_client import AIClient
+from jev_client import Choice, JevClient, choice
+from open_telemetry import Telemetry
 
 logger = logging.getLogger(__name__)
 
+JEV_LANGUAGES: dict[str, str] = {
+    "en": "English",
+    "zh": "Chinese",
+    "es": "Spanish",
+    "fr": "French",
+    "ar": "Arabic",
+    "ru": "Russian",
+    "de": "German",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "pl": "Polish",
+}
+OTHER = "OTHER"
+
+DETECTION_INSTRUCTIONS = """Detect the language the user is writing in.
+
+Focus on the words and grammar the user uses to ask the question, give the instruction,
+or make the statement. A message can contain names, foreign words, quotations, code,
+URLs, or text from another language. Ignore that included content when the surrounding
+message is written in a different language.
+
+If the message is only a word or short phrase, identify the language in which it is
+normally used. If there is still no clear answer, prefer Russian for Cyrillic text and
+English for Latin text.
+
+Detect only the language of the user's message. Do not answer the message, and do not
+choose a language merely because the message mentions or discusses it."""
+
 
 class LanguageCode(BaseModel):
-    """Schema for language code detection."""
+    """Schema for LLM language code detection."""
 
     language_code: str = Field(description="ISO 639-1 language code (e.g., 'en', 'ru', 'de')")
 
@@ -27,22 +60,34 @@ class LanguageName(BaseModel):
     )
 
 
-class LanguageDetector:
-    """AI-powered language detection using Gemma LLM for accurate results."""
+class LanguageDecision(BaseModel):
+    """Jev question: one choice over the most spoken languages, or OTHER."""
 
-    def __init__(self, ai_client: AIClient, telemetry: Telemetry):
+    language: Choice[str] = choice(
+        instructions=DETECTION_INSTRUCTIONS,
+        criteria={**JEV_LANGUAGES, OTHER: "Any language not listed above"},
+    )
+
+
+class LanguageDetector:
+    """Detects the language of a message with Jev when available, otherwise an LLM."""
+
+    def __init__(self, ai_client: AIClient, telemetry: Telemetry, jev_client: JevClient | None = None):
         self.ai_client = ai_client
         self.telemetry = telemetry
+        self.jev_client = jev_client
+        self._language_names: dict[str, str] = dict(JEV_LANGUAGES)
 
-        # Cache for language code to name mapping (10 most spoken languages)
-        self._language_names = {
-            "en": "English",
-            "zh": "Chinese",
-            "es": "Spanish",
-            "fr": "French",
-            "ru": "Russian",
-            "ja": "Japanese",
-        }
+    async def _detect_language_with_jev(self, text: str) -> str | None:
+        """Returns the language code, or None when Jev answers OTHER."""
+        async with self.telemetry.async_create_span("detect_language_with_jev") as span:
+            span.set_attribute("text", text)
+            decision = await self.jev_client.ask(state={"message": text}, questions=LanguageDecision)
+            answer = decision.language
+            span.set_attribute("detected_language", answer.choice)
+            span.set_attribute("confidence", answer.confidence)
+            span.set_attribute("top_probability", answer.top_probability)
+            return None if answer.choice == OTHER else answer.choice
 
     async def _detect_language_with_llm(self, text: str) -> str:
         """
@@ -56,21 +101,7 @@ class LanguageDetector:
         """
         async with self.telemetry.async_create_span("detect_language_with_llm") as span:
             span.set_attribute("text", text)
-            prompt = """Detect the language the user is writing in. Return its lowercase
-ISO 639-1 code in the required schema.
-
-Focus on the words and grammar the user uses to ask the question, give the instruction,
-or make the statement. A message can contain names, foreign words, quotations, code,
-URLs, or text from another language. Ignore that included content when the surrounding
-message is written in a different language.
-
-If the message is only a word or short phrase, identify the language in which it is
-normally used. If there is still no clear answer, prefer Russian for Cyrillic text and
-English for Latin text.
-
-Detect only the language of the user's message. Do not answer the message, and do not
-choose a language merely because the message mentions or discusses it.
-"""
+            prompt = f"{DETECTION_INSTRUCTIONS}\n\nReturn its lowercase ISO 639-1 code in the required schema."
 
             response = await self.ai_client.generate_content(
                 message=text, prompt=prompt, temperature=0.0, response_schema=LanguageCode
@@ -91,9 +122,10 @@ choose a language merely because the message mentions or discusses it.
 
     async def detect_language(self, text: str) -> str:
         """
-        Detect language using Gemma LLM for accurate results on all text lengths.
+        Detect the language of a message.
 
-        Uses AI-powered detection optimized for Discord messages and short text.
+        Tries Jev first when configured; falls back to the LLM when Jev answers OTHER or fails,
+        and defaults to English if the LLM fails too.
 
         Args:
             text: Input text to analyze.
@@ -106,6 +138,18 @@ choose a language merely because the message mentions or discusses it.
 
             if not text or not text.strip():
                 raise ValueError("Text cannot be empty or whitespace-only")
+
+            if self.jev_client is not None:
+                try:
+                    detected_lang = await self._detect_language_with_jev(text)
+                    if detected_lang is not None:
+                        span.set_attribute("detection_method", "jev")
+                        span.set_attribute("detected_language", detected_lang)
+                        return detected_lang
+                    logger.info("Jev answered OTHER for language, falling back to LLM")
+                except Exception as e:
+                    logger.error(f"Jev language detection failed, falling back to LLM: {e}", exc_info=True)
+                    span.record_exception(e)
 
             try:
                 detected_lang = await self._detect_language_with_llm(text)
@@ -132,7 +176,6 @@ choose a language merely because the message mentions or discusses it.
         async with self.telemetry.async_create_span("get_language_name") as span:
             span.set_attribute("language_code", language_code)
 
-            # Check cache first
             if language_code in self._language_names:
                 language_name = self._language_names[language_code]
                 span.set_attribute("language_name", language_name)
@@ -155,6 +198,7 @@ choose a language merely because the message mentions or discusses it.
                 language_name = response.language_name.strip().title()
 
                 self._language_names[language_code] = language_name
+                span.set_attribute("language_name", language_name)
                 return language_name
             except Exception as e:
                 logger.error(f"Failed to resolve language name for code {language_code}: {e}", exc_info=True)

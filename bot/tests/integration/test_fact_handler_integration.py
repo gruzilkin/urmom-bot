@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from ai_client import AIClient
 from ai_router import AiRouter
+from route_selector import LlmRouteSelector, build_route_descriptions
 from conversation_formatter import ConversationFormatter
 from fact_handler import FactHandler
 from famous_person_generator import FamousPersonGenerator
@@ -102,6 +103,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             conversation_formatter=conversation_formatter,
             memory_manager=Mock(),
             user_resolver=user_resolver,
+            handoff_service=Mock(),
         )
         general_generator.get_parameter_schema = Mock(
             side_effect=Exception("Should not extract GENERAL params in FACT tests")
@@ -124,6 +126,9 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         memory_manager = Mock()
         memory_manager.build_memory_prompt = AsyncMock(return_value="")
 
+        route_descriptions = build_route_descriptions(
+            famous_generator, general_generator, fact_handler, schedule_handler
+        )
         ai_router = AiRouter(
             ai_client=client,
             telemetry=self.telemetry,
@@ -134,6 +139,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             schedule_handler=schedule_handler,
             conversation_formatter=conversation_formatter,
             memory_manager=memory_manager,
+            route_selector=LlmRouteSelector(client, route_descriptions, self.telemetry),
         )
 
         guild_id = store.physics_guild_id

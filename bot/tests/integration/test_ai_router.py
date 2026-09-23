@@ -21,6 +21,7 @@ from gemma_client import GemmaClient
 from general_query_generator import GeneralQueryGenerator
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
+from route_selector import LlmRouteSelector, build_route_descriptions
 from schedule_handler import ScheduleHandler
 
 load_dotenv()
@@ -102,6 +103,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             conversation_formatter=conversation_formatter,
             memory_manager=AsyncMock(),
             user_resolver=mock_user_resolver,
+            handoff_service=Mock(),
         )
         fact_handler = FactHandler(
             ai_client=None,
@@ -125,6 +127,9 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         memory_manager = Mock()
         memory_manager.build_memory_prompt = AsyncMock(return_value="")
 
+        route_descriptions = build_route_descriptions(
+            famous_generator, general_generator, fact_handler, schedule_handler
+        )
         return AiRouter(
             ai_client=router_client,
             telemetry=self.telemetry,
@@ -135,6 +140,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             schedule_handler=schedule_handler,
             conversation_formatter=conversation_formatter,
             memory_manager=memory_manager,
+            route_selector=LlmRouteSelector(router_client, route_descriptions, self.telemetry),
         )
 
     async def test_route_request_with_perspective_shift(self):

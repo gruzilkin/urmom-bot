@@ -29,6 +29,7 @@ class DeepSeekClient(OpenAIClient):
         telemetry: Telemetry,
         base_url: str = "https://api.deepseek.com",
         temperature: float = 0.7,
+        reasoning_effort: str | None = None,
     ):
         super().__init__(
             api_key=api_key,
@@ -37,6 +38,7 @@ class DeepSeekClient(OpenAIClient):
             base_url=base_url,
             service="DEEPSEEK",
             temperature=temperature,
+            reasoning_effort=reasoning_effort,
         )
 
     async def _generate_structured(
@@ -62,6 +64,7 @@ class DeepSeekClient(OpenAIClient):
                     messages=messages,
                     temperature=temperature,
                     response_format={"type": "json_object"},
+                    **self._request_options(),
                 )
                 attrs = {**loop_attrs, "outcome": "success"}
                 self.telemetry.metrics.llm_latency.record(timer(), attrs)

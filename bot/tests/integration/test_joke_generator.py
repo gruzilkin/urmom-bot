@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
 from grok_client import GrokClient
+from jev_client import JevClient
 from joke_generator import JokeGenerator
 from language_detector import LanguageDetector
 from conversation_formatter import ConversationFormatter
@@ -92,7 +93,7 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
             ("I can't handle this level", "I can't handle ur mom"),
         ]
 
-    def _build_joke_generator(self, ai_client) -> JokeGenerator:
+    def _build_joke_generator(self, ai_client, jev_client: JevClient | None = None) -> JokeGenerator:
         store = Mock(spec=Store)
         store.get_random_jokes = AsyncMock(return_value=list(self.joke_seed_data))
 
@@ -109,7 +110,19 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
             language_detector=self.language_detector,
             conversation_formatter=mock_formatter,
             memory_manager=mock_memory,
+            jev_client=jev_client,
         )
+
+    IS_JOKE_CASES = [
+        ("I haven't had that weird rash again", "TWSS", True, "TWSS joke"),
+        ("I'm tired today", "That's what ur mom said last night", True, "ur mom joke"),
+        ("This code is so confusing", "Just like your face", True, "insult humor"),
+        ("How do I exit vim?", "You don't. Vim exits you.", True, "vim joke"),
+        ("Not enough to convince florent", "No shit...", False, "casual agreement"),
+        ("This is terrible", "Tell me about it", False, "commiseration"),
+        ("I'm going to the store", "Have fun, don't get lost", False, "banter"),
+        ("I can't figure this out", "Have you tried reading the docs?", False, "helpful suggestion"),
+    ]
 
     async def test_generate_joke(self):
         test_message = "tldr, it's basically switch 1 with some extra coloured plastic"
@@ -136,47 +149,29 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
 
     async def test_is_joke_realistic_pairs(self):
         """Test is_joke with realistic Discord message pairs to validate prompt effectiveness"""
-        test_cases = [
-            ("I haven't had that weird rash again", "TWSS", True, "TWSS joke"),
-            (
-                "I'm tired today",
-                "That's what ur mom said last night",
-                True,
-                "ur mom joke",
-            ),
-            ("This code is so confusing", "Just like your face", True, "insult humor"),
-            ("How do I exit vim?", "You don't. Vim exits you.", True, "vim joke"),
-            ("Not enough to convince florent", "No shit...", False, "casual agreement"),
-            ("This is terrible", "Tell me about it", False, "commiseration"),
-            ("I'm going to the store", "Have fun, don't get lost", False, "banter"),
-            (
-                "I can't figure this out",
-                "Have you tried reading the docs?",
-                False,
-                "helpful suggestion",
-            ),
-        ]
-
         for profile in self.profiles:
             joke_generator = self._build_joke_generator(profile.client)
-            for original, response, expected, description in test_cases:
-                with self.subTest(
-                    profile=profile.name,
-                    description=description,
-                    original=original,
-                    response=response,
-                ):
+            for original, response, expected, description in self.IS_JOKE_CASES:
+                with self.subTest(profile=profile.name, description=description):
                     result = await joke_generator.is_joke(original, response)
-                    print(
-                        f"[{profile.name}] [{description}] Original: '{original}' -> "
-                        f"Response: '{response}' -> Result: {result} "
-                        f"(expected: {expected})"
-                    )
-                    self.assertEqual(
-                        result,
-                        expected,
-                        f"Failed for {profile.name} / {description}: expected {expected}, got {result}",
-                    )
+                    print(f"[{profile.name}] [{description}] '{original}' -> '{response}' -> {result} ({expected=})")
+                    self.assertEqual(result, expected, f"{profile.name} / {description}")
+
+    @unittest.skipUnless(os.getenv("JEV_API_KEY"), "JEV_API_KEY not set")
+    async def test_is_joke_realistic_pairs_with_jev(self):
+        """Same pairs through Jev; the LLM classifier raises so every answer must come from Jev."""
+        failing_llm = Mock()
+        failing_llm.generate_content = AsyncMock(side_effect=AssertionError("LLM must not be called"))
+        jev_client = JevClient(api_key=os.environ["JEV_API_KEY"], telemetry=self.telemetry, timeout_seconds=15.0)
+        try:
+            joke_generator = self._build_joke_generator(failing_llm, jev_client=jev_client)
+            for original, response, expected, description in self.IS_JOKE_CASES:
+                with self.subTest(description=description):
+                    result = await joke_generator.is_joke(original, response)
+                    print(f"[jev] [{description}] '{original}' -> '{response}' -> {result} (expected {expected})")
+                    self.assertEqual(result, expected, f"jev / {description}")
+        finally:
+            await jev_client.aclose()
 
 
 if __name__ == "__main__":

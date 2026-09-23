@@ -65,15 +65,15 @@ class MemoryManagerTestBase(unittest.IsolatedAsyncioTestCase):
 
         # Codex runs on a subscription (not metered), so this isn't gated on ENABLE_PAID_TESTS —
         # it runs wherever the Codex CLI is available. Mirrors production, where daily history
-        # parsing uses gpt-5.6-luna, and drives the nested DailySummaries schema through Codex.
+        # parsing uses gpt-6-luna, and drives the nested DailySummaries schema through Codex.
         if shutil.which("codex"):
             self.summary_profiles.append(
                 Profile(
                     name="codex_mini",
                     client=CodexClient(
                         telemetry=self.telemetry,
-                        model_name="gpt-5.6-luna",
-                        model_reasoning_effort="xhigh",
+                        model_name="gpt-6-luna",
+                        model_reasoning_effort="high",
                     ),
                 )
             )

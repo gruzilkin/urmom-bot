@@ -3,7 +3,14 @@ from openai_client import OpenAIClient
 
 
 class GrokClient(OpenAIClient):
-    def __init__(self, api_key: str, model_name: str, telemetry: Telemetry, temperature: float = 0.1):
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str,
+        telemetry: Telemetry,
+        temperature: float = 0.1,
+        reasoning_effort: str | None = None,
+    ):
         super().__init__(
             api_key=api_key,
             model_name=model_name,
@@ -11,4 +18,5 @@ class GrokClient(OpenAIClient):
             base_url="https://api.x.ai/v1",
             service="GROK",
             temperature=temperature,
+            reasoning_effort=reasoning_effort,
         )

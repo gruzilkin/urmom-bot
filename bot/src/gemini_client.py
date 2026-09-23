@@ -9,7 +9,15 @@ import logging
 from typing import TypeVar
 
 from google import genai
-from google.genai.types import Content, Part, GenerateContentConfig, GenerateContentResponse, Tool, GoogleSearch
+from google.genai.types import (
+    Content,
+    GenerateContentConfig,
+    GenerateContentResponse,
+    GoogleSearch,
+    Part,
+    ThinkingConfig,
+    Tool,
+)
 from opentelemetry.trace import SpanKind
 from pydantic import BaseModel
 
@@ -22,7 +30,15 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class GeminiClient(AIClient):
-    def __init__(self, api_key: str, model_name: str, telemetry: Telemetry, temperature: float = 0.1, client=None):
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str,
+        telemetry: Telemetry,
+        temperature: float = 0.1,
+        thinking_level: str | None = None,
+        client=None,
+    ):
         if not model_name:
             raise ValueError("Gemini model name not provided!")
         if not client and not api_key:
@@ -30,6 +46,7 @@ class GeminiClient(AIClient):
 
         self.client = client or genai.Client(api_key=api_key)
         self.temperature = temperature
+        self.thinking_level = thinking_level
         self.model_name = model_name
         self.telemetry = telemetry
 
@@ -99,6 +116,8 @@ class GeminiClient(AIClient):
             # Use provided temperature or fallback to instance temperature
             actual_temperature = temperature if temperature is not None else self.temperature
             config = GenerateContentConfig(temperature=actual_temperature, system_instruction=prompt)
+            if self.thinking_level:
+                config.thinking_config = ThinkingConfig(thinking_level=self.thinking_level)
 
             # Configure structured output if response_schema is provided
             if response_schema:

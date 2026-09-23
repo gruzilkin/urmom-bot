@@ -228,10 +228,13 @@ class ScheduleTaskResolution(BaseModel):
     )
 
 
+RouteName = Literal["FAMOUS", "GENERAL", "FACT", "SCHEDULE", "NONE", "NOTSURE"]
+
+
 class RouteSelection(BaseModel):
     """Schema for AI router route selection (first tier)."""
 
-    route: Literal["FAMOUS", "GENERAL", "FACT", "SCHEDULE", "NONE", "NOTSURE"] = Field(description="Route decision")
+    route: RouteName = Field(description="Route decision")
     reason: str = Field(description="Brief reason for choosing this route")
 
 
