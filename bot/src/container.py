@@ -6,6 +6,7 @@ from gemini_client import GeminiClient
 from gemma_client import GemmaClient
 from grok_client import GrokClient
 from codex_client import CodexClient
+from claude_client import ClaudeClient
 from deepseek_client import DeepSeekClient
 from country_resolver import CountryResolver
 from open_telemetry import Telemetry
@@ -109,16 +110,23 @@ class Container:
             model_name="gpt-6-astra",
             model_reasoning_effort="low",
         )
-        self.codex_luna = CodexClient(
-            telemetry=self.telemetry,
-            model_name="gpt-6-luna",
-            model_reasoning_effort="high",
-        )
         self.codex_luna_offline = CodexClient(
             telemetry=self.telemetry,
             model_name="gpt-6-luna",
             model_reasoning_effort="high",
             enable_web_search=False,
+        )
+
+        self.claude = ClaudeClient(
+            telemetry=self.telemetry,
+            model_name="claude-opus-5-5",
+            timeout_seconds=300,
+        )
+        self.claude_haiku_offline = ClaudeClient(
+            telemetry=self.telemetry,
+            model_name="claude-haiku-4-5",
+            enable_web_search=False,
+            timeout_seconds=60,
         )
 
         self.deepseek = DeepSeekClient(
@@ -134,13 +142,20 @@ class Container:
         self.retrying_grok = RetryAIClient(self.grok, telemetry=self.telemetry, max_tries=3)
 
         self.lightweight_fallback = CompositeAIClient(
-            [self.gemma, self.codex_luna_offline, self.retrying_gemma, self.deepseek, self.retrying_grok],
+            [
+                self.gemma,
+                self.codex_luna_offline,
+                self.claude_haiku_offline,
+                self.retrying_gemma,
+                self.deepseek,
+                self.retrying_grok,
+            ],
             telemetry=self.telemetry,
         )
 
         # NOTSURE from the LLM route selector falls through to the next client; inert for other schemas.
         self.latency_critical = CompositeAIClient(
-            [self.codex_luna_offline, self.deepseek, self.retrying_grok],
+            [self.codex_luna_offline, self.claude_haiku_offline, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
@@ -151,13 +166,13 @@ class Container:
             shuffle=True,
         )
 
-        self.luna_offline_deepseek_flash_fallback = CompositeAIClient(
-            [self.codex_luna_offline, self.deepseek, self.gemini_flash],
+        self.luna_haiku_deepseek_flash_fallback = CompositeAIClient(
+            [self.codex_luna_offline, self.claude_haiku_offline, self.deepseek, self.gemini_flash],
             telemetry=self.telemetry,
         )
 
-        self.codex_gemini_grok = CompositeAIClient(
-            [self.codex, self.gemini_flash, self.retrying_grok],
+        self.claude_codex_gemini_grok = CompositeAIClient(
+            [self.claude, self.codex, self.gemini_flash, self.retrying_grok],
             telemetry=self.telemetry,
         )
 
@@ -168,7 +183,7 @@ class Container:
 
         # A summary still over the Discord limit is treated like a failure and falls through.
         self.summarizer_fallback = CompositeAIClient(
-            [self.codex_luna_offline, self.codex, self.gemma, self.retrying_grok],
+            [self.codex_luna_offline, self.claude_haiku_offline, self.codex, self.gemma, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=is_unusable_summary,
         )
@@ -227,7 +242,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            summary_client=self.luna_offline_deepseek_flash_fallback,
+            summary_client=self.luna_haiku_deepseek_flash_fallback,
             alias_client=self.lightweight_fallback,
             merge_client=self.lightweight_fallback,
             user_resolver=self.user_resolver,
@@ -318,7 +333,7 @@ class Container:
         )
 
         self.devils_advocate_generator = DevilsAdvocateGenerator(
-            ai_client=self.codex_gemini_grok,
+            ai_client=self.claude_codex_gemini_grok,
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
@@ -357,15 +372,15 @@ class Container:
             "gemini_flash": self.gemini_flash,
             "grok": self.retrying_grok,
             "gemma": self.retrying_gemma,
+            "claude": self.claude,
             "codex": self.codex,
-            "codex_light": self.codex_luna,
             "deepseek": self.deepseek,
         }
 
         if preferred_backend not in client_map:
             raise ValueError(f"Unknown ai_backend: {preferred_backend}")
 
-        fallback_order = ["codex", "deepseek", "gemini_flash", "grok"]
+        fallback_order = ["claude", "codex", "deepseek", "gemini_flash", "grok"]
         ordered_labels = [preferred_backend] + [label for label in fallback_order if label != preferred_backend]
 
         chain = [client_map[label] for label in ordered_labels]

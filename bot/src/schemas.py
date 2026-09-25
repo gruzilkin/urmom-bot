@@ -37,7 +37,7 @@ class FamousParams(BaseModel):
 class GeneralParams(BaseModel):
     """Parameters for general AI query requests."""
 
-    ai_backend: Literal["gemini_flash", "grok", "gemma", "codex", "codex_light", "deepseek"]
+    ai_backend: Literal["claude", "gemini_flash", "grok", "gemma", "codex", "deepseek"]
     reason: str | None = Field(default=None, description="Why this ai_backend was chosen")
     temperature: float = Field(ge=0.0, le=1.0)
     cleaned_query: str = Field(description="User's request with 'BOT' mentions and routing instructions removed")
