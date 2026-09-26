@@ -229,7 +229,8 @@ class ScheduleTaskResolution(BaseModel):
     )
 
 
-RouteName = Literal["FAMOUS", "GENERAL", "FACT", "SCHEDULE", "NONE", "NOTSURE"]
+DefiniteRouteName = Literal["FAMOUS", "GENERAL", "FACT", "SCHEDULE", "NONE"]
+RouteName = Literal[DefiniteRouteName, "NOTSURE"]
 
 
 class RouteSelection(BaseModel):
