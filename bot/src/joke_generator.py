@@ -106,6 +106,9 @@ then pick whichever joke format below produces the funniest
 result. All formats are equally valid — always go with the
 joke that lands hardest regardless of format.
 Freestyle is a last resort for when nothing else fits.
+Shorter is funnier: prefer the most compact joke that lands.
+Never combine several parts of the message into one joke —
+pick the single best hook and ignore the rest.
 
 <formats>
 <format name="ur-mom-classic">
@@ -118,6 +121,7 @@ Take the trait in a surprising direction: a fat joke that becomes
 a time joke, a stupid joke that becomes wordplay.
 Use concrete nouns, brand names, and vivid imagery
 in the consequence.
+Make it as lewd and preposterous as possible.
 </format>
 <format name="ur-mom-twist">
 Take the original message and replace exactly one noun phrase
@@ -125,6 +129,8 @@ with "ur mom" with minimal other changes.
 If the predicate has a sexually ambiguous word, replace
 the subject. If the verb suggests physical action,
 replace the object.
+If the message is long, pick the single clause with the best
+double meaning, apply the substitution to it, and drop the rest.
 When the message is a question, consider answering it with
 a declarative statement where "ur mom" is the answer,
 echoing the original wording.
@@ -158,10 +164,8 @@ non-sequitur, etc.
 </formats>
 
 Pick ONE format, commit to it, and deliver the joke.{russian_note}
-Use wordplay, double meanings, and vivid imagery for maximum effect.
-Focus on the message itself, but weave in references from
-conversation context or user memories when it adds to the humor.
-Make it as lewd and preposterous as possible.
+Focus on the message itself. Reference conversation context
+or user memories only if the joke stays short.
 Make sure that the joke is grammatically correct.
 
 Reply in {language_name}. Return only the joke, no meta commentary or explanation.
