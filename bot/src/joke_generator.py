@@ -109,6 +109,8 @@ Freestyle is a last resort for when nothing else fits.
 Shorter is funnier: prefer the most compact joke that lands.
 Never combine several parts of the message into one joke —
 pick the single best hook and ignore the rest.
+Favor dirty hooks: crude, scatological, or bodily words
+in the message become funnier once they are about ur mom.
 
 <formats>
 <format name="ur-mom-classic">
@@ -129,8 +131,9 @@ with "ur mom" with minimal other changes.
 If the predicate has a sexually ambiguous word, replace
 the subject. If the verb suggests physical action,
 replace the object.
-If the message is long, pick the single clause with the best
-double meaning, apply the substitution to it, and drop the rest.
+If the message is long, pick the single clause that is dirtiest
+or has the best double meaning, apply the substitution to it,
+and drop the rest.
 When the message is a question, consider answering it with
 a declarative statement where "ur mom" is the answer,
 echoing the original wording.
