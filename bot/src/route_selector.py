@@ -2,8 +2,9 @@
 
 `AiRouter.route_request` delegates the "which route?" decision to a `RouteSelector`. Two
 implementations exist: `LlmRouteSelector` asks an `AIClient` with the classic prompt, and
-`JevRouteSelector` asks Jev a single choice question. `CompositeRouteSelector` chains them, falling
-through whenever a selector answers NOTSURE or fails, mirroring `CompositeAIClient`.
+`JevRouteSelector` asks Jev a single choice question over the definite routes, answering NOTSURE when
+the top probability is too low. `CompositeRouteSelector` chains them, falling through whenever a
+selector answers NOTSURE or fails, mirroring `CompositeAIClient`.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from general_query_generator import GeneralQueryGenerator
 from jev_client import Choice, JevClient, choice
 from open_telemetry import Telemetry
 from schedule_handler import ScheduleHandler
-from schemas import RouteName, RouteSelection
+from schemas import DefiniteRouteName, RouteName, RouteSelection
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +50,8 @@ def build_route_descriptions(
     fact: FactHandler,
     schedule: ScheduleHandler,
 ) -> dict[str, str]:
-    """Collect one description per selectable route, keyed by route name. NOTSURE is included so
-    both the LLM prompt and the Jev question offer the same escape valve."""
+    """Collect one description per selectable route, keyed by route name, including NOTSURE for the
+    LLM prompt."""
     return {
         "FAMOUS": famous.get_route_description().strip(),
         "GENERAL": general.get_route_description().strip(),
@@ -142,27 +143,40 @@ JEV_ROUTE_INSTRUCTIONS = (
     "Decide how to route the user message in `message`. The message can be in any language; route by "
     "semantic meaning and intent, not keywords. If `conversation_context` is present, route only the "
     "message in `message` and use the earlier conversation to resolve references like 'this', 'that', "
-    "'it'. Any message referencing child sexual abuse is NONE. Choose NOTSURE when the intent is "
-    "ambiguous or could fit multiple routes."
+    "'it'. Any message referencing child sexual abuse is NONE."
 )
 
 
 class JevRouteSelector:
-    """Route selection by a single Jev choice question; the highest-probability route wins."""
+    """Route selection by a single Jev choice question over the definite routes; the highest-probability
+    route wins unless it falls below `min_probability`, in which case the answer is NOTSURE."""
 
-    def __init__(self, jev_client: JevClient, route_descriptions: dict[str, str], telemetry: Telemetry) -> None:
+    def __init__(
+        self,
+        jev_client: JevClient,
+        route_descriptions: dict[str, str],
+        telemetry: Telemetry,
+        min_probability: float = 0.9,
+    ) -> None:
         self.jev_client = jev_client
         self.telemetry = telemetry
+        self.min_probability = min_probability
         self.questions: type[BaseModel] = create_model(
             "RouteDecision",
             route=(
-                Choice[RouteName],
-                choice(instructions=JEV_ROUTE_INSTRUCTIONS, criteria=dict(route_descriptions)),
+                Choice[DefiniteRouteName],
+                choice(
+                    instructions=JEV_ROUTE_INSTRUCTIONS,
+                    criteria={route: route_descriptions[route] for route in get_args(DefiniteRouteName)},
+                ),
             ),
         )
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.jev_client!r})"
+
+    def resolve(self, answer: Choice) -> RouteName:
+        return answer.choice if answer.top_probability >= self.min_probability else "NOTSURE"
 
     async def select(self, message: str, conversation_context: str) -> RouteSelection:
         async with self.telemetry.async_create_span("select_route") as span:
@@ -173,15 +187,16 @@ class JevRouteSelector:
 
             decision = await self.jev_client.ask(state=state, questions=self.questions)
             answer: Choice = decision.route
+            route = self.resolve(answer)
 
             ranked = sorted(answer.probabilities.items(), key=lambda item: item[1], reverse=True)
-            reason = "jev " + ", ".join(f"{route}={probability:.2f}" for route, probability in ranked)
+            reason = "jev " + ", ".join(f"{name}={probability:.2f}" for name, probability in ranked)
 
-            span.set_attribute("route", answer.choice)
+            span.set_attribute("route", route)
             span.set_attribute("confidence", answer.confidence)
             span.set_attribute("top_probability", answer.top_probability)
-            logger.info(f"Jev route selection: {answer.choice} ({reason})")
-            return RouteSelection(route=answer.choice, reason=reason)
+            logger.info(f"Jev route selection: {route} ({reason})")
+            return RouteSelection(route=route, reason=reason)
 
 
 class CompositeRouteSelector:

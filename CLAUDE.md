@@ -42,7 +42,7 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 - **app.py**: Main Discord bot entry point with event handlers
 - **container.py**: Dependency injection container for all services (see `bot/documents/di_refactor.md`)
 - **ai_router.py**: Routes user messages to appropriate AI handlers (FAMOUS, GENERAL, FACT, SCHEDULE, NONE); tier-1 route selection is delegated to a `RouteSelector`
-- **route_selector.py**: `LlmRouteSelector` (prompted LLM, may answer NOTSURE), `JevRouteSelector` (one Jev choice question over the same routes incl. NOTSURE; highest probability wins), `CompositeRouteSelector` (falls through on NOTSURE or error)
+- **route_selector.py**: `LlmRouteSelector` (prompted LLM, may answer NOTSURE), `JevRouteSelector` (one Jev choice question over the definite routes; highest probability wins, NOTSURE when it is below `min_probability`), `CompositeRouteSelector` (falls through on NOTSURE or error)
 - **store.py**: PostgreSQL database interactions and guild configuration with LRU caching
 - **schemas.py**: Pydantic schemas for structured AI responses (see `bot/documents/structured_output.md`)
 
@@ -51,7 +51,7 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 - **gemini_client.py**: Google Gemini Flash (fast, general-purpose, grounding)
 - **gemma_client.py**: Google Gemma (structured output, language tasks)
 - **grok_client.py**: xAI Grok (creative tasks, jokes, celebrity impersonation)
-- **claude_client.py**: Anthropic Claude (fallback option)
+- **claude_client.py**: Anthropic Claude via the Claude Code CLI
 - **jev_client.py**: TypeSafe AI Jev "System One" decision model (not an `AIClient`). Questions are pydantic models with `Choice[...]`/`Noul`/`Score` fields declared via `choice()`/`noul()`/`score()`; `JevClient.ask(state, Model)` returns the model populated with probability-bearing answers. Only created when `JEV_API_KEY` is set
 - **ai_client_wrappers.py**: `RetryAIClient` and `CompositeAIClient` for reliability
   - `CompositeAIClient` supports `shuffle=True` for randomized client order

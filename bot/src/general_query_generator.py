@@ -89,15 +89,12 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         Extract parameters for a general AI query request.
         
         ai_backend selection:
-        * codex_light: DEFAULT. Straightforward requests with a
-          direct answer: fact lookup, fetching news and current
-          events, internet search, linguistic questions (word
-          meaning, translation, usage), brief explanations.
-        * codex: Requests that need thinking: opinions and
-          judgement calls, analysis or interpretation of events,
-          in-depth programming questions, math and calculations,
-          verification across several sources, long-form research
-          or detailed technical analysis.
+        * claude: DEFAULT for general queries: fact lookup, news
+          and current events, internet search, linguistic questions,
+          explanations, opinions and analysis, programming, math,
+          research and detailed technical analysis.
+        * codex: Do not select unless explicitly requested
+          ("ask codex/chatgpt/openai/astra to...")
         * gemini_flash: Creative writing, songs, poems,
           artistic content, extensive internet search
         * grok: Uncensored content, wild requests, crazy talk
@@ -105,7 +102,8 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
           no internet access
         * gemma: Do not select unless explicitly requested
         * Handle explicit requests: "ask grok about...",
-          "use gemini flash for...", "ask deepseek to..."
+          "use gemini flash for...", "ask chatgpt to...",
+          "ask deepseek to..."
         
         temperature selection:
         * Use a low temperature (<= 0.3) for factual data,

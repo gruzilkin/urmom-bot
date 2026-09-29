@@ -5,7 +5,8 @@ from typing import get_args
 from unittest.mock import AsyncMock, Mock
 
 from null_telemetry import NullTelemetry
-from route_selector import CompositeRouteSelector, LlmRouteSelector
+from jev_client import Choice
+from route_selector import CompositeRouteSelector, JevRouteSelector, LlmRouteSelector
 from schemas import RouteName, RouteSelection
 
 
@@ -16,6 +17,27 @@ class TestLlmRouteSelectorPrompt(unittest.TestCase):
 
         for route in get_args(RouteName):
             self.assertIn(f'<route route="{route}">\n{route}: description', prompt)
+
+
+class TestJevRouteSelector(unittest.IsolatedAsyncioTestCase):
+    def _selector(self, probabilities: dict[str, float]) -> JevRouteSelector:
+        descriptions = {route: f"{route}: description" for route in get_args(RouteName)}
+        top = max(probabilities, key=probabilities.get)
+        answer = Choice(choice=top, probabilities=probabilities, confidence=0.5)
+        jev_client = Mock()
+        jev_client.ask = AsyncMock(return_value=Mock(route=answer))
+        return JevRouteSelector(jev_client, descriptions, NullTelemetry(), min_probability=0.8)
+
+    async def test_confident_answer_is_returned(self):
+        selection = await self._selector({"SCHEDULE": 0.9, "GENERAL": 0.1}).select("m", "")
+
+        self.assertEqual(selection.route, "SCHEDULE")
+
+    async def test_low_top_probability_is_notsure(self):
+        selection = await self._selector({"GENERAL": 0.61, "SCHEDULE": 0.39}).select("m", "")
+
+        self.assertEqual(selection.route, "NOTSURE")
+        self.assertEqual(selection.reason, "jev GENERAL=0.61, SCHEDULE=0.39")
 
 
 class TestCompositeRouteSelector(unittest.IsolatedAsyncioTestCase):
