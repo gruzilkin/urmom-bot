@@ -100,11 +100,14 @@ class ResponseSummarizer:
         """
         # Create system prompt with instructions only
         prompt = (
-            f"Summarize the following content so the response stays comfortably under"
-            f" {target_length} characters while preserving the key points, conclusions,"
-            " tone, and any Markdown formatting that still matters."
-            " Trim repeated or low-value details, keep the original language,"
-            " and avoid meta-commentary about the summarization.\n\n"
+            f"Shorten the following message so it stays comfortably under {target_length} characters."
+            "\n\nPriorities, in order:"
+            "\n1. Keep the language exactly as it is. Shorten, never translate."
+            "\n2. Stay under the length limit."
+            "\n3. Keep the main points, conclusions, and tone. Drop lower-priority details"
+            " as needed to fit; losing detail is acceptable."
+            "\n\nKeep Markdown formatting that still matters. Output only the shortened message,"
+            " with no commentary about the shortening.\n\n"
             f"{DISCORD_FORMATTING_INSTRUCTIONS}"
         )
 
