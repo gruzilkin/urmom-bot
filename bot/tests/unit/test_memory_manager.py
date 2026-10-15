@@ -428,7 +428,7 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         prompt = call_args[1]["message"]  # keyword argument
 
         self.assertIn("<message>", prompt)
-        self.assertIn("<timestamp>1905-03-03 09:15:00+00:00</timestamp>", prompt)
+        self.assertIn("<timestamp>1905-03-03 09:15:00</timestamp>", prompt)
         self.assertIn(f"<member_id>{einstein_id}</member_id>", prompt)
         self.assertIn("<member_name>Einstein</member_name>", prompt)
 

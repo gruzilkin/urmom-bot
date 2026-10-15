@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, date, timezone
 
 from ai_client import AIClient, BlockedException
-from conversation_formatter import ConversationFormatter
+from conversation_formatter import CONVERSATION_STRUCTURE_INSTRUCTIONS, ConversationFormatter
 from conversation_graph import ConversationMessage
 from message_node import MessageNode
 from open_telemetry import Telemetry
@@ -30,8 +30,9 @@ Guidelines:
 - Provide unified context with rich recent memory for personalized conversation
 """
 
-BATCH_SUMMARIZE_DAILY_PROMPT = """
-Analyze the provided chat messages and create concise daily summaries for each active user.
+BATCH_SUMMARIZE_DAILY_PROMPT = f"""
+Analyze the messages in <conversation_history> and create concise daily summaries
+for each member listed in <target_members>.
 
 For each user, focus on:
 - Notable events or experiences they mentioned
@@ -52,6 +53,8 @@ Embeddings in Messages:
 
 Keep each summary in the third person.
 Return a list of summaries, one for each active user.
+
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
 """
 
 EXTRACT_ALIASES_PROMPT = """
@@ -332,7 +335,7 @@ class MemoryManager:
                     message_id=msg.message_id,
                     author_id=msg.user_id,
                     content=msg.message_text,
-                    timestamp=str(msg.timestamp),
+                    timestamp=msg.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
                     mentioned_user_ids=[],
                     reply_to_id=msg.reply_to_id,
                 )
@@ -354,17 +357,16 @@ class MemoryManager:
                     f"<member><member_id>{user_id}</member_id><member_name>{user_name}</member_name>{also_known_as}</member>"
                 )
 
-            structured_prompt = f"""{BATCH_SUMMARIZE_DAILY_PROMPT}
-
-<target_members>
+            summary_input = f"""<target_members>
 {chr(10).join(user_list)}
 </target_members>
-<messages>
-{formatted_messages}
-</messages>"""
+{formatted_messages}"""
 
             response = await self._summary_client.generate_content(
-                message=structured_prompt, response_schema=DailySummaries, temperature=0
+                message=summary_input,
+                prompt=BATCH_SUMMARIZE_DAILY_PROMPT,
+                response_schema=DailySummaries,
+                temperature=0,
             )
 
             # Convert list of UserSummary objects to dict[int, str]
