@@ -5,7 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from ai_client import AIClient
-from conversation_formatter import ConversationFormatter
+from conversation_formatter import ConversationFormatter, format_request_message_xml, format_request_xml
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from route_selector import RouteSelector
@@ -81,13 +81,16 @@ class AiRouter:
             logger.info(f"Extracted parameters for {route}: {params}")
             return params
 
-    async def extract_general_params(self, message: str, conversation_context: str = "") -> GeneralParams:
+    async def extract_general_params(
+        self, message: str, author_id: int, conversation_context: str = ""
+    ) -> GeneralParams:
         """Extract GENERAL-route parameters without route selection.
 
         For flows that must never be routed elsewhere — e.g. scheduled task firings,
         which would otherwise be able to create new scheduled tasks."""
+        request_xml = format_request_xml(author_id=author_id, content=message)
         params, language_code = await asyncio.gather(
-            self._extract_parameters("GENERAL", message, conversation_context),
+            self._extract_parameters("GENERAL", request_xml, conversation_context),
             self.language_detector.detect_language(message),
         )
         params.language_code = language_code
@@ -96,12 +99,16 @@ class AiRouter:
 
     async def route_request(
         self,
-        message: str,
+        request: ConversationMessage,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
         guild_id: int,
     ) -> tuple[str, FamousParams | GeneralParams | FactParams | ScheduleParams | None]:
         """Route a message using 2-tier approach: route selection (delegated to the RouteSelector),
-        language detection, then parameter extraction."""
+        language detection, then parameter extraction.
+
+        `request` is the message being routed, with the bot mention already replaced by 'BOT'."""
+        message = request.content
+        request_xml = format_request_message_xml(request)
         async with self.telemetry.async_create_span("route_request") as span:
             span.set_attribute("message", message)
 
@@ -120,7 +127,7 @@ class AiRouter:
             lang_task = asyncio.create_task(self.language_detector.detect_language(message))
 
             # Tier 1: Route selection (Jev and/or LLM, see route_selector.py)
-            route_selection = await self.route_selector.select(message, conversation_context)
+            route_selection = await self.route_selector.select(request_xml, conversation_context)
 
             logger.info(f"Final route selection: {route_selection.route}, Reason: {route_selection.reason}")
             span.set_attribute("route", route_selection.route)
@@ -128,7 +135,7 @@ class AiRouter:
 
             # Tier 2: Parameter extraction (starts immediately, doesn't wait for language detection)
             try:
-                params = await self._extract_parameters(route_selection.route, message, conversation_context)
+                params = await self._extract_parameters(route_selection.route, request_xml, conversation_context)
             except Exception:
                 language_code = await lang_task
                 self.telemetry.metrics.route_selections_counter.add(

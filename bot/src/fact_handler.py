@@ -1,5 +1,6 @@
 import logging
 from ai_client import AIClient
+from conversation_formatter import CONVERSATION_STRUCTURE_INSTRUCTIONS
 from open_telemetry import Telemetry
 from schemas import FactParams, MemoryUpdate, MemoryForget
 from store import Store
@@ -51,8 +52,10 @@ class FactHandler:
         if conversation_context:
             context_section = f"""
 <conversation_context>
-Extract parameters from the LAST message.
-Use earlier messages to resolve references like "this", "that", "it" in the last message.
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
+
+Extract parameters from the <request> message.
+Use earlier messages to resolve references like "this", "that", "it" in the <request>.
 
 {conversation_context}
 </conversation_context>

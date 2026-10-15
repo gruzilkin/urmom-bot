@@ -5,7 +5,12 @@ import nextcord
 
 from memory_manager import MemoryManager
 from conversation_graph import ConversationMessage
-from conversation_formatter import ConversationFormatter
+from conversation_formatter import (
+    CONVERSATION_STRUCTURE_INSTRUCTIONS,
+    ConversationFormatter,
+    format_request_message_xml,
+    format_request_xml,
+)
 from open_telemetry import Telemetry
 from research_handoff import (
     HANDOFF_CONTEXT_INSTRUCTIONS,
@@ -77,8 +82,9 @@ class GeneralQueryGenerator:
         if conversation_context:
             context_section = f"""
 <conversation_context>
-Extract parameters from the LAST message.
-Use earlier messages and memories to resolve references like "this", "that", "it", "he", "she", or names in the last message.
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
+
+Extract parameters from the <request> message.
 If a specific ai_backend was explicitly requested earlier, reuse it for follow-up questions.
 
 {conversation_context}
@@ -133,11 +139,10 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
           chat members. Copy them verbatim into cleaned_query. Never
           replace a mention with a pronoun, name, or description.
           Only the 'BOT' placeholder is removed.
-        * Rule 6: When the conversation context makes it clear which
-          member a pronoun (he, she, they, him, her, them) or a name
-          or nickname refers to, replace it with that member's
-          mention `<@member_id>`. If it cannot be resolved to one
-          specific member, leave it as is.
+        * Rule 6: Keep references exactly as written: pronouns (he,
+          she, they, him, her, them), names, nicknames, and words like
+          "this", "that", "it". Do not resolve them into mentions,
+          names, or other content.
         * Examples:
           - "BOT, what is the capital of France?"
             → "what is the capital of France?"
@@ -156,9 +161,8 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
           - "with high creativity, write a story" → "write a story"
           - "BOT, ask <@123456789> if he's coming to the office"
             → "ask <@123456789> if he's coming to the office"
-          - "BOT, ask him if he's coming", where the context shows
-            "him" is member 987654321
-            → "ask <@987654321> if he's coming"
+          - "BOT, ask him if he's coming"
+            → "ask him if he's coming"
         {context_section}"""
 
     def _extract_unique_user_ids(self, conversation) -> set[int]:
@@ -177,6 +181,7 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         bot_user: nextcord.User,
         requesting_user_id: int,
         extra_user_ids: set[int] | None = None,
+        request_message: ConversationMessage | None = None,
     ) -> ProcessorResult | None:
         """
         Handle a general query request using the provided parameters.
@@ -196,6 +201,9 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
                 memories should be loaded alongside the conversation
                 participants. Used by scheduled tasks firing into low-traffic
                 channels so the bot can reference recent guild activity.
+            request_message (ConversationMessage | None): The live Discord
+                message being answered; supplies its id, reply_to and
+                timestamp for the <request> block. None for scheduled tasks.
 
         Returns:
             ProcessorResult | None: The Discord-ready reply text plus an
@@ -225,10 +233,10 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
             conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation, handoffs)
 
             # Format the user message in the same XML structure as conversation_history
-            user_message_xml = f"""<request>
-<member_id>{requesting_user_id}</member_id>
-<content>{params.cleaned_query}</content>
-</request>"""
+            if request_message is not None:
+                user_message_xml = format_request_message_xml(request_message, content=params.cleaned_query)
+            else:
+                user_message_xml = format_request_xml(author_id=requesting_user_id, content=params.cleaned_query)
 
             prompt = f"""<system_instructions>
 You are a Discord bot participating in an ongoing Discord conversation.
@@ -246,6 +254,8 @@ Your Discord Bot Identity:
 - Build naturally on your previous responses when relevant
   to the current discussion
 
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
+
 Message Attribution - CRITICAL:
 - The <request> block contains the message you must respond to,
   with the author clearly identified
@@ -256,7 +266,7 @@ Message Attribution - CRITICAL:
 - If you cannot find attribution for a statement in the
   conversation history or memories, do not claim anyone
   specific said it
-- Pay attention to reply relationships (reply_to_id) to
+- Pay attention to reply relationships (<reply_to>) to
   understand conversational threads and who is responding
   to whom
 

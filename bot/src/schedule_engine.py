@@ -151,7 +151,9 @@ class ScheduleEngine:
                     return
 
             try:
-                params: GeneralParams = await self.ai_router.extract_general_params(task.prompt)
+                params: GeneralParams = await self.ai_router.extract_general_params(
+                    task.prompt, author_id=task.creator_user_id
+                )
 
                 span.set_attribute("ai_backend", params.ai_backend)
                 span.set_attribute("temperature", params.temperature)

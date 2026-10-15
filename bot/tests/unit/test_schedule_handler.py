@@ -16,6 +16,7 @@ from schemas import (
     ScheduleTaskResolution,
 )
 from store import GuildConfig, ScheduledTask, Store
+from request_helpers import make_request
 
 
 def _make_task(
@@ -128,7 +129,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="schedule a weekly summary every Monday 9am",
+            request=make_request("schedule a weekly summary every Monday 9am"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -147,7 +148,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="gibberish",
+            request=make_request("gibberish"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -168,7 +169,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="schedule",
+            request=make_request("schedule"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -189,7 +190,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="schedule",
+            request=make_request("schedule"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -204,7 +205,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="list", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="what's scheduled?",
+            request=make_request("what's scheduled?"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -221,7 +222,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="list", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="what's scheduled?",
+            request=make_request("what's scheduled?"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -239,7 +240,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="delete task 5",
+            request=make_request("delete task 5"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -255,7 +256,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="delete the foo",
+            request=make_request("delete the foo"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -272,7 +273,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="delete task 999",
+            request=make_request("delete task 999"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -291,7 +292,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="run task 5 now",
+            request=make_request("run task 5 now"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -321,7 +322,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="change task 5's prompt to new prompt",
+            request=make_request("change task 5's prompt to new prompt"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -358,7 +359,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         await self.handler.handle_request(
             params,
-            message="change task 5's prompt to new prompt",
+            request=make_request("change task 5's prompt to new prompt"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -387,7 +388,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         await self.handler.handle_request(
             params,
-            message="make it weekly on Mondays",
+            request=make_request("make it weekly on Mondays"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -415,7 +416,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="change task 8's prompt to new prompt",
+            request=make_request("change task 8's prompt to new prompt"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -434,7 +435,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="edit the foo",
+            request=make_request("edit the foo"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -509,7 +510,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="ambiguous request",
+            request=make_request("ambiguous request"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -532,7 +533,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="schedule",
+            request=make_request("schedule"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -546,7 +547,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="edit task 5",
+            request=make_request("edit task 5"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -561,7 +562,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="edit something",
+            request=make_request("edit something"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -585,7 +586,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="edit task 999",
+            request=make_request("edit task 999"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -608,7 +609,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="edit task 5",
+            request=make_request("edit task 5"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -631,7 +632,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="edit task 5",
+            request=make_request("edit task 5"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -655,7 +656,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="edit task 5",
+            request=make_request("edit task 5"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -669,7 +670,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="delete task 5",
+            request=make_request("delete task 5"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -682,7 +683,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="run task 5 now",
+            request=make_request("run task 5 now"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -696,7 +697,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="run the foo now",
+            request=make_request("run the foo now"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -710,7 +711,7 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="run task 999 now",
+            request=make_request("run task 999 now"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,

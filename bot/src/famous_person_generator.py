@@ -1,7 +1,12 @@
 import logging
 
 from ai_client import AIClient
-from conversation_formatter import ConversationFormatter
+from conversation_formatter import (
+    CONVERSATION_STRUCTURE_INSTRUCTIONS,
+    ConversationFormatter,
+    format_request_message_xml,
+)
+from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from schemas import FamousParams
 from response_summarizer import ResponseSummarizer
@@ -48,8 +53,10 @@ class FamousPersonGenerator:
         if conversation_context:
             context_section = f"""
 <conversation_context>
-Extract parameters from the LAST message.
-Use earlier messages to resolve references like "he", "she", "they" to the actual person's name.
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
+
+Extract parameters from the <request> message.
+Use earlier messages to resolve references like "he", "she", "they" in the <request> to the actual person's name.
 
 {conversation_context}
 </conversation_context>
@@ -127,13 +134,13 @@ a famous person and reply with the person's name.
             return person_name
 
     async def generate_famous_person_response(
-        self, extracted_message: str, person: str, language_name: str, conversation_fetcher, guild_id: int
+        self, request: ConversationMessage, person: str, language_name: str, conversation_fetcher, guild_id: int
     ) -> str:
         """
         Generate a famous person response. Returns the response string.
 
         Args:
-            extracted_message (str): The user's message with bot mentions removed
+            request (ConversationMessage): The user's message with bot mentions removed
             person (str): The name of the famous person to impersonate
             conversation_fetcher: Parameterless async function that returns conversation history
             guild_id (int): The guild ID for user name resolution
@@ -143,7 +150,7 @@ a famous person and reply with the person's name.
         """
         async with self.telemetry.async_create_span("generate_famous_person_response") as span:
             span.set_attribute("person", person)
-            span.set_attribute("extracted_message", extracted_message)
+            span.set_attribute("extracted_message", request.content)
 
             conversation = await conversation_fetcher()
 
@@ -155,7 +162,7 @@ a famous person and reply with the person's name.
             Stay in character completely and respond directly as {person} would.
             Keep your response length similar to the average message length in the conversation.
             Feel free to tease and poke fun at the message authors, especially Florent.
-            The user specifically asked: '{extracted_message}'
+            Respond to the user's message in the <request> block.
             Your response should be in the form of direct speech - exactly as if {person} is speaking directly, \
 without quotation marks or attributions.
             
@@ -164,14 +171,16 @@ a different language or translation.**
             
             Keep responses under 2000 characters due to Discord's message limit \
 but no need to report on the length of the response.
-            
+
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
+
 {conversation_block}"""
 
             logger.info(f"Generating response as {person}")
             logger.info(f"Conversation: {conversation}")
 
             response = await self.ai_client.generate_content(
-                message="",  # The conversation is included in the prompt
+                message=format_request_message_xml(request),
                 prompt=prompt,
             )
 
@@ -186,14 +195,14 @@ but no need to report on the length of the response.
             return processed_response
 
     async def handle_request(
-        self, params: FamousParams, extracted_message: str, conversation_fetcher, guild_id: int
+        self, params: FamousParams, request: ConversationMessage, conversation_fetcher, guild_id: int
     ) -> str:
         """
         Handle a famous person request using the provided parameters.
 
         Args:
             params (FamousParams): Parameters containing the famous person's name and language
-            extracted_message (str): The user's message with bot mentions removed
+            request (ConversationMessage): The user's message with bot mentions removed
             conversation_fetcher: Parameterless async function that returns conversation history
             guild_id (int): The guild ID for user name resolution
 
@@ -201,5 +210,5 @@ but no need to report on the length of the response.
             str: The response string ready to be sent by the caller
         """
         return await self.generate_famous_person_response(
-            extracted_message, params.famous_person, params.language_name, conversation_fetcher, guild_id
+            request, params.famous_person, params.language_name, conversation_fetcher, guild_id
         )

@@ -135,8 +135,9 @@ async def on_message(message: nextcord.Message):
             min_messages=5,
             max_messages=10,
         )
+        request_message = to_request_message(message, content=processed_message)
         route, params = await container.ai_router.route_request(
-            processed_message,
+            request_message,
             conversation_fetcher=router_conversation_fetcher,
             guild_id=message.guild.id,
         )
@@ -146,7 +147,7 @@ async def on_message(message: nextcord.Message):
             conversation_fetcher = create_conversation_fetcher(message)
 
             response = await container.famous_person_generator.handle_request(
-                params, processed_message, conversation_fetcher, message.guild.id
+                params, request_message, conversation_fetcher, message.guild.id
             )
             reply = await traced_reply(message, response)
 
@@ -154,7 +155,12 @@ async def on_message(message: nextcord.Message):
             conversation_fetcher = create_conversation_fetcher(message)
 
             result = await container.general_query_generator.handle_request(
-                params, conversation_fetcher, message.guild.id, bot.user, message.author.id
+                params,
+                conversation_fetcher,
+                message.guild.id,
+                bot.user,
+                message.author.id,
+                request_message=request_message,
             )
             if result is not None:
                 reply = await traced_reply(message, result.text)
@@ -168,7 +174,7 @@ async def on_message(message: nextcord.Message):
             conversation_fetcher = create_conversation_fetcher(message)
             response = await container.schedule_handler.handle_request(
                 params,
-                processed_message,
+                request_message,
                 message.guild.id,
                 message.channel.id,
                 message.author.id,
@@ -482,6 +488,21 @@ async def get_recent_conversation(
     return conversation
 
 
+def to_request_message(message: nextcord.Message, content: str | None = None) -> ConversationMessage:
+    """Describe the Discord message being handled for a prompt's <request> block.
+
+    `content` replaces the raw text, e.g. with the bot mention swapped for 'BOT'.
+    """
+    return ConversationMessage(
+        message_id=message.id,
+        author_id=message.author.id,
+        content=message.content if content is None else content,
+        timestamp=message.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        mentioned_user_ids=[user.id for user in message.mentions],
+        reply_to_id=message.reference.message_id if message.reference else None,
+    )
+
+
 def create_conversation_fetcher(
     message: nextcord.Message,
     min_messages: int = 10,
@@ -576,7 +597,7 @@ async def process_joke_request(payload: nextcord.RawReactionActionEvent, country
     else:
         fetch_conversation = create_conversation_fetcher(message)
         joke = await container.joke_generator.generate_joke(
-            message.content,
+            to_request_message(message),
             language,
             conversation_fetcher=fetch_conversation,
             guild_id=payload.guild_id,
@@ -615,7 +636,7 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
     fetch_conversation = create_conversation_fetcher(message)
 
     wisdom = await container.wisdom_generator.generate_wisdom(
-        trigger_message=message,
+        trigger_message=to_request_message(message),
         conversation_fetcher=fetch_conversation,
         guild_id=payload.guild_id,
     )
@@ -648,7 +669,7 @@ async def process_devils_advocate_request(payload: nextcord.RawReactionActionEve
     fetch_conversation = create_conversation_fetcher(message)
 
     counter_argument = await container.devils_advocate_generator.generate_counter_argument(
-        trigger_message=message,
+        trigger_message=to_request_message(message),
         conversation_fetcher=fetch_conversation,
         guild_id=payload.guild_id,
     )

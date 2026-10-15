@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 from wisdom_generator import WisdomGenerator
 from conversation_graph import ConversationMessage
 from null_telemetry import NullTelemetry
+from request_helpers import make_request
 from schemas import WisdomResponse
 
 
@@ -33,11 +34,7 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
 
         # Mock trigger message
-        self.mock_trigger_message = Mock()
-        self.mock_trigger_message.content = "Test message"
-        self.mock_trigger_message.author = Mock()
-        self.mock_trigger_message.author.id = 12345
-        self.mock_trigger_message.author.display_name = "TestUser"
+        self.mock_trigger_message = make_request("Test message", author_id=12345)
 
         self.generator = WisdomGenerator(
             ai_client=self.ai_client,

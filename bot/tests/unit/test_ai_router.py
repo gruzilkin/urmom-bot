@@ -14,6 +14,7 @@ from conversation_graph import ConversationMessage
 from route_selector import LlmRouteSelector, build_route_descriptions
 from schemas import RouteSelection, GeneralParams
 from null_telemetry import NullTelemetry
+from request_helpers import make_request
 
 
 class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
@@ -103,7 +104,7 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         )
 
         route, params = await self.router.route_request(
-            "What is the weather like?",
+            make_request("What is the weather like?"),
             self.default_conversation_fetcher,
             self.default_guild_id,
         )
@@ -125,7 +126,7 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         )
 
         route, params = await self.router.route_request(
-            "What is the weather like?",
+            make_request("What is the weather like?"),
             self.default_conversation_fetcher,
             self.default_guild_id,
         )
@@ -148,7 +149,7 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         )
 
         route, params = await self.router.route_request(
-            "ok",
+            make_request("ok"),
             self.default_conversation_fetcher,
             self.default_guild_id,
         )
@@ -185,7 +186,9 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         ]
         mock_fetcher = AsyncMock(return_value=mock_conversation)
 
-        route, params = await self.router.route_request("explain more", mock_fetcher, self.default_guild_id)
+        route, params = await self.router.route_request(
+            make_request("explain more"), mock_fetcher, self.default_guild_id
+        )
 
         self.assertEqual(route, "GENERAL")
         mock_fetcher.assert_called_once()

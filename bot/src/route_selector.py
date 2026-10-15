@@ -21,6 +21,7 @@ from general_query_generator import GeneralQueryGenerator
 from jev_client import Choice, JevClient, choice
 from open_telemetry import Telemetry
 from schedule_handler import ScheduleHandler
+from conversation_formatter import CONVERSATION_STRUCTURE_INSTRUCTIONS
 from schemas import DefiniteRouteName, RouteName, RouteSelection
 
 logger = logging.getLogger(__name__)
@@ -81,8 +82,10 @@ class LlmRouteSelector:
         if conversation_context:
             conversation_context = f"""
 <conversation_context>
-Route the LAST message.
-Use earlier messages to resolve references like "this", "that", "it" in the last message.
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
+
+Route the <request> message.
+Use earlier messages to resolve references like "this", "that", "it" in the <request>.
 
 {conversation_context}
 </conversation_context>
@@ -140,10 +143,11 @@ Instructions:
 
 
 JEV_ROUTE_INSTRUCTIONS = (
-    "Decide how to route the user message in `message`. The message can be in any language; route by "
-    "semantic meaning and intent, not keywords. If `conversation_context` is present, route only the "
-    "message in `message` and use the earlier conversation to resolve references like 'this', 'that', "
-    "'it'. Any message referencing child sexual abuse is NONE."
+    "Decide how to route the user message, given as a <request> block in `message`. The message can be in "
+    "any language; route by semantic meaning and intent, not keywords. If `conversation_context` is present, "
+    "route only the <request> in `message` and use the earlier conversation to resolve references like "
+    "'this', 'that', 'it'. Any message referencing child sexual abuse is NONE.\n\n"
+    + CONVERSATION_STRUCTURE_INSTRUCTIONS
 )
 
 

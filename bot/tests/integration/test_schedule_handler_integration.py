@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from conversation_formatter import ConversationFormatter
 from gemma_client import GemmaClient
 from null_telemetry import NullTelemetry
+from request_helpers import make_request
 from ai_client_wrappers import CompositeAIClient, RetryAIClient
 
 from schedule_handler import ScheduleHandler
@@ -68,7 +69,7 @@ class TestScheduleHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_code="en", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="schedule a weekly summary every Monday at 9am",
+            request=make_request("schedule a weekly summary every Monday at 9am"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -93,7 +94,7 @@ class TestScheduleHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_code="en", language_name="English")
         response = await self.handler.handle_request(
             params,
-            message="remind me to call mom tomorrow at 3pm",
+            request=make_request("remind me to call mom tomorrow at 3pm"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -111,7 +112,7 @@ class TestScheduleHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_code="en", language_name="English")
         await self.handler.handle_request(
             params,
-            message="schedule a daily haiku every day at 10am Tokyo time",
+            request=make_request("schedule a daily haiku every day at 10am Tokyo time"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,
@@ -126,7 +127,7 @@ class TestScheduleHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_code="en", language_name="English")
         await self.handler.handle_request(
             params,
-            message="qwerty asdf hjkl no schedule here",
+            request=make_request("qwerty asdf hjkl no schedule here"),
             guild_id=100,
             channel_id=200,
             creator_user_id=300,

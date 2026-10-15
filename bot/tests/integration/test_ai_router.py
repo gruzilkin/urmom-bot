@@ -23,6 +23,7 @@ from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
 from route_selector import LlmRouteSelector, build_route_descriptions
 from schedule_handler import ScheduleHandler
+from request_helpers import make_request
 
 load_dotenv()
 
@@ -154,7 +155,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(route, "GENERAL")
@@ -178,7 +179,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(route, "GENERAL")
@@ -200,7 +201,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(route, "FACT")
@@ -218,7 +219,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(route, "FACT")
@@ -234,7 +235,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(
@@ -251,7 +252,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertNotEqual(
@@ -276,7 +277,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(
@@ -293,7 +294,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertNotEqual(
@@ -318,7 +319,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(
@@ -335,7 +336,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertNotEqual(
@@ -360,7 +361,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(
@@ -377,7 +378,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(
@@ -395,7 +396,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(route, "GENERAL")
@@ -413,7 +414,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(route, "SCHEDULE")
@@ -427,7 +428,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(route, "SCHEDULE")
@@ -441,7 +442,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(
@@ -459,7 +460,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 route, params = await profile.router.route_request(
-                    user_message, self.default_conversation_fetcher, self.default_guild_id
+                    make_request(user_message), self.default_conversation_fetcher, self.default_guild_id
                 )
 
                 self.assertEqual(route, "GENERAL", "Song requests should route to GENERAL")
@@ -514,7 +515,9 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             with self.subTest(profile=profile.name):
                 self._mock_member_directory(profile)
                 route, params = await profile.router.route_request(
-                    f"BOT remember that {reference} loves quantum mechanics", fetcher, self.default_guild_id
+                    make_request(f"BOT remember that {reference} loves quantum mechanics"),
+                    fetcher,
+                    self.default_guild_id,
                 )
                 self.assertEqual(route, "FACT")
                 self.assertIsNotNone(params)

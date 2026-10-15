@@ -14,6 +14,7 @@ from language_detector import LanguageDetector
 from conversation_formatter import ConversationFormatter
 from memory_manager import MemoryManager
 from null_telemetry import NullTelemetry
+from request_helpers import make_request
 from store import Store
 
 load_dotenv()
@@ -130,7 +131,9 @@ class TestJokeGenerator(unittest.IsolatedAsyncioTestCase):
         for profile in self.profiles:
             with self.subTest(profile=profile.name):
                 joke_generator = self._build_joke_generator(profile.client)
-                result = await joke_generator.generate_joke(test_message, "en", AsyncMock(return_value=[]), guild_id=1)
+                result = await joke_generator.generate_joke(
+                    make_request(test_message), "en", AsyncMock(return_value=[]), guild_id=1
+                )
                 self.assertIsInstance(result, str)
                 self.assertGreater(len(result), 0)
                 print(f"[{profile.name}] Generated joke: {result}")

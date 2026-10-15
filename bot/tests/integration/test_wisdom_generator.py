@@ -4,7 +4,6 @@ import os
 import unittest
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
 
 from dotenv import load_dotenv
 
@@ -17,6 +16,7 @@ from language_detector import LanguageDetector
 from memory_manager import MemoryManager
 from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
+from request_helpers import make_request
 from response_summarizer import ResponseSummarizer
 from test_store import TestStore
 from wisdom_generator import WisdomGenerator
@@ -125,10 +125,9 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             for msg in physics_messages
         ]
 
-        trigger_message = MagicMock()
-        trigger_message.content = "God does not play dice with the universe"
-        trigger_message.author.id = self.test_store._messages[0].user_id
-        trigger_message.author.display_name = "Albert Einstein"
+        trigger_message = make_request(
+            "God does not play dice with the universe", author_id=self.test_store._messages[0].user_id
+        )
 
         async def mock_conversation_fetcher():
             return conversation_messages
