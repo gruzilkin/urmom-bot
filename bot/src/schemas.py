@@ -40,7 +40,7 @@ class GeneralParams(BaseModel):
     ai_backend: Literal["claude", "gemini_flash", "grok", "gemma", "codex", "deepseek"]
     reason: str | None = Field(default=None, description="Why this ai_backend was chosen")
     temperature: float = Field(ge=0.0, le=1.0)
-    cleaned_query: str = Field(description="User's request with 'BOT' mentions and routing instructions removed")
+    cleaned_query: str
     language_code: str | None = Field(
         default=None,
         description="ISO 639-1 language code (e.g., 'en', 'ru', 'de') - populated after parameter extraction",

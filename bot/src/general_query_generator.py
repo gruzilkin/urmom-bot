@@ -78,7 +78,7 @@ class GeneralQueryGenerator:
             context_section = f"""
 <conversation_context>
 Extract parameters from the LAST message.
-Use earlier messages to resolve references like "this", "that", "it" in the last message.
+Use earlier messages and memories to resolve references like "this", "that", "it", "he", "she", or names in the last message.
 If a specific ai_backend was explicitly requested earlier, reuse it for follow-up questions.
 
 {conversation_context}
@@ -129,6 +129,15 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
           uncertainty, negation, questions, and hypothetical framing.
           Do not turn questions into assertions, add claims, or infer
           intent that the user did not express.
+        * Rule 5: User mentions like `<@123456789>` refer to real
+          chat members. Copy them verbatim into cleaned_query. Never
+          replace a mention with a pronoun, name, or description.
+          Only the 'BOT' placeholder is removed.
+        * Rule 6: When the conversation context makes it clear which
+          member a pronoun (he, she, they, him, her, them) or a name
+          or nickname refers to, replace it with that member's
+          mention `<@member_id>`. If it cannot be resolved to one
+          specific member, leave it as is.
         * Examples:
           - "BOT, what is the capital of France?"
             → "what is the capital of France?"
@@ -145,6 +154,11 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
           - "use gemini flash to explain quantum physics"
             → "explain quantum physics"
           - "with high creativity, write a story" → "write a story"
+          - "BOT, ask <@123456789> if he's coming to the office"
+            → "ask <@123456789> if he's coming to the office"
+          - "BOT, ask him if he's coming", where the context shows
+            "him" is member 987654321
+            → "ask <@987654321> if he's coming"
         {context_section}"""
 
     def _extract_unique_user_ids(self, conversation) -> set[int]:
