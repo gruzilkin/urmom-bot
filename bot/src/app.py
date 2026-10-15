@@ -113,7 +113,7 @@ async def on_message(message: nextcord.Message):
 
         # Ingest message into transient memory using materialized content
         materialized_message = await discord_to_message_node(message)
-        await container.memory_manager.ingest_message(message.guild.id, materialized_message)
+        await container.memory_manager.ingest_message(materialized_message)
 
         if message.author.bot:
             return
@@ -139,7 +139,6 @@ async def on_message(message: nextcord.Message):
         route, params = await container.ai_router.route_request(
             request_message,
             conversation_fetcher=router_conversation_fetcher,
-            guild_id=message.guild.id,
         )
 
         reply = None
@@ -147,7 +146,7 @@ async def on_message(message: nextcord.Message):
             conversation_fetcher = create_conversation_fetcher(message)
 
             response = await container.famous_person_generator.handle_request(
-                params, request_message, conversation_fetcher, message.guild.id
+                params, request_message, conversation_fetcher
             )
             reply = await traced_reply(message, response)
 
@@ -156,11 +155,9 @@ async def on_message(message: nextcord.Message):
 
             result = await container.general_query_generator.handle_request(
                 params,
+                request_message,
                 conversation_fetcher,
-                message.guild.id,
                 bot.user,
-                message.author.id,
-                request_message=request_message,
             )
             if result is not None:
                 reply = await traced_reply(message, result.text)
@@ -175,9 +172,7 @@ async def on_message(message: nextcord.Message):
             response = await container.schedule_handler.handle_request(
                 params,
                 request_message,
-                message.guild.id,
                 message.channel.id,
-                message.author.id,
                 conversation_fetcher,
             )
             reply = await traced_reply(message, response)
@@ -200,7 +195,7 @@ async def on_message_edit(before: nextcord.Message, after: nextcord.Message):
         # Ingest the updated message content, including embeds.
         # Caching in the materialization process handles efficiency.
         materialized_message = await discord_to_message_node(after)
-        await container.memory_manager.ingest_message(after.guild.id, materialized_message)
+        await container.memory_manager.ingest_message(materialized_message)
 
 
 async def should_reply(message: nextcord.Message) -> bool:
@@ -378,6 +373,7 @@ async def discord_to_message_node(message: nextcord.Message) -> MessageNode:
         id=message.id,
         content=content,
         author_id=message.author.id,
+        guild_id=message.guild.id,
         channel_id=message.channel.id,
         mentioned_user_ids=mentioned_user_ids,
         created_at=message.created_at,
@@ -495,9 +491,10 @@ def to_request_message(message: nextcord.Message, content: str | None = None) ->
     """
     return ConversationMessage(
         message_id=message.id,
+        guild_id=message.guild.id,
         author_id=message.author.id,
         content=message.content if content is None else content,
-        timestamp=message.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        timestamp=message.created_at,
         mentioned_user_ids=[user.id for user in message.mentions],
         reply_to_id=message.reference.message_id if message.reference else None,
     )
@@ -600,7 +597,6 @@ async def process_joke_request(payload: nextcord.RawReactionActionEvent, country
             to_request_message(message),
             language,
             conversation_fetcher=fetch_conversation,
-            guild_id=payload.guild_id,
         )
 
     # Send direct reply
@@ -638,7 +634,6 @@ async def process_wisdom_request(payload: nextcord.RawReactionActionEvent) -> No
     wisdom = await container.wisdom_generator.generate_wisdom(
         trigger_message=to_request_message(message),
         conversation_fetcher=fetch_conversation,
-        guild_id=payload.guild_id,
     )
 
     if wisdom is None:
@@ -671,7 +666,6 @@ async def process_devils_advocate_request(payload: nextcord.RawReactionActionEve
     counter_argument = await container.devils_advocate_generator.generate_counter_argument(
         trigger_message=to_request_message(message),
         conversation_fetcher=fetch_conversation,
-        guild_id=payload.guild_id,
     )
 
     if counter_argument is None:

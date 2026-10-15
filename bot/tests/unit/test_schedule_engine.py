@@ -256,17 +256,19 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.mock_handoff_service.save.assert_awaited_once_with(555, handoff)
         self.mock_store.mark_task_last_run.assert_awaited_once()
 
-    async def test_execute_passes_creator_user_id_to_generator(self):
-        # The engine passes the task creator's user ID through to GeneralQueryGenerator,
-        # which is responsible for resolving display name and loading the creator's
-        # facts into the memory block.
+    async def test_execute_sends_task_as_request_from_creator(self):
+        # The firing is answered as a request authored by the task creator, so
+        # GeneralQueryGenerator loads the creator's memory and the guild's context.
         task = _make_task()
 
         await self.engine._execute(task, intended_run_at=task.next_run_at, scheduled=True)
 
-        call_args = self.mock_gqg.handle_request.await_args
-        passed_requester_id = call_args.args[4]
-        self.assertEqual(passed_requester_id, task.creator_user_id)
+        request = self.mock_gqg.handle_request.await_args.args[1]
+        self.assertIsNone(request.message_id)
+        self.assertEqual(request.author_id, task.creator_user_id)
+        self.assertEqual(request.guild_id, task.guild_id)
+        self.assertEqual(request.content, task.prompt)
+        self.assertIs(self.mock_router.extract_general_params.await_args.args[0], request)
 
     # ---- _dispatch_due_task error handling ----
 

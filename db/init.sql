@@ -34,7 +34,7 @@ CREATE TABLE chat_history (
     message_id BIGINT NOT NULL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     message_text TEXT NOT NULL,
-    timestamp TIMESTAMP NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
     reply_to_id BIGINT NULL
 );
 

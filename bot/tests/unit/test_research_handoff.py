@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,9 +17,10 @@ BOT_ID = 999
 def _msg(message_id: int, author_id: int, reply_to_id: int | None = None) -> ConversationMessage:
     return ConversationMessage(
         message_id=message_id,
+        guild_id=1,
         author_id=author_id,
         content=f"message {message_id}",
-        timestamp="2026-09-20 10:00:00",
+        timestamp=datetime(2026, 9, 20, 10, 0, tzinfo=timezone.utc),
         mentioned_user_ids=[],
         reply_to_id=reply_to_id,
     )

@@ -14,7 +14,6 @@ from ai_client import AIClient
 from conversation_formatter import (
     CONVERSATION_STRUCTURE_INSTRUCTIONS,
     ConversationFormatter,
-    format_request_message_xml,
 )
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
@@ -106,14 +105,13 @@ Use earlier messages to resolve references like "this", "that", "it" in the <req
         self,
         params: ScheduleParams,
         request: ConversationMessage,
-        guild_id: int,
         channel_id: int,
-        creator_user_id: int,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]] | None = None,
     ) -> str:
         logger.info(f"Processing schedule request: {params.operation}")
         language_name = params.language_name or "English"
-        message = format_request_message_xml(request)
+        guild_id = request.guild_id
+        message = await self.conversation_formatter.format_request_message_xml(request)
 
         async with self.telemetry.async_create_span("schedule_handle_request") as span:
             span.set_attribute("operation", params.operation)
@@ -125,11 +123,11 @@ Use earlier messages to resolve references like "this", "that", "it" in the <req
                 if conversation_fetcher is not None:
                     conversation = await conversation_fetcher()
                     if conversation:
-                        conversation_context = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+                        conversation_context = await self.conversation_formatter.format_to_xml(conversation)
 
             if params.operation == "create":
                 return await self._create(
-                    message, guild_id, channel_id, creator_user_id, language_name, conversation_context
+                    message, guild_id, channel_id, request.author_id, language_name, conversation_context
                 )
             if params.operation == "list":
                 return await self._list(message, guild_id, channel_id, language_name)

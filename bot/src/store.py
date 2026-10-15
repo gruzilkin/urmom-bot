@@ -3,7 +3,8 @@ from psycopg import AsyncConnection
 from dataclasses import dataclass
 import logging
 from cachetools import LRUCache
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from open_telemetry import Telemetry
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,13 @@ class GuildConfig:
     downvote_reaction_threshold: int = 0
     enable_country_jokes: bool = True
     default_timezone: str = "UTC"
+
+
+def local_day_bounds(for_date: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
+    """[start, end) of a local calendar day in `tz`, as timezone-aware datetimes."""
+    start = datetime.combine(for_date, time.min, tzinfo=tz)
+    end = datetime.combine(for_date + timedelta(days=1), time.min, tzinfo=tz)
+    return start, end
 
 
 @dataclass
@@ -225,6 +233,18 @@ class Store:
                     {"operation": "get_guild_config", "guild_id": str(guild_id), "cache_outcome": cache_outcome},
                 )
 
+    async def get_guild_timezone(self, guild_id: int) -> ZoneInfo:
+        """The guild's configured timezone, falling back to UTC when it is not a valid zone name."""
+        config = await self.get_guild_config(guild_id)
+        try:
+            return ZoneInfo(config.default_timezone)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            logger.error(
+                f"Failed to resolve timezone '{config.default_timezone}' for guild {guild_id}, using UTC: {e}",
+                exc_info=True,
+            )
+            return ZoneInfo("UTC")
+
     async def save_guild_config(self, config: GuildConfig) -> None:
         async with self._telemetry.async_create_span("save_guild_config") as span:
             span.set_attribute("guild_id", config.guild_id)
@@ -325,19 +345,18 @@ class Store:
                     timer(), {"operation": "save_user_facts", "guild_id": str(guild_id)}
                 )
 
-    async def get_chat_messages_for_date(self, guild_id: int, for_date: date) -> list[ChatMessage]:
-        """Retrieves all chat messages for a guild on a specific date."""
+    async def get_chat_messages_for_date(self, guild_id: int, for_date: date, tz: ZoneInfo) -> list[ChatMessage]:
+        """Retrieves all chat messages for a guild on a specific local date in `tz`."""
         async with self._telemetry.async_create_span("get_chat_messages_for_date") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
+            span.set_attribute("timezone", tz.key)
 
             timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
-                    # Calculate start and end timestamps for the date
-                    start_time = datetime.combine(for_date, datetime.min.time())
-                    end_time = start_time + timedelta(days=1)
+                    start_time, end_time = local_day_bounds(for_date, tz)
 
                     await cur.execute(
                         """
@@ -406,19 +425,18 @@ class Store:
                     timer(), {"operation": "add_chat_message", "guild_id": str(guild_id)}
                 )
 
-    async def has_chat_messages_for_date(self, guild_id: int, for_date: date) -> bool:
-        """Check if any chat messages exist for a specific guild and date."""
+    async def has_chat_messages_for_date(self, guild_id: int, for_date: date, tz: ZoneInfo) -> bool:
+        """Check if any chat messages exist for a specific guild on a local date in `tz`."""
         async with self._telemetry.async_create_span("has_chat_messages_for_date") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
+            span.set_attribute("timezone", tz.key)
 
             timer = self._telemetry.metrics.timer()
             try:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
-                    # Calculate start and end timestamps for the date
-                    start_time = datetime.combine(for_date, datetime.min.time())
-                    end_time = start_time + timedelta(days=1)
+                    start_time, end_time = local_day_bounds(for_date, tz)
 
                     await cur.execute(
                         """

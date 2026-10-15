@@ -147,6 +147,7 @@ class TestMessageGraph(BaseMessageGraphTest):
                 id=discord_msg.id,
                 content=discord_msg.content,
                 author_id=discord_msg.author.id,
+                guild_id=1,
                 channel_id=1000,  # Mock channel ID
                 mentioned_user_ids=[user.id for user in discord_msg.mentions],
                 created_at=discord_msg.created_at,
@@ -161,9 +162,8 @@ class TestMessageGraph(BaseMessageGraphTest):
         self.assertEqual(conversation[0].content, "first message")
         self.assertEqual(conversation[1].author_id, 2000)
         self.assertEqual(conversation[1].content, "second message")
-        # Verify timestamps are formatted correctly
-        self.assertIsInstance(conversation[0].timestamp, str)
-        self.assertIsInstance(conversation[1].timestamp, str)
+        self.assertEqual(conversation[0].timestamp, msg1.created_at)
+        self.assertEqual(conversation[1].timestamp, msg2.created_at)
 
 
 class TestConversationGraphBuilder(BaseMessageGraphTest):
@@ -247,6 +247,7 @@ class TestConversationGraphBuilder(BaseMessageGraphTest):
                 id=discord_msg.id,
                 content=discord_msg.content,
                 author_id=discord_msg.author.id,
+                guild_id=1,
                 channel_id=1000,  # Mock channel ID
                 mentioned_user_ids=[user.id for user in discord_msg.mentions],
                 created_at=discord_msg.created_at,

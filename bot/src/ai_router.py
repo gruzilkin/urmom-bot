@@ -5,7 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from ai_client import AIClient
-from conversation_formatter import ConversationFormatter, format_request_message_xml, format_request_xml
+from conversation_formatter import ConversationFormatter
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from route_selector import RouteSelector
@@ -82,16 +82,16 @@ class AiRouter:
             return params
 
     async def extract_general_params(
-        self, message: str, author_id: int, conversation_context: str = ""
+        self, request: ConversationMessage, conversation_context: str = ""
     ) -> GeneralParams:
         """Extract GENERAL-route parameters without route selection.
 
         For flows that must never be routed elsewhere — e.g. scheduled task firings,
         which would otherwise be able to create new scheduled tasks."""
-        request_xml = format_request_xml(author_id=author_id, content=message)
+        request_xml = await self.conversation_formatter.format_request_message_xml(request)
         params, language_code = await asyncio.gather(
             self._extract_parameters("GENERAL", request_xml, conversation_context),
-            self.language_detector.detect_language(message),
+            self.language_detector.detect_language(request.content),
         )
         params.language_code = language_code
         params.language_name = await self.language_detector.get_language_name(language_code)
@@ -101,25 +101,24 @@ class AiRouter:
         self,
         request: ConversationMessage,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
-        guild_id: int,
     ) -> tuple[str, FamousParams | GeneralParams | FactParams | ScheduleParams | None]:
         """Route a message using 2-tier approach: route selection (delegated to the RouteSelector),
         language detection, then parameter extraction.
 
         `request` is the message being routed, with the bot mention already replaced by 'BOT'."""
         message = request.content
-        request_xml = format_request_message_xml(request)
+        request_xml = await self.conversation_formatter.format_request_message_xml(request)
         async with self.telemetry.async_create_span("route_request") as span:
             span.set_attribute("message", message)
 
             conversation_context = ""
             conversation = await conversation_fetcher()
             if conversation:
-                conversation_context = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+                conversation_context = await self.conversation_formatter.format_to_xml(conversation)
                 member_ids: set[int] = {msg.author_id for msg in conversation}
                 for msg in conversation:
                     member_ids.update(msg.mentioned_user_ids)
-                memories_block = await self.memory_manager.build_memory_prompt(guild_id, member_ids)
+                memories_block = await self.memory_manager.build_memory_prompt(request.guild_id, member_ids)
                 if memories_block:
                     conversation_context = f"{memories_block}\n{conversation_context}"
 

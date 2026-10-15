@@ -23,7 +23,7 @@ from general_query_generator import GeneralQueryGenerator
 from language_detector import LanguageDetector
 from null_telemetry import NullTelemetry
 from test_store import TestStore
-from request_helpers import make_request
+from request_helpers import make_request, utc_store
 
 load_dotenv()
 
@@ -75,7 +75,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         """Create a fresh FactHandler + router stack for a single test run."""
         store = TestStore()
         user_resolver = store.user_resolver
-        conversation_formatter = ConversationFormatter(user_resolver)
+        conversation_formatter = ConversationFormatter(user_resolver, utc_store())
 
         fact_handler = FactHandler(
             ai_client=client,
@@ -392,7 +392,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                 russian_message = f"БОТ запомни что <@{rutherford_id}> так же известен как Крокодил"
 
                 route, params = await ctx.ai_router.route_request(
-                    make_request(russian_message), AsyncMock(return_value=[]), ctx.guild_id
+                    make_request(russian_message, guild_id=ctx.guild_id), AsyncMock(return_value=[])
                 )
 
                 self.assertEqual(route, "FACT", "Should route Russian command to FACT")
@@ -445,7 +445,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                 english_message = f"BOT remember that <@{einstein_id}> likes chocolate"
 
                 route, params = await ctx.ai_router.route_request(
-                    make_request(english_message), AsyncMock(return_value=[]), ctx.guild_id
+                    make_request(english_message, guild_id=ctx.guild_id), AsyncMock(return_value=[])
                 )
 
                 self.assertEqual(route, "FACT")

@@ -5,6 +5,7 @@ Tests the handle_request method with conversation context and length constraints
 Uses unittest.IsolatedAsyncioTestCase for async testing as per project standards.
 """
 
+from datetime import datetime, timezone
 import os
 import re
 import unittest
@@ -13,6 +14,7 @@ from unittest.mock import Mock, AsyncMock
 from dotenv import load_dotenv
 
 from conversation_formatter import ConversationFormatter
+from request_helpers import make_request, utc_store
 from conversation_graph import ConversationMessage
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
@@ -73,7 +75,7 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
 
         self.requesting_user_id = 1000
 
-        self.conversation_formatter = ConversationFormatter(self.mock_user_resolver)
+        self.conversation_formatter = ConversationFormatter(self.mock_user_resolver, utc_store())
 
         self.mock_memory_manager = Mock()
         self.mock_memory_manager.build_memory_prompt = AsyncMock(return_value="")
@@ -95,16 +97,18 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             return [
                 ConversationMessage(
                     message_id=100001,
+                    guild_id=12345,
                     author_id=1000,
                     content="I love my pet dragon named Sparkles",
-                    timestamp="2024-01-01 11:55:00",
+                    timestamp=datetime(2024, 1, 1, 11, 55, tzinfo=timezone.utc),
                     mentioned_user_ids=[],
                 ),
                 ConversationMessage(
                     message_id=100002,
+                    guild_id=12345,
                     author_id=2000,
                     content="That's so cool!",
-                    timestamp="2024-01-01 11:58:00",
+                    timestamp=datetime(2024, 1, 1, 11, 58, tzinfo=timezone.utc),
                     mentioned_user_ids=[],
                     reply_to_id=100001,
                 ),
@@ -120,10 +124,9 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
 
         result = await self.generator.handle_request(
             params,
+            make_request("q", author_id=self.requesting_user_id, guild_id=12345),
             mock_conversation_fetcher,
-            guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertIsInstance(result, str)
@@ -151,10 +154,9 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
 
         result = await self.generator.handle_request(
             params,
+            make_request("q", author_id=self.requesting_user_id, guild_id=12345),
             mock_conversation_fetcher,
-            guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertIsInstance(result, str)
@@ -181,10 +183,9 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
 
         result = await self.generator.handle_request(
             params,
+            make_request("q", author_id=self.requesting_user_id, guild_id=12345),
             mock_conversation_fetcher,
-            guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertIsInstance(result, str)

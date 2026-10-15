@@ -12,7 +12,6 @@ from memory_manager import MemoryManager
 from conversation_formatter import (
     CONVERSATION_STRUCTURE_INSTRUCTIONS,
     ConversationFormatter,
-    format_request_message_xml,
 )
 from schemas import WisdomResponse
 
@@ -50,7 +49,6 @@ class WisdomGenerator:
         self,
         trigger_message: ConversationMessage,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
-        guild_id: int,
     ) -> str | None:
         """
         Generate wisdom based on a message and its conversation context.
@@ -58,7 +56,6 @@ class WisdomGenerator:
         Args:
             trigger_message: The Discord message that was reacted to, sent as the <request> block
             conversation_fetcher: Async function that returns conversation history
-            guild_id: Discord guild ID for user context resolution
 
         Returns:
             str: The generated wisdom response
@@ -74,9 +71,9 @@ class WisdomGenerator:
 
             user_ids = self._extract_unique_user_ids(conversation)
             user_ids.add(trigger_message.author_id)
-            memories_block = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
+            memories_block = await self._memory_manager.build_memory_prompt(trigger_message.guild_id, user_ids)
 
-            conversation_block = await self._conversation_formatter.format_to_xml(guild_id, conversation)
+            conversation_block = await self._conversation_formatter.format_to_xml(conversation)
 
             prompt = f"""<system_instructions>
 You are a street-smart observer who distills Discord conversations into punchy, humorous wisdom.
@@ -134,7 +131,7 @@ Personalization:
 
 {conversation_block}"""
 
-            request_xml = format_request_message_xml(trigger_message)
+            request_xml = await self._conversation_formatter.format_request_message_xml(trigger_message)
 
             logger.info(f"Generating wisdom for message: {trigger_message.content}")
 

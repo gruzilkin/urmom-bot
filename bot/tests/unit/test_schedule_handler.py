@@ -129,10 +129,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("schedule a weekly summary every Monday 9am"),
-            guild_id=100,
+            request=make_request("schedule a weekly summary every Monday 9am", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("task #42", response)
         self.mock_store.create_scheduled_task.assert_awaited_once()
@@ -148,10 +146,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("gibberish"),
-            guild_id=100,
+            request=make_request("gibberish", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "I couldn't understand your schedule.")
         self.mock_store.create_scheduled_task.assert_not_awaited()
@@ -169,10 +165,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("schedule"),
-            guild_id=100,
+            request=make_request("schedule", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("timezone", response.lower())
         self.mock_store.create_scheduled_task.assert_not_awaited()
@@ -190,10 +184,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("schedule"),
-            guild_id=100,
+            request=make_request("schedule", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("schedule", response.lower())
         self.mock_store.create_scheduled_task.assert_not_awaited()
@@ -205,10 +197,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="list", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("what's scheduled?"),
-            guild_id=100,
+            request=make_request("what's scheduled?", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("No scheduled tasks", response)
         # Should NOT call AI when empty
@@ -222,10 +212,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="list", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("what's scheduled?"),
-            guild_id=100,
+            request=make_request("what's scheduled?", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "You have 1 task: weekly summary on Mondays.")
 
@@ -240,10 +228,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("delete task 5"),
-            guild_id=100,
+            request=make_request("delete task 5", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "Deleted task 5.")
         self.mock_store.delete_scheduled_task.assert_awaited_once_with(5)
@@ -256,10 +242,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("delete the foo"),
-            guild_id=100,
+            request=make_request("delete the foo", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "I couldn't find that task.")
         self.mock_store.delete_scheduled_task.assert_not_awaited()
@@ -273,10 +257,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("delete task 999"),
-            guild_id=100,
+            request=make_request("delete task 999", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("doesn't belong", response)
         self.mock_store.delete_scheduled_task.assert_not_awaited()
@@ -292,10 +274,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("run task 5 now"),
-            guild_id=100,
+            request=make_request("run task 5 now", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "Running task 5 now.")
         # asyncio.create_task wraps fire_task; allow the scheduled task to run
@@ -322,10 +302,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("change task 5's prompt to new prompt"),
-            guild_id=100,
+            request=make_request("change task 5's prompt to new prompt", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "Updated task 5's prompt.")
         self.mock_store.update_scheduled_task.assert_awaited_once()
@@ -359,10 +337,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         await self.handler.handle_request(
             params,
-            request=make_request("change task 5's prompt to new prompt"),
-            guild_id=100,
+            request=make_request("change task 5's prompt to new prompt", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.mock_store.update_scheduled_task.assert_awaited_once()
         kwargs = self.mock_store.update_scheduled_task.await_args.kwargs
@@ -388,10 +364,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         await self.handler.handle_request(
             params,
-            request=make_request("make it weekly on Mondays"),
-            guild_id=100,
+            request=make_request("make it weekly on Mondays", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         kwargs = self.mock_store.update_scheduled_task.await_args.kwargs
         self.assertNotEqual(kwargs["next_run_at"], existing_next)
@@ -416,10 +390,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("change task 8's prompt to new prompt"),
-            guild_id=100,
+            request=make_request("change task 8's prompt to new prompt", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "Updated task 8's prompt.")
         self.mock_store.update_scheduled_task.assert_awaited_once()
@@ -435,10 +407,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("edit the foo"),
-            guild_id=100,
+            request=make_request("edit the foo", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "Couldn't find the task.")
         self.mock_store.update_scheduled_task.assert_not_awaited()
@@ -510,10 +480,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("ambiguous request"),
-            guild_id=100,
+            request=make_request("ambiguous request", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "Need a schedule.")
         self.mock_store.create_scheduled_task.assert_not_awaited()
@@ -533,10 +501,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="create", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("schedule"),
-            guild_id=100,
+            request=make_request("schedule", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("task #42", response)
 
@@ -547,10 +513,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("edit task 5"),
-            guild_id=100,
+            request=make_request("edit task 5", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("No scheduled tasks", response)
         self.mock_ai.generate_content.assert_not_called()
@@ -562,10 +526,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("edit something"),
-            guild_id=100,
+            request=make_request("edit something", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "Edit unclear.")
         self.mock_store.update_scheduled_task.assert_not_awaited()
@@ -586,10 +548,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("edit task 999"),
-            guild_id=100,
+            request=make_request("edit task 999", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("doesn't belong", response)
         self.mock_store.update_scheduled_task.assert_not_awaited()
@@ -609,10 +569,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("edit task 5"),
-            guild_id=100,
+            request=make_request("edit task 5", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("timezone", response.lower())
         self.mock_store.update_scheduled_task.assert_not_awaited()
@@ -632,10 +590,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("edit task 5"),
-            guild_id=100,
+            request=make_request("edit task 5", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("schedule", response.lower())
         self.mock_store.update_scheduled_task.assert_not_awaited()
@@ -656,10 +612,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="edit", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("edit task 5"),
-            guild_id=100,
+            request=make_request("edit task 5", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "Updated.")
 
@@ -670,10 +624,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="delete", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("delete task 5"),
-            guild_id=100,
+            request=make_request("delete task 5", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("No scheduled tasks", response)
         self.mock_ai.generate_content.assert_not_called()
@@ -683,10 +635,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("run task 5 now"),
-            guild_id=100,
+            request=make_request("run task 5 now", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("No scheduled tasks", response)
         self.mock_ai.generate_content.assert_not_called()
@@ -697,10 +647,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("run the foo now"),
-            guild_id=100,
+            request=make_request("run the foo now", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertEqual(response, "Not found.")
         self.mock_engine.fire_task.assert_not_called()
@@ -711,10 +659,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         params = ScheduleParams(operation="run_now", language_name="English")
         response = await self.handler.handle_request(
             params,
-            request=make_request("run task 999 now"),
-            guild_id=100,
+            request=make_request("run task 999 now", author_id=300, guild_id=100),
             channel_id=200,
-            creator_user_id=300,
         )
         self.assertIn("doesn't belong", response)
         self.mock_engine.fire_task.assert_not_called()

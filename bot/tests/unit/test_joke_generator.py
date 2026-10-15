@@ -211,9 +211,7 @@ class TestJokeGeneratorRefactored(unittest.IsolatedAsyncioTestCase):
         )
 
         conversation_fetcher = AsyncMock(return_value=[])
-        result = await joke_generator.generate_joke(
-            make_request("test message"), "en", conversation_fetcher, guild_id=1
-        )
+        result = await joke_generator.generate_joke(make_request("test message"), "en", conversation_fetcher)
 
         self.assertEqual(result, "Test joke response")
 

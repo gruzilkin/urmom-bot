@@ -219,7 +219,7 @@ class Container:
 
         self.user_resolver = UserResolver(self.telemetry)
 
-        self.conversation_formatter = ConversationFormatter(self.user_resolver)
+        self.conversation_formatter = ConversationFormatter(self.user_resolver, self.store)
 
         self.famous_person_generator = FamousPersonGenerator(
             self.retrying_grok,

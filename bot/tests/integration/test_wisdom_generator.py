@@ -16,7 +16,7 @@ from language_detector import LanguageDetector
 from memory_manager import MemoryManager
 from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
-from request_helpers import make_request
+from request_helpers import make_request, utc_store
 from response_summarizer import ResponseSummarizer
 from test_store import TestStore
 from wisdom_generator import WisdomGenerator
@@ -94,7 +94,7 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             redis_cache=NullRedisCache(),
         )
 
-        self.conversation_formatter = ConversationFormatter(self.mock_user_resolver)
+        self.conversation_formatter = ConversationFormatter(self.mock_user_resolver, utc_store())
 
     def _build_wisdom_generator(self, ai_client: AIClient) -> WisdomGenerator:
         """Build a WisdomGenerator with the given AI client."""
@@ -117,16 +117,19 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
         conversation_messages = [
             ConversationMessage(
                 message_id=msg.message_id,
+                guild_id=msg.guild_id,
                 author_id=msg.user_id,
                 content=msg.message_text,
-                timestamp=msg.timestamp.isoformat(),
+                timestamp=msg.timestamp,
                 mentioned_user_ids=[],
             )
             for msg in physics_messages
         ]
 
         trigger_message = make_request(
-            "God does not play dice with the universe", author_id=self.test_store._messages[0].user_id
+            "God does not play dice with the universe",
+            author_id=self.test_store._messages[0].user_id,
+            guild_id=self.test_store.physics_guild_id,
         )
 
         async def mock_conversation_fetcher():
@@ -138,7 +141,6 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
                 result = await generator.generate_wisdom(
                     trigger_message=trigger_message,
                     conversation_fetcher=mock_conversation_fetcher,
-                    guild_id=self.test_store.physics_guild_id,
                 )
 
                 self.assertIsInstance(result, str)

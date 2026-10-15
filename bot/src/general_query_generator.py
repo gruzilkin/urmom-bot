@@ -8,8 +8,6 @@ from conversation_graph import ConversationMessage
 from conversation_formatter import (
     CONVERSATION_STRUCTURE_INSTRUCTIONS,
     ConversationFormatter,
-    format_request_message_xml,
-    format_request_xml,
 )
 from open_telemetry import Telemetry
 from research_handoff import (
@@ -124,6 +122,8 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         * Goal: Produce a clean, direct query for the AI assistant.
           The user's message will contain the placeholder 'BOT'
           to refer to the assistant.
+        * Source: the <content> of the <request> block. Output only
+          the rewritten text, without XML tags, IDs, or timestamps.
         * Rule 1: Rephrase the query from the BOT's perspective.
           Convert the user's request into a direct, second-person
           command or question.
@@ -176,12 +176,10 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
     async def handle_request(
         self,
         params: GeneralParams,
+        request: ConversationMessage,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
-        guild_id: int,
         bot_user: nextcord.User,
-        requesting_user_id: int,
         extra_user_ids: set[int] | None = None,
-        request_message: ConversationMessage | None = None,
     ) -> ProcessorResult | None:
         """
         Handle a general query request using the provided parameters.
@@ -189,21 +187,18 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         Args:
             params (GeneralParams): Parameters containing
                 ai_backend, temperature, and cleaned_query
+            request (ConversationMessage): The message being answered: a live
+                Discord message, or a scheduled task firing (no message id,
+                authored by the task creator). Sent as the <request> block
+                with its content replaced by the cleaned query
             conversation_fetcher: Parameterless async function
                 that returns conversation history
-            guild_id (int): Discord guild ID for user context
-                resolution
             bot_user (nextcord.User): Discord user object of the bot
                 to identify its own messages and establish bot identity
-            requesting_user_id (int): Discord user ID of the requester
-                (live message author or scheduled task creator)
             extra_user_ids (set[int] | None): Additional user IDs whose
                 memories should be loaded alongside the conversation
                 participants. Used by scheduled tasks firing into low-traffic
                 channels so the bot can reference recent guild activity.
-            request_message (ConversationMessage | None): The live Discord
-                message being answered; supplies its id, reply_to and
-                timestamp for the <request> block. None for scheduled tasks.
 
         Returns:
             ProcessorResult | None: The Discord-ready reply text plus an
@@ -223,20 +218,18 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
             conversation = await conversation_fetcher()
 
             user_ids = self._extract_unique_user_ids(conversation)
-            user_ids.add(requesting_user_id)
+            user_ids.add(request.author_id)
             if extra_user_ids:
                 user_ids.update(extra_user_ids)
             span.set_attribute("memory_user_count", len(user_ids))
-            memories_block = await self.memory_manager.build_memory_prompt(guild_id, user_ids)
+            memories_block = await self.memory_manager.build_memory_prompt(request.guild_id, user_ids)
 
             handoffs = await self.handoff_service.load_for_conversation(conversation, bot_user.id)
-            conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation, handoffs)
+            conversation_block = await self.conversation_formatter.format_to_xml(conversation, handoffs)
 
-            # Format the user message in the same XML structure as conversation_history
-            if request_message is not None:
-                user_message_xml = format_request_message_xml(request_message, content=params.cleaned_query)
-            else:
-                user_message_xml = format_request_xml(author_id=requesting_user_id, content=params.cleaned_query)
+            user_message_xml = await self.conversation_formatter.format_request_message_xml(
+                request, content=params.cleaned_query
+            )
 
             prompt = f"""<system_instructions>
 You are a Discord bot participating in an ongoing Discord conversation.

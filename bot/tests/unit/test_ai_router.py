@@ -4,6 +4,7 @@ Unit tests for AiRouter.
 Tests NOTSURE fallback behavior and conversation context handling.
 """
 
+from datetime import datetime, timezone
 import unittest
 from unittest.mock import Mock, AsyncMock
 
@@ -106,7 +107,6 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         route, params = await self.router.route_request(
             make_request("What is the weather like?"),
             self.default_conversation_fetcher,
-            self.default_guild_id,
         )
 
         self.fallback_client.generate_content.assert_called_once()
@@ -128,7 +128,6 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         route, params = await self.router.route_request(
             make_request("What is the weather like?"),
             self.default_conversation_fetcher,
-            self.default_guild_id,
         )
 
         self.fallback_client.generate_content.assert_not_called()
@@ -151,7 +150,6 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         route, params = await self.router.route_request(
             make_request("ok"),
             self.default_conversation_fetcher,
-            self.default_guild_id,
         )
 
         self.fallback_client.generate_content.assert_called_once()
@@ -171,28 +169,28 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         mock_conversation = [
             ConversationMessage(
                 message_id=1,
+                guild_id=12345,
                 author_id=123,
                 content="What is quantum physics?",
-                timestamp="2024-01-01 12:00:00",
+                timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
                 mentioned_user_ids=[],
             ),
             ConversationMessage(
                 message_id=2,
+                guild_id=12345,
                 author_id=456,
                 content="explain more",
-                timestamp="2024-01-01 12:01:00",
+                timestamp=datetime(2024, 1, 1, 12, 1, tzinfo=timezone.utc),
                 mentioned_user_ids=[],
             ),
         ]
         mock_fetcher = AsyncMock(return_value=mock_conversation)
 
-        route, params = await self.router.route_request(
-            make_request("explain more"), mock_fetcher, self.default_guild_id
-        )
+        route, params = await self.router.route_request(make_request("explain more"), mock_fetcher)
 
         self.assertEqual(route, "GENERAL")
         mock_fetcher.assert_called_once()
-        self.conversation_formatter.format_to_xml.assert_called_once_with(self.default_guild_id, mock_conversation)
+        self.conversation_formatter.format_to_xml.assert_called_once_with(mock_conversation)
         # Verify context is passed to parameter extraction
         self.general_generator.get_parameter_extraction_prompt.assert_called_once_with(
             "<conversation_history></conversation_history>"

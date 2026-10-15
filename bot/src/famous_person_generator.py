@@ -1,10 +1,10 @@
 import logging
+from collections.abc import Awaitable, Callable
 
 from ai_client import AIClient
 from conversation_formatter import (
     CONVERSATION_STRUCTURE_INSTRUCTIONS,
     ConversationFormatter,
-    format_request_message_xml,
 )
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
@@ -134,7 +134,11 @@ a famous person and reply with the person's name.
             return person_name
 
     async def generate_famous_person_response(
-        self, request: ConversationMessage, person: str, language_name: str, conversation_fetcher, guild_id: int
+        self,
+        request: ConversationMessage,
+        person: str,
+        language_name: str,
+        conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
     ) -> str:
         """
         Generate a famous person response. Returns the response string.
@@ -143,7 +147,6 @@ a famous person and reply with the person's name.
             request (ConversationMessage): The user's message with bot mentions removed
             person (str): The name of the famous person to impersonate
             conversation_fetcher: Parameterless async function that returns conversation history
-            guild_id (int): The guild ID for user name resolution
 
         Returns:
             str: The response string ready to be sent by the caller
@@ -154,7 +157,7 @@ a famous person and reply with the person's name.
 
             conversation = await conversation_fetcher()
 
-            conversation_block = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+            conversation_block = await self.conversation_formatter.format_to_xml(conversation)
 
             prompt = f"""You are {person}. Generate a response as if you were {person}, 
             using their communication style, beliefs, values, and knowledge.
@@ -180,7 +183,7 @@ but no need to report on the length of the response.
             logger.info(f"Conversation: {conversation}")
 
             response = await self.ai_client.generate_content(
-                message=format_request_message_xml(request),
+                message=await self.conversation_formatter.format_request_message_xml(request),
                 prompt=prompt,
             )
 
@@ -195,7 +198,10 @@ but no need to report on the length of the response.
             return processed_response
 
     async def handle_request(
-        self, params: FamousParams, request: ConversationMessage, conversation_fetcher, guild_id: int
+        self,
+        params: FamousParams,
+        request: ConversationMessage,
+        conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
     ) -> str:
         """
         Handle a famous person request using the provided parameters.
@@ -204,11 +210,10 @@ but no need to report on the length of the response.
             params (FamousParams): Parameters containing the famous person's name and language
             request (ConversationMessage): The user's message with bot mentions removed
             conversation_fetcher: Parameterless async function that returns conversation history
-            guild_id (int): The guild ID for user name resolution
 
         Returns:
             str: The response string ready to be sent by the caller
         """
         return await self.generate_famous_person_response(
-            request, params.famous_person, params.language_name, conversation_fetcher, guild_id
+            request, params.famous_person, params.language_name, conversation_fetcher
         )

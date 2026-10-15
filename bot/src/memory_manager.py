@@ -5,6 +5,7 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, timezone
+from zoneinfo import ZoneInfo
 
 from ai_client import AIClient, BlockedException
 from conversation_formatter import CONVERSATION_STRUCTURE_INSTRUCTIONS, ConversationFormatter
@@ -195,7 +196,8 @@ class MemoryManager:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("user_id", user_id)
 
-            today = datetime.now(timezone.utc).date()
+            tz = await self._store.get_guild_timezone(guild_id)
+            today = datetime.now(tz).date()
             all_dates = [today] + [today - timedelta(days=i) for i in range(1, 7)]
             daily_summaries_by_date = await self._fetch_all_daily_summaries(guild_id, all_dates)
 
@@ -240,7 +242,7 @@ class MemoryManager:
             return None
 
     async def _daily_summary(self, guild_id: int, for_date: date) -> dict[int, str]:
-        """Return all users' summaries for a date, building synchronously (coalesced) on a miss.
+        """Return all users' summaries for a guild-local date, building synchronously (coalesced) on a miss.
 
         The current day is cached in Redis with a staleness window (a value fresher than
         STALENESS_THRESHOLD is reused); historical days are immutable in the DB. A miss — or a
@@ -250,8 +252,10 @@ class MemoryManager:
         async with self._telemetry.async_create_span("daily_summary") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
+            tz = await self._store.get_guild_timezone(guild_id)
+            span.set_attribute("timezone", tz.key)
 
-            is_current_day = for_date == datetime.now(timezone.utc).date()
+            is_current_day = for_date == datetime.now(tz).date()
 
             if is_current_day:
                 cached = await self._redis_cache.get_daily_summary(guild_id, for_date)
@@ -264,7 +268,7 @@ class MemoryManager:
                         )
                         return summaries
             else:
-                if not await self._store.has_chat_messages_for_date(guild_id, for_date):
+                if not await self._store.has_chat_messages_for_date(guild_id, for_date, tz):
                     span.set_attribute("has_messages", False)
                     self._telemetry.metrics.daily_summary_jobs.add(1, {"guild_id": str(guild_id), "outcome": "success"})
                     return {}
@@ -283,20 +287,21 @@ class MemoryManager:
                 1, {"guild_id": str(guild_id), "cache_outcome": "miss", "outcome": "success"}
             )
             return await self._coalesce(
-                self._date_inflight, (guild_id, for_date), lambda: self._build_date_summary(guild_id, for_date)
+                self._date_inflight, (guild_id, for_date), lambda: self._build_date_summary(guild_id, for_date, tz)
             )
 
-    async def _build_date_summary(self, guild_id: int, for_date: date) -> dict[int, str]:
+    async def _build_date_summary(self, guild_id: int, for_date: date, tz: ZoneInfo) -> dict[int, str]:
         """Generate a date's summaries and persist them. Current day → Redis (timestamped for
         staleness); historical → DB. The target is decided at execution time so a build that
         straddles midnight persists according to what the date has become."""
         async with self._telemetry.async_create_span("build_date_summary") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
+            span.set_attribute("timezone", tz.key)
 
-            is_current_day = for_date == datetime.now(timezone.utc).date()
+            is_current_day = for_date == datetime.now(tz).date()
             try:
-                summaries = await self._create_daily_summaries(guild_id, for_date)
+                summaries = await self._create_daily_summaries(guild_id, for_date, tz)
             except BlockedException as blocked:
                 span.record_exception(blocked)
                 span.set_attribute("blocked_reason", blocked.reason)
@@ -313,13 +318,14 @@ class MemoryManager:
                 await self._store.save_daily_summaries(guild_id, for_date, summaries)
             return summaries
 
-    async def _create_daily_summaries(self, guild_id: int, for_date: date) -> dict[int, str]:
+    async def _create_daily_summaries(self, guild_id: int, for_date: date, tz: ZoneInfo) -> dict[int, str]:
         """Generate daily summaries for all active users in a single API call. Pure generation method - no caching."""
         async with self._telemetry.async_create_span("create_daily_summaries") as span:
             span.set_attribute("guild_id", guild_id)
             span.set_attribute("for_date", str(for_date))
+            span.set_attribute("timezone", tz.key)
 
-            messages = await self._store.get_chat_messages_for_date(guild_id, for_date)
+            messages = await self._store.get_chat_messages_for_date(guild_id, for_date, tz)
             if not messages:
                 empty_dict: dict[int, str] = {}
                 return empty_dict
@@ -333,17 +339,18 @@ class MemoryManager:
             conversation_messages = [
                 ConversationMessage(
                     message_id=msg.message_id,
+                    guild_id=msg.guild_id,
                     author_id=msg.user_id,
                     content=msg.message_text,
-                    timestamp=msg.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    timestamp=msg.timestamp,
                     mentioned_user_ids=[],
                     reply_to_id=msg.reply_to_id,
                 )
                 for msg in messages
             ]
 
-            formatter = ConversationFormatter(self._user_resolver)
-            formatted_messages = await formatter.format_to_xml(guild_id, conversation_messages)
+            formatter = ConversationFormatter(self._user_resolver, self._store)
+            formatted_messages = await formatter.format_to_xml(conversation_messages)
 
             aliases_map = await self._extract_aliases_for(guild_id, active_user_ids)
 
@@ -527,9 +534,9 @@ class MemoryManager:
             memories_xml = "\n".join(member_blocks)
             return f"<memories>\n{memories_xml}\n</memories>"
 
-    async def ingest_message(self, guild_id: int, message: MessageNode) -> None:
+    async def ingest_message(self, message: MessageNode) -> None:
         await self._store.add_chat_message(
-            guild_id,
+            message.guild_id,
             message.channel_id,
             message.id,
             message.author_id,
