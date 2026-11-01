@@ -27,8 +27,10 @@ the messages from member_id {bot_user_id}.
 {conversation_structure}
 
 The summary is given to the next run of this task as its context about previous runs.
-Capture whatever the task prompt needs to know about the previous runs; the task prompt
-decides what matters. Record only what the messages actually contain, and keep it compact.
+Summarize the previous runs according to what is important for the <task_prompt>: the task
+prompt alone decides which information about previous runs matters. Record only what the
+messages actually contain, keep it compact, and do not include any instructions for the
+next run.
 """
 
 
