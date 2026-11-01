@@ -165,6 +165,11 @@ class ClaudeClient(AIClient):
                 self._record(timer(), base_attrs, "error", "CLIError")
                 raise RuntimeError(f"Claude CLI error result: {result.get('result')}")
 
+            if result.get("safety_stops"):
+                logger.error(f"Claude CLI response hit {result['safety_stops']} safety stop(s), discarding reply")
+                self._record(timer(), base_attrs, "error", "SafetyStop")
+                raise RuntimeError("Claude CLI response was cut by a safety stop")
+
             self._record(timer(), base_attrs, "success")
 
             if response_schema:
