@@ -81,14 +81,17 @@ class AiRouter:
             logger.info(f"Extracted parameters for {route}: {params}")
             return params
 
-    async def extract_general_params(self, message: str, conversation_context: str = "") -> GeneralParams:
+    async def extract_general_params(
+        self, request: ConversationMessage, conversation_context: str = ""
+    ) -> GeneralParams:
         """Extract GENERAL-route parameters without route selection.
 
         For flows that must never be routed elsewhere — e.g. scheduled task firings,
         which would otherwise be able to create new scheduled tasks."""
+        request_xml = await self.conversation_formatter.format_request_message_xml(request)
         params, language_code = await asyncio.gather(
-            self._extract_parameters("GENERAL", message, conversation_context),
-            self.language_detector.detect_language(message),
+            self._extract_parameters("GENERAL", request_xml, conversation_context),
+            self.language_detector.detect_language(request.content),
         )
         params.language_code = language_code
         params.language_name = await self.language_detector.get_language_name(language_code)
@@ -96,23 +99,26 @@ class AiRouter:
 
     async def route_request(
         self,
-        message: str,
+        request: ConversationMessage,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
-        guild_id: int,
     ) -> tuple[str, FamousParams | GeneralParams | FactParams | ScheduleParams | None]:
         """Route a message using 2-tier approach: route selection (delegated to the RouteSelector),
-        language detection, then parameter extraction."""
+        language detection, then parameter extraction.
+
+        `request` is the message being routed, with the bot mention already replaced by 'BOT'."""
+        message = request.content
+        request_xml = await self.conversation_formatter.format_request_message_xml(request)
         async with self.telemetry.async_create_span("route_request") as span:
             span.set_attribute("message", message)
 
             conversation_context = ""
             conversation = await conversation_fetcher()
             if conversation:
-                conversation_context = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+                conversation_context = await self.conversation_formatter.format_to_xml(conversation)
                 member_ids: set[int] = {msg.author_id for msg in conversation}
                 for msg in conversation:
                     member_ids.update(msg.mentioned_user_ids)
-                memories_block = await self.memory_manager.build_memory_prompt(guild_id, member_ids)
+                memories_block = await self.memory_manager.build_memory_prompt(request.guild_id, member_ids)
                 if memories_block:
                     conversation_context = f"{memories_block}\n{conversation_context}"
 
@@ -120,7 +126,7 @@ class AiRouter:
             lang_task = asyncio.create_task(self.language_detector.detect_language(message))
 
             # Tier 1: Route selection (Jev and/or LLM, see route_selector.py)
-            route_selection = await self.route_selector.select(message, conversation_context)
+            route_selection = await self.route_selector.select(request_xml, conversation_context)
 
             logger.info(f"Final route selection: {route_selection.route}, Reason: {route_selection.reason}")
             span.set_attribute("route", route_selection.route)
@@ -128,7 +134,7 @@ class AiRouter:
 
             # Tier 2: Parameter extraction (starts immediately, doesn't wait for language detection)
             try:
-                params = await self._extract_parameters(route_selection.route, message, conversation_context)
+                params = await self._extract_parameters(route_selection.route, request_xml, conversation_context)
             except Exception:
                 language_code = await lang_task
                 self.telemetry.metrics.route_selections_counter.add(

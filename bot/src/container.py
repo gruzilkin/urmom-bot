@@ -124,7 +124,7 @@ class Container:
         )
         self.claude_haiku_offline = ClaudeClient(
             telemetry=self.telemetry,
-            model_name="claude-haiku-4-5",
+            model_name="claude-haiku-5-5",
             enable_web_search=False,
             timeout_seconds=60,
         )
@@ -143,9 +143,8 @@ class Container:
 
         self.lightweight_fallback = CompositeAIClient(
             [
-                self.gemma,
-                self.codex_luna_offline,
                 self.claude_haiku_offline,
+                self.codex_luna_offline,
                 self.retrying_gemma,
                 self.deepseek,
                 self.retrying_grok,
@@ -155,7 +154,7 @@ class Container:
 
         # NOTSURE from the LLM route selector falls through to the next client; inert for other schemas.
         self.latency_critical = CompositeAIClient(
-            [self.codex_luna_offline, self.claude_haiku_offline, self.deepseek, self.retrying_grok],
+            [self.claude_haiku_offline, self.codex_luna_offline, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=lambda r: getattr(r, "route", None) == "NOTSURE",
         )
@@ -166,8 +165,8 @@ class Container:
             shuffle=True,
         )
 
-        self.luna_haiku_deepseek_flash_fallback = CompositeAIClient(
-            [self.codex_luna_offline, self.claude_haiku_offline, self.deepseek, self.gemini_flash],
+        self.haiku_luna_deepseek_flash_fallback = CompositeAIClient(
+            [self.claude_haiku_offline, self.codex_luna_offline, self.deepseek, self.gemini_flash],
             telemetry=self.telemetry,
         )
 
@@ -183,7 +182,7 @@ class Container:
 
         # A summary still over the Discord limit is treated like a failure and falls through.
         self.summarizer_fallback = CompositeAIClient(
-            [self.codex_luna_offline, self.claude_haiku_offline, self.codex, self.gemma, self.retrying_grok],
+            [self.claude_haiku_offline, self.codex_luna_offline, self.codex, self.gemma, self.retrying_grok],
             telemetry=self.telemetry,
             is_bad_response=is_unusable_summary,
         )
@@ -220,7 +219,7 @@ class Container:
 
         self.user_resolver = UserResolver(self.telemetry)
 
-        self.conversation_formatter = ConversationFormatter(self.user_resolver)
+        self.conversation_formatter = ConversationFormatter(self.user_resolver, self.store)
 
         self.famous_person_generator = FamousPersonGenerator(
             self.retrying_grok,
@@ -242,7 +241,7 @@ class Container:
         self.memory_manager = MemoryManager(
             telemetry=self.telemetry,
             store=self.store,
-            summary_client=self.luna_haiku_deepseek_flash_fallback,
+            summary_client=self.haiku_luna_deepseek_flash_fallback,
             alias_client=self.lightweight_fallback,
             merge_client=self.lightweight_fallback,
             user_resolver=self.user_resolver,

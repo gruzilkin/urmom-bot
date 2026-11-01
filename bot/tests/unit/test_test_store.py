@@ -4,7 +4,10 @@ Tests for the TestStore test double to verify it correctly represents the physic
 
 import unittest
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from test_store import TestStore
+
+UTC = ZoneInfo("UTC")
 
 
 class TestTestStore(unittest.IsolatedAsyncioTestCase):
@@ -33,7 +36,9 @@ class TestTestStore(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_messages_for_first_day(self):
         """Test getting messages for the first day (Monday, March 3rd)."""
-        messages = await self.test_store.get_chat_messages_for_date(self.test_store.physics_guild_id, date(1905, 3, 3))
+        messages = await self.test_store.get_chat_messages_for_date(
+            self.test_store.physics_guild_id, date(1905, 3, 3), UTC
+        )
 
         # Monday should have 10 messages
         self.assertEqual(len(messages), 10)
@@ -47,7 +52,9 @@ class TestTestStore(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_messages_for_last_day(self):
         """Test getting messages for the last day (Sunday, March 9th)."""
-        messages = await self.test_store.get_chat_messages_for_date(self.test_store.physics_guild_id, date(1905, 3, 9))
+        messages = await self.test_store.get_chat_messages_for_date(
+            self.test_store.physics_guild_id, date(1905, 3, 9), UTC
+        )
 
         # Sunday should have 11 messages (evening reflection)
         self.assertEqual(len(messages), 11)
@@ -61,7 +68,8 @@ class TestTestStore(unittest.IsolatedAsyncioTestCase):
         """Test getting messages for a date with no activity."""
         messages = await self.test_store.get_chat_messages_for_date(
             self.test_store.physics_guild_id,
-            date(1905, 3, 10),  # Day after the chat ended
+            date(1905, 3, 10),
+            UTC,  # Day after the chat ended
         )
 
         self.assertEqual(len(messages), 0)
@@ -71,6 +79,7 @@ class TestTestStore(unittest.IsolatedAsyncioTestCase):
         messages = await self.test_store.get_chat_messages_for_date(
             12345,  # Wrong guild ID
             date(1905, 3, 3),
+            UTC,
         )
 
         self.assertEqual(len(messages), 0)
@@ -187,7 +196,9 @@ class TestTestStore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.test_store.total_message_count, initial_count + 1)
 
         # Should be able to retrieve it
-        messages = await self.test_store.get_chat_messages_for_date(self.test_store.physics_guild_id, date(1905, 3, 10))
+        messages = await self.test_store.get_chat_messages_for_date(
+            self.test_store.physics_guild_id, date(1905, 3, 10), UTC
+        )
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0].message_text, "This is a test message")
 

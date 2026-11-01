@@ -10,7 +10,10 @@ from open_telemetry import Telemetry
 from store import Store
 from language_detector import LanguageDetector
 from memory_manager import MemoryManager
-from conversation_formatter import ConversationFormatter
+from conversation_formatter import (
+    CONVERSATION_STRUCTURE_INSTRUCTIONS,
+    ConversationFormatter,
+)
 from schemas import YesNo
 from opentelemetry.trace import SpanKind
 
@@ -70,10 +73,9 @@ class JokeGenerator:
 
     async def generate_joke(
         self,
-        content: str,
+        request: ConversationMessage,
         language: str,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
-        guild_id: int,
     ) -> str:
         # Convert language code to language name
         language_name = await self.language_detector.get_language_name(language)
@@ -89,9 +91,9 @@ class JokeGenerator:
             examples_xml += "</examples>"
 
         conversation = await conversation_fetcher()
-        conversation_block = await self._conversation_formatter.format_to_xml(guild_id, conversation)
+        conversation_block = await self._conversation_formatter.format_to_xml(conversation)
         user_ids = self._extract_unique_user_ids(conversation)
-        memories_block = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
+        memories_block = await self._memory_manager.build_memory_prompt(request.guild_id, user_ids)
 
         # Create the prompt using format string
         russian_note = (
@@ -101,7 +103,7 @@ class JokeGenerator:
             else ""
         )
         prompt = f"""You are a chatbot that generates jokes in response to messages.
-Read the message, conversation context, and any user memories,
+Read the message in the <request> block, conversation context, and any user memories,
 then pick whichever joke format below produces the funniest
 result. All formats are equally valid — always go with the
 joke that lands hardest regardless of format.
@@ -173,6 +175,8 @@ Make sure that the joke is grammatically correct.
 
 Reply in {language_name}. Return only the joke, no meta commentary or explanation.
 
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
+
 {examples_xml}
 
 {memories_block}
@@ -180,7 +184,9 @@ Reply in {language_name}. Return only the joke, no meta commentary or explanatio
 {conversation_block}"""
 
         async with self.telemetry.async_create_span("generate_joke"):
-            response = await self._joke_writer_client.generate_content(message=content, prompt=prompt)
+            response = await self._joke_writer_client.generate_content(
+                message=await self._conversation_formatter.format_request_message_xml(request), prompt=prompt
+            )
             return response
 
     async def generate_country_joke(self, message: str, country: str) -> str:

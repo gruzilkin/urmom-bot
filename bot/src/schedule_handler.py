@@ -11,7 +11,10 @@ from croniter import croniter, CroniterBadCronError
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ai_client import AIClient
-from conversation_formatter import ConversationFormatter
+from conversation_formatter import (
+    CONVERSATION_STRUCTURE_INSTRUCTIONS,
+    ConversationFormatter,
+)
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from schemas import (
@@ -71,8 +74,10 @@ class ScheduleHandler:
         if conversation_context:
             context_section = f"""
 <conversation_context>
-Extract parameters from the LAST message.
-Use earlier messages to resolve references like "this", "that", "it" in the last message.
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
+
+Extract parameters from the <request> message.
+Use earlier messages to resolve references like "this", "that", "it" in the <request>.
 
 {conversation_context}
 </conversation_context>
@@ -99,14 +104,14 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
     async def handle_request(
         self,
         params: ScheduleParams,
-        message: str,
-        guild_id: int,
+        request: ConversationMessage,
         channel_id: int,
-        creator_user_id: int,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]] | None = None,
     ) -> str:
         logger.info(f"Processing schedule request: {params.operation}")
         language_name = params.language_name or "English"
+        guild_id = request.guild_id
+        message = await self.conversation_formatter.format_request_message_xml(request)
 
         async with self.telemetry.async_create_span("schedule_handle_request") as span:
             span.set_attribute("operation", params.operation)
@@ -118,11 +123,11 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
                 if conversation_fetcher is not None:
                     conversation = await conversation_fetcher()
                     if conversation:
-                        conversation_context = await self.conversation_formatter.format_to_xml(guild_id, conversation)
+                        conversation_context = await self.conversation_formatter.format_to_xml(conversation)
 
             if params.operation == "create":
                 return await self._create(
-                    message, guild_id, channel_id, creator_user_id, language_name, conversation_context
+                    message, guild_id, channel_id, request.author_id, language_name, conversation_context
                 )
             if params.operation == "list":
                 return await self._list(message, guild_id, channel_id, language_name)
@@ -434,7 +439,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the last
     ) -> str:
         context_section = ""
         if conversation_context:
-            context_section = f"\n{conversation_context}\n"
+            context_section = f"\n{CONVERSATION_STRUCTURE_INSTRUCTIONS}\n\n{conversation_context}\n"
 
         return f"""
 Extract schedule details for a new scheduled task from the user's request.
@@ -525,7 +530,7 @@ say so. Respond in {language_name}.
     ) -> str:
         context_section = ""
         if conversation_context:
-            context_section = f"\n{conversation_context}\n"
+            context_section = f"\n{CONVERSATION_STRUCTURE_INSTRUCTIONS}\n\n{conversation_context}\n"
 
         return f"""
 Edit an existing scheduled task based on the user's change request.

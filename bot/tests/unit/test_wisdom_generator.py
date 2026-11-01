@@ -1,11 +1,14 @@
 """Unit tests for WisdomGenerator."""
 
+from datetime import datetime, timezone
 import unittest
 from unittest.mock import AsyncMock, Mock
 
+from conversation_formatter import ConversationFormatter
 from wisdom_generator import WisdomGenerator
 from conversation_graph import ConversationMessage
 from null_telemetry import NullTelemetry
+from request_helpers import make_request, utc_store
 from schemas import WisdomResponse
 
 
@@ -22,6 +25,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         self.conversation_formatter.format_to_xml = AsyncMock(
             return_value="<conversation_history>\n<message>Mock conversation</message>\n</conversation_history>"
         )
+        self.conversation_formatter.format_request_message_xml = ConversationFormatter(
+            Mock(), utc_store()
+        ).format_request_message_xml
 
         self.response_summarizer = Mock()
         self.response_summarizer.process_response = AsyncMock(side_effect=lambda x: x)
@@ -33,11 +39,7 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
 
         # Mock trigger message
-        self.mock_trigger_message = Mock()
-        self.mock_trigger_message.content = "Test message"
-        self.mock_trigger_message.author = Mock()
-        self.mock_trigger_message.author.id = 12345
-        self.mock_trigger_message.author.display_name = "TestUser"
+        self.mock_trigger_message = make_request("Test message", author_id=12345, guild_id=123)
 
         self.generator = WisdomGenerator(
             ai_client=self.ai_client,
@@ -61,7 +63,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            guild_id=123,
         )
 
         self.assertEqual(result, "Thus spoke the sage.")
@@ -92,16 +93,18 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
             return [
                 ConversationMessage(
                     message_id=1,
+                    guild_id=123,
                     author_id=100,
                     content="First message",
-                    timestamp="2023-01-01T00:00:00",
+                    timestamp=datetime(2023, 1, 1, 0, 0, tzinfo=timezone.utc),
                     mentioned_user_ids=[],
                 ),
                 ConversationMessage(
                     message_id=2,
+                    guild_id=123,
                     author_id=101,
                     content="Second message",
-                    timestamp="2023-01-01T00:01:00",
+                    timestamp=datetime(2023, 1, 1, 0, 1, tzinfo=timezone.utc),
                     mentioned_user_ids=[],
                     reply_to_id=1,
                 ),
@@ -111,7 +114,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            guild_id=123,
         )
 
         self.assertEqual(result, "Wisdom from context.")
@@ -136,7 +138,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            guild_id=123,
         )
 
         self.assertEqual(result, "Мудрость")
@@ -164,7 +165,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            guild_id=123,
         )
 
         self.assertEqual(result, summarized)
@@ -178,9 +178,10 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
             return [
                 ConversationMessage(
                     message_id=1,
+                    guild_id=123,
                     author_id=100,
                     content="Hello <@12345>",
-                    timestamp="2023-01-01T00:00:00",
+                    timestamp=datetime(2023, 1, 1, 0, 0, tzinfo=timezone.utc),
                     mentioned_user_ids=[12345],
                 ),
             ]
@@ -189,7 +190,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            guild_id=123,
         )
 
         self.conversation_formatter.format_to_xml.assert_called_once()
@@ -206,7 +206,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            guild_id=123,
         )
 
         self.assertIsNone(result)
@@ -224,7 +223,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=AsyncMock(return_value=[]),
-            guild_id=123,
         )
 
         self.memory_manager.build_memory_prompt.assert_called_once()

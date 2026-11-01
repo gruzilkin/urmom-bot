@@ -1,17 +1,20 @@
 import unittest
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime, date, timezone, timedelta
+from zoneinfo import ZoneInfo
 import asyncio
 
 from memory_manager import MemoryManager
 from ai_client import AIClient, BlockedException
 from message_node import MessageNode
 from schemas import MemoryContext, DailySummaries, UserSummary, UserAliases
-from store import Store
+from store import GuildConfig, Store
 from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
 from test_user_resolver import TestUserResolver
 from test_store import TestStore  # Moved import to top
+
+UTC = ZoneInfo("UTC")
 
 
 class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
@@ -143,7 +146,7 @@ class TestMemoryManagerCaching(unittest.IsolatedAsyncioTestCase):
         no_message_date = date(1905, 3, 2)
 
         # Act
-        result = await self.memory_manager._create_daily_summaries(self.physics_guild_id, no_message_date)
+        result = await self.memory_manager._create_daily_summaries(self.physics_guild_id, no_message_date, UTC)
 
         # Assert
         self.assertEqual(result, {})
@@ -161,6 +164,7 @@ class TestMemoryManagerFallbacks(unittest.IsolatedAsyncioTestCase):
 
         # Mock AI clients and store
         self.mock_store = Mock(spec=Store)
+        self.mock_store.get_guild_timezone = AsyncMock(return_value=UTC)
         self.mock_summary_client = Mock(spec=AIClient)
         self.mock_alias_client = Mock(spec=AIClient)
         self.mock_merge_client = Mock(spec=AIClient)
@@ -421,14 +425,14 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         )
 
         # Act
-        await self.memory_manager._create_daily_summaries(self.physics_guild_id, self.test_date)
+        await self.memory_manager._create_daily_summaries(self.physics_guild_id, self.test_date, UTC)
 
         # Assert - Check that the prompt contains properly formatted XML
         call_args = self.mock_summary_client.generate_content.call_args
         prompt = call_args[1]["message"]  # keyword argument
 
         self.assertIn("<message>", prompt)
-        self.assertIn("<timestamp>1905-03-03 09:15:00+00:00</timestamp>", prompt)
+        self.assertIn("<timestamp>1905-03-03 Fri 09:15 +00:00</timestamp>", prompt)
         self.assertIn(f"<member_id>{einstein_id}</member_id>", prompt)
         self.assertIn("<member_name>Einstein</member_name>", prompt)
 
@@ -458,7 +462,7 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
         )
 
         # Act
-        await self.memory_manager._create_daily_summaries(self.physics_guild_id, self.test_date)
+        await self.memory_manager._create_daily_summaries(self.physics_guild_id, self.test_date, UTC)
 
         # Assert - Check that AI prompt contains deduplicated user list
         call_args = self.mock_summary_client.generate_content.call_args
@@ -484,21 +488,22 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
             id=12345,
             channel_id=67890,
             author_id=11111,
+            guild_id=self.physics_guild_id,
             content="Test message content for state-based test",
             mentioned_user_ids=[],
             created_at=datetime(2025, 7, 1, 12, 0, tzinfo=timezone.utc),
         )
 
         # Get initial state
-        initial_messages = await self.test_store.get_chat_messages_for_date(self.physics_guild_id, message_date)
+        initial_messages = await self.test_store.get_chat_messages_for_date(self.physics_guild_id, message_date, UTC)
         initial_message_count = len(initial_messages)
 
         # Act
-        await self.memory_manager.ingest_message(self.physics_guild_id, message)
+        await self.memory_manager.ingest_message(message)
 
         # Assert
         # Check that the number of messages has increased by one for that date
-        final_messages = await self.test_store.get_chat_messages_for_date(self.physics_guild_id, message_date)
+        final_messages = await self.test_store.get_chat_messages_for_date(self.physics_guild_id, message_date, UTC)
         self.assertEqual(len(final_messages), initial_message_count + 1)
 
         # Find the newly added message (it should be the last one)
@@ -590,6 +595,7 @@ class TestMemoryManagerExceptionIsolation(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         self.user_resolver = TestUserResolver()
         self.mock_store = Mock(spec=Store)
+        self.mock_store.get_guild_timezone = AsyncMock(return_value=UTC)
         self.mock_summary_client = Mock(spec=AIClient)
         self.mock_alias_client = Mock(spec=AIClient)
         self.mock_merge_client = Mock(spec=AIClient)
@@ -812,6 +818,7 @@ class TestMemoryManagerSmartFallback(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         self.user_resolver = TestUserResolver()
         self.mock_store = Mock(spec=Store)
+        self.mock_store.get_guild_timezone = AsyncMock(return_value=UTC)
         self.mock_summary_client = Mock(spec=AIClient)
         self.mock_alias_client = Mock(spec=AIClient)
         self.mock_merge_client = Mock(spec=AIClient)
@@ -1314,7 +1321,7 @@ class TestMemoryManagerDatabaseBacked(unittest.IsolatedAsyncioTestCase):
             self.mock_summary_client.generate_content.assert_not_called()  # Skip LLM
 
             # Verify TestStore correctly reports no messages for this date
-            has_messages = await self.test_store.has_chat_messages_for_date(self.physics_guild_id, historical_date)
+            has_messages = await self.test_store.has_chat_messages_for_date(self.physics_guild_id, historical_date, UTC)
             self.assertFalse(has_messages)
 
     async def test_current_day_cold_miss_builds_synchronously(self):
@@ -1480,6 +1487,7 @@ class TestMemoryManagerBudgetAndCoalescing(unittest.IsolatedAsyncioTestCase):
         self.telemetry = NullTelemetry()
         self.user_resolver = TestUserResolver()
         self.mock_store = Mock(spec=Store)
+        self.mock_store.get_guild_timezone = AsyncMock(return_value=UTC)
         self.mock_summary_client = Mock(spec=AIClient)
         self.mock_alias_client = Mock(spec=AIClient)
         self.mock_merge_client = Mock(spec=AIClient)
@@ -1739,7 +1747,7 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        await self.memory_manager._create_daily_summaries(self.physics_guild_id, test_date)
+        await self.memory_manager._create_daily_summaries(self.physics_guild_id, test_date, UTC)
 
         # Check that the Gemini prompt contains the also_known_as tag
         gemini_call_args = self.mock_summary_client.generate_content.call_args
@@ -1767,6 +1775,58 @@ class TestMemoryManagerAliasExtraction(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(self.mock_alias_client.generate_content.call_count, 3)
         self.assertLess(elapsed, 0.2)
+
+
+class TestMemoryManagerGuildTimezone(unittest.IsolatedAsyncioTestCase):
+    """Daily summary days follow the guild's local calendar, not UTC."""
+
+    def setUp(self):
+        self.test_store = TestStore()
+        self.tokyo = ZoneInfo("Asia/Tokyo")
+        self.test_store.get_guild_config = AsyncMock(
+            side_effect=lambda guild_id: GuildConfig(guild_id=guild_id, default_timezone="Asia/Tokyo")
+        )
+        self.redis_cache = NullRedisCache()
+        self.mock_summary_client = Mock(spec=AIClient)
+        self.mock_alias_client = Mock(spec=AIClient)
+        self.mock_alias_client.generate_content = AsyncMock(return_value=UserAliases(aliases=[]))
+        self.memory_manager = MemoryManager(
+            telemetry=NullTelemetry(),
+            store=self.test_store,
+            summary_client=self.mock_summary_client,
+            alias_client=self.mock_alias_client,
+            merge_client=Mock(spec=AIClient),
+            user_resolver=self.test_store.user_resolver,
+            redis_cache=self.redis_cache,
+        )
+        self.physics_guild_id = self.test_store.physics_guild_id
+        einstein_id = self.test_store.physicist_ids["Einstein"]
+        self.summaries = {einstein_id: "Einstein talked physics"}
+        self.mock_summary_client.generate_content = AsyncMock(
+            return_value=DailySummaries(summaries=[UserSummary(user_id=einstein_id, summary="Einstein talked physics")])
+        )
+
+    async def test_local_today_is_current_day_while_utc_is_still_yesterday(self):
+        # 20:00 UTC on Mar 3 is already 05:00 on Mar 4 in Tokyo
+        now_utc = datetime(1905, 3, 3, 20, 0, tzinfo=timezone.utc)
+        with patch("memory_manager.datetime") as mock_datetime:
+            mock_datetime.now.side_effect = lambda tz: now_utc.astimezone(tz)
+
+            await self.memory_manager._daily_summary(self.physics_guild_id, date(1905, 3, 4))
+            await self.memory_manager._daily_summary(self.physics_guild_id, date(1905, 3, 3))
+
+        self.assertIsNotNone(await self.redis_cache.get_daily_summary(self.physics_guild_id, date(1905, 3, 4)))
+        self.assertEqual(
+            await self.test_store.get_daily_summaries(self.physics_guild_id, date(1905, 3, 3)),
+            self.summaries,
+        )
+        self.assertEqual(await self.test_store.get_daily_summaries(self.physics_guild_id, date(1905, 3, 4)), {})
+
+    async def test_summary_input_uses_guild_local_timestamps(self):
+        await self.memory_manager._create_daily_summaries(self.physics_guild_id, date(1905, 3, 3), self.tokyo)
+
+        summary_input = self.mock_summary_client.generate_content.call_args.kwargs["message"]
+        self.assertIn("<timestamp>1905-03-03 Fri 18:15 +09:00</timestamp>", summary_input)
 
 
 if __name__ == "__main__":

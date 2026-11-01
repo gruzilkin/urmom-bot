@@ -3,15 +3,16 @@
 import logging
 from collections.abc import Callable, Awaitable
 
-import nextcord
-
 from ai_client import AIClient
 from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from language_detector import LanguageDetector
 from response_summarizer import ResponseSummarizer
 from memory_manager import MemoryManager
-from conversation_formatter import ConversationFormatter
+from conversation_formatter import (
+    CONVERSATION_STRUCTURE_INSTRUCTIONS,
+    ConversationFormatter,
+)
 from schemas import DevilsAdvocateResponse
 
 logger = logging.getLogger(__name__)
@@ -46,17 +47,15 @@ class DevilsAdvocateGenerator:
 
     async def generate_counter_argument(
         self,
-        trigger_message: nextcord.Message,
+        trigger_message: ConversationMessage,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
-        guild_id: int,
     ) -> str | None:
         """
         Generate counter-argument based on a message and its conversation context.
 
         Args:
-            trigger_message: The Discord message that was reacted to
+            trigger_message: The Discord message that was reacted to, sent as the <request> block
             conversation_fetcher: Async function that returns conversation history
-            guild_id: Discord guild ID for user context resolution
 
         Returns:
             str: The generated counter-argument response, or None if generation fails
@@ -71,10 +70,10 @@ class DevilsAdvocateGenerator:
             conversation = await conversation_fetcher()
 
             user_ids = self._extract_unique_user_ids(conversation)
-            user_ids.add(trigger_message.author.id)
-            memories_block = await self._memory_manager.build_memory_prompt(guild_id, user_ids)
+            user_ids.add(trigger_message.author_id)
+            memories_block = await self._memory_manager.build_memory_prompt(trigger_message.guild_id, user_ids)
 
-            conversation_block = await self._conversation_formatter.format_to_xml(guild_id, conversation)
+            conversation_block = await self._conversation_formatter.format_to_xml(conversation)
 
             prompt = f"""<system_instructions>
 You are a devil's advocate.
@@ -86,7 +85,7 @@ multiple points in different messages
 3. Challenges assumptions, finds logical flaws, or presents alternative viewpoints
 4. Argues persuasively for an opposing or alternative perspective
 5. Maintains intellectual honesty (acknowledge valid points while arguing the opposite)
-6. Synthesizes your counter-argument from the full conversational context, not just the single trigger message
+6. Synthesizes your counter-argument from the full conversational context, not just the single <request> message
 7. Don't be afraid to go after the author or other chat participants personally
 
 Response format and style:
@@ -109,22 +108,20 @@ Personalization:
 - You have memories about some users in this conversation - use them to make the counter-argument more relevant
 - Prefer to use information from memories to address users instead of their Discord names
 - Reference their known positions or characteristics when it strengthens your argument
+
+{CONVERSATION_STRUCTURE_INSTRUCTIONS}
 </system_instructions>
 
 {memories_block}
 
 {conversation_block}"""
 
-            # Format trigger message with author attribution
-            trigger_message_xml = f"""<trigger_message>
-<member_id>{trigger_message.author.id}</member_id>
-<content>{trigger_message.content}</content>
-</trigger_message>"""
+            request_xml = await self._conversation_formatter.format_request_message_xml(trigger_message)
 
             logger.info(f"Generating counter-argument for message: {trigger_message.content}")
 
             response = await self._ai_client.generate_content(
-                message=trigger_message_xml,
+                message=request_xml,
                 prompt=prompt,
                 temperature=0.7,
                 response_schema=DevilsAdvocateResponse,

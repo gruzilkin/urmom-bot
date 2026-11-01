@@ -40,6 +40,24 @@ _STRICT_UNSUPPORTED_KEYWORDS = (
 )
 
 
+# Linux caps a single command-line argument at 128 KiB (MAX_ARG_STRLEN). Prompts whose
+# `-c developer_instructions=...` argument would exceed this are inlined into stdin instead.
+_MAX_CLI_ARG_BYTES = 120_000
+
+
+def _developer_instructions_arg(prompt: str) -> str | None:
+    """Build the `-c` override that passes the prompt as Codex developer instructions.
+
+    The value is parsed as TOML; a JSON string literal is also a valid TOML basic string,
+    so json.dumps handles quoting and escaping of quotes, backslashes and newlines.
+    Returns None when the argument would be too long to pass on the command line.
+    """
+    arg = f"developer_instructions={json.dumps(prompt, ensure_ascii=False)}"
+    if len(arg.encode("utf-8")) > _MAX_CLI_ARG_BYTES:
+        return None
+    return arg
+
+
 def _make_strict_schema(node: object) -> None:
     """Recursively rewrite a Pydantic JSON schema in place to satisfy OpenAI strict mode.
 
@@ -118,19 +136,34 @@ class CodexClient(AIClient):
         ):
             samples = samples or []
 
-            conversation_parts = []
+            input_parts = []
 
-            if prompt:
-                conversation_parts.append(f"System: {prompt}")
+            # The prompt goes in as developer instructions so Codex treats it as instructions
+            # rather than part of the user's task; oversized prompts fall back to inline text,
+            # using the same <system>/<user_message> structure as the Gemma client.
+            developer_instructions_arg = _developer_instructions_arg(prompt) if prompt else None
+            if prompt and developer_instructions_arg is None:
+                logger.warning(
+                    f"Codex prompt too long for developer_instructions ({len(prompt)} chars); inlining into input"
+                )
+                input_parts.append(f"<system>{prompt}</system>")
 
-            for user_msg, assistant_msg in samples:
-                conversation_parts.append(f"Human: {user_msg}")
-                conversation_parts.append(f"Assistant: {assistant_msg}")
+            if samples:
+                examples = "\n".join(
+                    f"<example>\n<user_message>{user_msg}</user_message>\n"
+                    f"<assistant_message>{assistant_msg}</assistant_message>\n</example>"
+                    for user_msg, assistant_msg in samples
+                )
+                input_parts.append(f"<examples>\n{examples}\n</examples>")
 
-            conversation_parts.append(f"Human: {message}")
+            if input_parts:
+                input_parts.append(f"<user_message>{message}</user_message>")
+                full_conversation = "\n".join(input_parts)
+            else:
+                full_conversation = message
 
-            full_conversation = "\n\n".join(conversation_parts)
-
+            if developer_instructions_arg is not None:
+                logger.info(f"Codex CLI developer instructions: {prompt}")
             logger.info(f"Codex CLI input: {full_conversation}")
 
             codex_cmd = [
@@ -150,6 +183,9 @@ class CodexClient(AIClient):
             if self.enable_web_search or enable_grounding:
                 codex_cmd.extend(["-c", 'web_search="live"'])
 
+            if developer_instructions_arg is not None:
+                codex_cmd.extend(["-c", developer_instructions_arg])
+
             image_file = None
             if image_data:
                 ext = self._get_image_extension(image_mime_type)
@@ -167,7 +203,11 @@ class CodexClient(AIClient):
                 schema_file.close()
                 codex_cmd.extend(["--output-schema", schema_file.name])
 
-            logger.info(f"Running Codex CLI command: {' '.join(codex_cmd)}")
+            # The developer instructions are logged above; keep them out of the command line log
+            logged_cmd = [
+                "developer_instructions=<prompt>" if arg == developer_instructions_arg else arg for arg in codex_cmd
+            ]
+            logger.info(f"Running Codex CLI command: {' '.join(logged_cmd)}")
 
             timer = self.telemetry.metrics.timer()
             try:

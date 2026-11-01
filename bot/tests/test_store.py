@@ -5,7 +5,9 @@ This provides realistic conversation data for testing memory systems.
 
 import re
 from datetime import datetime, timezone, date
-from store import Store, ChatMessage
+from zoneinfo import ZoneInfo
+
+from store import ChatMessage, GuildConfig, Store
 from test_user_resolver import TestUserResolver
 
 
@@ -459,18 +461,15 @@ class TestStore(Store):
 
         return processed_content
 
-    async def get_chat_messages_for_date(self, guild_id: int, for_date: date) -> list[ChatMessage]:
-        """Get chat messages for a specific date."""
+    async def get_guild_config(self, guild_id: int) -> GuildConfig:
+        return GuildConfig(guild_id=guild_id)
+
+    async def get_chat_messages_for_date(self, guild_id: int, for_date: date, tz: ZoneInfo) -> list[ChatMessage]:
+        """Get chat messages for a local date in `tz`."""
         if guild_id != self.physics_guild_id:
             return []
 
-        # Filter messages by date
-        filtered_messages = []
-        for message in self._messages:
-            if message.timestamp.date() == for_date:
-                filtered_messages.append(message)
-
-        return filtered_messages
+        return [message for message in self._messages if message.timestamp.astimezone(tz).date() == for_date]
 
     async def get_user_facts(self, guild_id: int, user_id: int) -> str | None:
         """Get stored facts for a user."""
@@ -548,9 +547,9 @@ class TestStore(Store):
         dates = [msg.timestamp.date() for msg in self._messages]
         return min(dates), max(dates)
 
-    async def has_chat_messages_for_date(self, guild_id: int, for_date: date) -> bool:
+    async def has_chat_messages_for_date(self, guild_id: int, for_date: date, tz: ZoneInfo) -> bool:
         """Check if any chat messages exist for a specific guild and date (test implementation)."""
-        messages = await self.get_chat_messages_for_date(guild_id, for_date)
+        messages = await self.get_chat_messages_for_date(guild_id, for_date, tz)
         return len(messages) > 0
 
     async def get_daily_summaries(self, guild_id: int, for_date: date) -> dict[int, str]:

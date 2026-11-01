@@ -1,7 +1,10 @@
+from datetime import datetime, timezone
 import unittest
 from unittest.mock import AsyncMock, Mock
 from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
 from general_query_generator import GeneralQueryGenerator
+from conversation_formatter import ConversationFormatter
+from request_helpers import make_request, utc_store
 from research_handoff import (
     HANDOFF_CONTEXT_INSTRUCTIONS,
     HANDOFF_INSTRUCTIONS,
@@ -43,6 +46,9 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.mock_conversation_formatter.format_to_xml = AsyncMock(
             return_value="<conversation_history>\n<message>Mock conversation</message>\n</conversation_history>"
         )
+        self.mock_conversation_formatter.format_request_message_xml = ConversationFormatter(
+            Mock(), utc_store()
+        ).format_request_message_xml
 
         self.mock_memory_manager = Mock()
         self.mock_memory_manager.get_memories = AsyncMock(return_value={})
@@ -92,19 +98,19 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation_fetcher():
             msg = ConversationMessage(
                 message_id=12345,
+                guild_id=12345,
                 author_id=123,
                 content="Test message",
-                timestamp="2024-01-01 12:00:00",
+                timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
                 mentioned_user_ids=[],
             )
             return [msg]
 
         result = await self.generator.handle_request(
             params,
+            make_request("q", author_id=self.requesting_user_id, guild_id=12345),
             mock_conversation_fetcher,
-            guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertIsInstance(result, ProcessorResult)
@@ -129,19 +135,19 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             return [
                 ConversationMessage(
                     message_id=10001,
+                    guild_id=12345,
                     author_id=1000,
                     content="Let's get creative",
-                    timestamp="2024-01-01 12:00:00",
+                    timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
                     mentioned_user_ids=[],
                 )
             ]
 
         result = await self.generator.handle_request(
             params,
+            make_request("q", author_id=self.requesting_user_id, guild_id=12345),
             mock_conversation_fetcher,
-            guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user_id=self.requesting_user_id,
         )
 
         self.assertEqual(result.text, "Creative response!")
@@ -158,19 +164,19 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation_fetcher():
             msg = ConversationMessage(
                 message_id=12346,
+                guild_id=12345,
                 author_id=123,
                 content="Test message",
-                timestamp="2024-01-01 12:00:00",
+                timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
                 mentioned_user_ids=[],
             )
             return [msg]
 
         result = await self.generator.handle_request(
             params,
+            make_request("q", author_id=self.requesting_user_id, guild_id=12345),
             mock_conversation_fetcher,
-            guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user_id=self.requesting_user_id,
         )
 
         # Should return None when AI client returns None
@@ -189,9 +195,10 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation_fetcher():
             msg = ConversationMessage(
                 message_id=12347,
+                guild_id=12345,
                 author_id=123,
                 content="Test message",
-                timestamp="2024-01-01 12:00:00",
+                timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
                 mentioned_user_ids=[],
             )
             return [msg]
@@ -200,10 +207,9 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(Exception) as context:
             await self.generator.handle_request(
                 params,
+                make_request("q", author_id=self.requesting_user_id, guild_id=12345),
                 mock_conversation_fetcher,
-                guild_id=12345,
                 bot_user=self.mock_bot_user,
-                requesting_user_id=self.requesting_user_id,
             )
 
         self.assertEqual(str(context.exception), "API error")
@@ -221,16 +227,20 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation_fetcher():
             return [
                 ConversationMessage(
-                    message_id=1, author_id=42, content="Hi", timestamp="2024-01-01", mentioned_user_ids=[]
+                    message_id=1,
+                    guild_id=12345,
+                    author_id=42,
+                    content="Hi",
+                    timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                    mentioned_user_ids=[],
                 )
             ]
 
         await self.generator.handle_request(
             params,
+            make_request("q", author_id=999, guild_id=1),  # requester not present in conversation
             mock_conversation_fetcher,
-            guild_id=1,
             bot_user=self.mock_bot_user,
-            requesting_user_id=999,  # not present in conversation
         )
 
         self.mock_memory_manager.build_memory_prompt.assert_awaited_once()
@@ -244,7 +254,12 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation_fetcher():
             return [
                 ConversationMessage(
-                    message_id=1, author_id=2, content="Hello", timestamp="2024-01-01", mentioned_user_ids=[]
+                    message_id=1,
+                    guild_id=12345,
+                    author_id=2,
+                    content="Hello",
+                    timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                    mentioned_user_ids=[],
                 )
             ]
 
@@ -252,10 +267,9 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
 
         await self.generator.handle_request(
             params,
+            make_request("q", author_id=self.requesting_user_id, guild_id=1),
             mock_conversation_fetcher,
-            guild_id=1,
             bot_user=self.mock_bot_user,
-            requesting_user_id=self.requesting_user_id,
         )
 
         self.mock_gemini_flash.generate_content.assert_called_once()
@@ -266,16 +280,20 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         async def mock_conversation_fetcher():
             return [
                 ConversationMessage(
-                    message_id=1, author_id=123, content="Question", timestamp="2024-01-01", mentioned_user_ids=[]
+                    message_id=1,
+                    guild_id=12345,
+                    author_id=123,
+                    content="Question",
+                    timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                    mentioned_user_ids=[],
                 )
             ]
 
         return await self.generator.handle_request(
             params,
+            make_request("q", author_id=self.requesting_user_id, guild_id=12345),
             mock_conversation_fetcher,
-            guild_id=12345,
             bot_user=self.mock_bot_user,
-            requesting_user_id=self.requesting_user_id,
         )
 
     async def test_handoff_is_returned_alongside_reply(self):
@@ -319,7 +337,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(passed_bot_id, self.mock_bot_user.id)
         self.assertEqual(len(passed_conversation), 1)
         # Handoffs travel into the conversation XML so each one sits inside its own message
-        self.mock_conversation_formatter.format_to_xml.assert_awaited_once_with(12345, passed_conversation, handoffs)
+        self.mock_conversation_formatter.format_to_xml.assert_awaited_once_with(passed_conversation, handoffs)
 
     async def test_empty_reply_is_treated_as_no_response(self):
         self.mock_gemini_flash.generate_content.return_value = GeneralQueryResponse(reply="   ")

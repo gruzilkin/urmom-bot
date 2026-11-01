@@ -9,6 +9,7 @@ import time
 import unittest
 from dataclasses import dataclass
 from datetime import date
+from zoneinfo import ZoneInfo
 from unittest.mock import AsyncMock
 
 from dotenv import load_dotenv
@@ -20,6 +21,8 @@ from codex_client import CodexClient
 from gemini_client import GeminiClient
 from gemma_client import GemmaClient
 from test_store import TestStore
+
+UTC = ZoneInfo("UTC")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -136,7 +139,7 @@ class TestMemoryManagerIntegration(MemoryManagerTestBase):
         for summary_profile in self.summary_profiles:
             with self.subTest(summary_client=summary_profile.name):
                 ctx = self._build_summary_manager(summary_profile)
-                result = await ctx.memory_manager._create_daily_summaries(ctx.store.physics_guild_id, test_date)
+                result = await ctx.memory_manager._create_daily_summaries(ctx.store.physics_guild_id, test_date, UTC)
 
                 self.assertGreater(len(result), 0, "Should generate summaries for active physicists")
 

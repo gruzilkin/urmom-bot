@@ -151,7 +151,15 @@ class ScheduleEngine:
                     return
 
             try:
-                params: GeneralParams = await self.ai_router.extract_general_params(task.prompt)
+                request = ConversationMessage(
+                    message_id=None,
+                    guild_id=task.guild_id,
+                    author_id=task.creator_user_id,
+                    content=task.prompt,
+                    timestamp=actual_run_at,
+                    mentioned_user_ids=[],
+                )
+                params: GeneralParams = await self.ai_router.extract_general_params(request)
 
                 span.set_attribute("ai_backend", params.ai_backend)
                 span.set_attribute("temperature", params.temperature)
@@ -165,10 +173,9 @@ class ScheduleEngine:
 
                 result = await self.general_query_generator.handle_request(
                     params,
+                    request,
                     fetch_conversation,
-                    task.guild_id,
                     self.bot.user,
-                    task.creator_user_id,
                     extra_user_ids=extra_user_ids,
                 )
 
