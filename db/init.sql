@@ -60,7 +60,8 @@ CREATE TABLE scheduled_tasks (
     next_run_at TIMESTAMPTZ NOT NULL,
     last_run_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    chain_message_ids BIGINT[] NOT NULL DEFAULT '{}'
 );
 
 CREATE INDEX idx_scheduled_tasks_next_run ON scheduled_tasks (next_run_at);

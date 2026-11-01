@@ -82,6 +82,7 @@ The canonical SQL definitions live in `db/init.sql`. The data model:
 - Identification: surrogate `task_id` (BIGSERIAL), guild ID, channel ID, creator user ID. Tasks are addressed by `task_id` for all management operations (delete, edit, pause, etc.) — IDs are stable across edits and easier to log and reference than free-form names.
 - Definition: prompt text, normalized cron expression (nullable for one-off tasks), IANA timezone.
 - State: next intended run time (the engine's hot-path query column, stored as a UTC instant), last actual run time.
+- Continuation: `chain_message_ids`, the task's reply chain (see [Continuation Between Runs](#continuation-between-runs)).
 - Audit: created at, updated at.
 
 Things deliberately *not* persisted on the row:
@@ -132,7 +133,7 @@ A single asyncio background task wakes once per minute and queries for due tasks
 
 For each due task, the engine atomically advances `next_run_at` to the next future occurrence (or marks the task as completed for one-offs) *before* dispatching execution. This is critical: it prevents the same task from being picked up again on the next tick if its execution is still running. Execution proceeds as a separate coroutine, bounded by a concurrency semaphore to respect AI provider quotas.
 
-After execution completes, `last_run_at` is updated. Per-firing history is not persisted; outcomes are visible through logs and telemetry, and produced messages live in Discord itself.
+After execution completes, `last_run_at` is updated and the posted message's id is appended to the task's `chain_message_ids`. Only message ids are persisted; the text of produced messages lives in Discord and in `chat_history`, and outcomes are visible through logs and telemetry.
 
 ### Catch-Up After Downtime
 
@@ -150,9 +151,49 @@ A long-running AI call could outlast the one-minute tick interval. The "advance 
 
 When a task fires, the engine invokes the general query generator with the task's stored prompt, creator user ID (for memory context), and channel ID (for conversation history). A flag marks the invocation as scheduler-originated so the generator can suppress reactive-only behavior (replying to a triggering message that doesn't exist) and so telemetry can distinguish scheduled from reactive load.
 
-That is the whole execution path. No new generator, no new prompt format, no routing decision at firing time. Language detection, memory injection, conversation history fetching, and AI fallback chains all work exactly as they do for a reactive mention.
+No new generator and no routing decision at firing time. Language detection, memory injection, conversation history fetching, and AI fallback chains all work as they do for a reactive mention. The one addition is the continuation context described below.
 
 Specialized generators (`JokeGenerator`, `FamousPersonGenerator`, `WisdomGenerator`) are intentionally not schedulable as distinct execution paths in v1. The general query generator is expressive enough to handle scheduled prompts that would have been routed to those generators reactively, accepting the trade-off that their specialized prompt-engineering is absent. A nullable `generator_override` column can be added later if usage demands it, without disturbing the architecture.
+
+## Continuation Between Runs
+
+Running the same prompt every time, with context taken from whatever is recent in the channel, makes recurring tasks repeat themselves. Each task therefore keeps a reply chain, and every run sees what previous runs posted.
+
+### The Chain
+
+`chain_message_ids` is an ordered list of Discord message ids:
+- It starts with the message that created the task (the user's request).
+- Every run posts as a Discord reply to the last id in the chain, then appends its own message id.
+- `run_now` firings join the chain like scheduled ones.
+- Only the newest `SCHEDULE_CHAIN_MAX_MESSAGES` ids (default 100) are kept.
+
+```
+event message
+  └─ user: "@bot check on this in a month"      ← first chain entry (the request)
+       └─ bot: run 1                             ← each run replies to the previous one
+            └─ bot: run 2
+```
+
+A one-off task created as a reply to some message therefore replies to the request, which replies to the original message, and the run gets that context even if it is a month old.
+
+### Two Sources of Context
+
+1. **Conversation history (detailed, recent).** The conversation graph is built from the last chain message instead of the latest channel message. The regular reference-following walks back through previous runs to the request and whatever it replied to.
+2. **Task history summary (wide, cheap).** `TaskHistorySummarizer` reads the chain's text from `chat_history` (no Discord API calls) and asks a cheap model to summarize the previous runs from the perspective of the task prompt. The summarizer prompt is generic: the task prompt alone decides what matters about previous runs (e.g. the words a vocabulary task already taught, or the facts a news-follow-up task already reported). The summary is passed to the generator as a `<task_history>` block, so the heavy model gets the previous runs without reading the whole history.
+
+The summarizer reads the chain newest first up to `SCHEDULE_HISTORY_CHAR_BUDGET` characters (default 100k) and drops anything older. There is no time-based limit: tasks with short outputs reach further back, long reports cover less time. Chain messages missing from `chat_history` are skipped.
+
+The summary is computed at firing time, which is fine because firings are off the hot path. It runs in parallel with parameter extraction. A prompt edit therefore takes effect on the next run, with nothing to invalidate. The summary is skipped with fewer than three previous runs, because the conversation history already shows them verbatim. If summarization fails, the run proceeds without it.
+
+### Edge Cases
+
+- **Reply target deleted.** The reply is sent with `fail_if_not_exists=False`, so it becomes a plain post. Conversation history falls back to the latest channel message.
+- **Tasks with an empty chain** (created before this feature) build context from the latest channel message and post without a reply. Their first output starts the chain.
+
+### Not Included (Possible Later)
+
+- **Reading forward in time** from chain messages to pick up reactions posted after a run. Left out because of the extra Discord API calls and rate limits. A cheaper option would read follow-ups from `chat_history`.
+- **Late replies** to old runs.
 
 ## Failure Modes
 

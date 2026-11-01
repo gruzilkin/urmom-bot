@@ -180,6 +180,7 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
         bot_user: nextcord.User,
         extra_user_ids: set[int] | None = None,
+        task_history: str | None = None,
     ) -> ProcessorResult | None:
         """
         Handle a general query request using the provided parameters.
@@ -199,6 +200,9 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
                 memories should be loaded alongside the conversation
                 participants. Used by scheduled tasks firing into low-traffic
                 channels so the bot can reference recent guild activity.
+            task_history (str | None): Summary of previous runs of a
+                scheduled task, shaped by the task prompt; sent as a
+                <task_history> block
 
         Returns:
             ProcessorResult | None: The Discord-ready reply text plus an
@@ -226,6 +230,15 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
 
             handoffs = await self.handoff_service.load_for_conversation(conversation, bot_user.id)
             conversation_block = await self.conversation_formatter.format_to_xml(conversation, handoffs)
+
+            span.set_attribute("has_task_history", task_history is not None)
+            task_history_block = ""
+            if task_history:
+                task_history_block = f"""<task_history>
+Summary of previous runs of this scheduled task.
+
+{task_history}
+</task_history>"""
 
             user_message_xml = await self.conversation_formatter.format_request_message_xml(
                 request, content=params.cleaned_query
@@ -408,6 +421,8 @@ Memory Usage:
 </system_instructions>
 
 {memories_block}
+
+{task_history_block}
 
 {conversation_block}"""
 

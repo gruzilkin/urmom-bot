@@ -23,6 +23,7 @@ from attachment_processor import AttachmentProcessor
 from fact_handler import FactHandler
 from schedule_handler import ScheduleHandler
 from schedule_engine import ScheduleEngine
+from task_history_summarizer import TaskHistorySummarizer
 from user_resolver import UserResolver
 from memory_manager import MemoryManager
 from language_detector import LanguageDetector
@@ -276,11 +277,21 @@ class Container:
             handoff_service=self.handoff_service,
         )
 
+        self.task_history_summarizer = TaskHistorySummarizer(
+            ai_client=self.haiku_luna_deepseek_flash_fallback,
+            store=self.store,
+            conversation_formatter=self.conversation_formatter,
+            telemetry=self.telemetry,
+            char_budget=self.config.schedule_history_char_budget,
+        )
+
         self.schedule_engine = ScheduleEngine(
             store=self.store,
             telemetry=self.telemetry,
             general_query_generator=self.general_query_generator,
             handoff_service=self.handoff_service,
+            task_history_summarizer=self.task_history_summarizer,
+            chain_max_messages=self.config.schedule_chain_max_messages,
         )
 
         self.schedule_handler = ScheduleHandler(

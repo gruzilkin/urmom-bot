@@ -57,7 +57,7 @@ async def on_ready() -> None:
     # Initialize bot-dependent services
     container.user_resolver.set_bot_client(bot)
 
-    async def fetch_channel_conversation(channel_id: int) -> list[ConversationMessage]:
+    async def fetch_channel_conversation(channel_id: int, anchor_message_id: int | None) -> list[ConversationMessage]:
         channel = bot.get_channel(channel_id)
         if channel is None:
             try:
@@ -65,7 +65,17 @@ async def on_ready() -> None:
             except Exception as e:
                 logger.error(f"Cannot fetch channel {channel_id} for scheduled task: {e}", exc_info=True)
                 return []
-        return await get_recent_conversation(channel)
+        anchor_message = None
+        if anchor_message_id is not None:
+            try:
+                anchor_message = await channel.fetch_message(anchor_message_id)
+            except Exception as e:
+                logger.error(
+                    f"Cannot fetch anchor message {anchor_message_id} for scheduled task, "
+                    f"falling back to latest channel message: {e}",
+                    exc_info=True,
+                )
+        return await get_recent_conversation(channel, reference_message=anchor_message)
 
     await container.schedule_engine.start(bot, fetch_channel_conversation)
 
