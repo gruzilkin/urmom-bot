@@ -126,9 +126,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the <req
                         conversation_context = await self.conversation_formatter.format_to_xml(conversation)
 
             if params.operation == "create":
-                return await self._create(
-                    message, guild_id, channel_id, request.author_id, language_name, conversation_context
-                )
+                return await self._create(message, request, channel_id, language_name, conversation_context)
             if params.operation == "list":
                 return await self._list(message, guild_id, channel_id, language_name)
             if params.operation == "edit":
@@ -142,12 +140,12 @@ Use earlier messages to resolve references like "this", "that", "it" in the <req
     async def _create(
         self,
         message: str,
-        guild_id: int,
+        request: ConversationMessage,
         channel_id: int,
-        creator_user_id: int,
         language_name: str,
         conversation_context: str = "",
     ) -> str:
+        guild_id = request.guild_id
         config = await self.store.get_guild_config(guild_id)
         default_tz_name = config.default_timezone
 
@@ -189,11 +187,12 @@ Use earlier messages to resolve references like "this", "that", "it" in the <req
         task_id = await self.store.create_scheduled_task(
             guild_id=guild_id,
             channel_id=channel_id,
-            creator_user_id=creator_user_id,
+            creator_user_id=request.author_id,
             prompt=result.prompt,
             cron_expression=result.cron_expression,
             timezone=result.timezone,
             next_run_at=next_run_at,
+            chain_message_ids=[request.message_id],
         )
 
         return f"{result.answer} (task #{task_id})"

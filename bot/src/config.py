@@ -62,6 +62,10 @@ class AppConfig(BaseSettings):
     jev_model: str = Field(default="jev-latest", env="JEV_MODEL")
     jev_timeout_seconds: float = Field(default=5.0, env="JEV_TIMEOUT_SECONDS")
 
+    # Scheduled task continuation: system-wide limits on each task's reply chain
+    schedule_chain_max_messages: int = Field(default=100, env="SCHEDULE_CHAIN_MAX_MESSAGES")
+    schedule_history_char_budget: int = Field(default=100_000, env="SCHEDULE_HISTORY_CHAR_BUDGET")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
