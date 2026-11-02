@@ -7,6 +7,7 @@ from null_telemetry import NullTelemetry
 
 from ai_client import AIClient
 from conversation_formatter import ConversationFormatter
+from redis_cache import RedisCache
 from schemas import TaskHistorySummary
 from store import ChatMessage, ScheduledTask, Store
 from task_history_summarizer import TaskHistorySummarizer, trim_to_budget
@@ -75,8 +76,11 @@ class TestTaskHistorySummarizer(unittest.IsolatedAsyncioTestCase):
         mock_user_resolver = MagicMock(spec=UserResolver)
         mock_user_resolver.replace_user_mentions_with_names = AsyncMock(side_effect=lambda content, guild_id: content)
         formatter = ConversationFormatter(mock_user_resolver, self.mock_store)
+        self.mock_cache = MagicMock(spec=RedisCache)
+        self.mock_cache.get_task_history_summary = AsyncMock(return_value=None)
+        self.mock_cache.set_task_history_summary = AsyncMock()
         self.summarizer = TaskHistorySummarizer(
-            self.mock_ai, self.mock_store, formatter, NullTelemetry(), char_budget=1000
+            self.mock_ai, self.mock_store, formatter, self.mock_cache, NullTelemetry(), char_budget=1000
         )
 
     async def test_skips_when_few_previous_runs(self):
@@ -115,6 +119,41 @@ class TestTaskHistorySummarizer(unittest.IsolatedAsyncioTestCase):
         result = await self.summarizer.summarize(_task([1, 2, 3, 4]), BOT_ID)
 
         self.assertIsNone(result)
+        self.mock_cache.set_task_history_summary.assert_not_called()
+
+    async def test_cache_hit_skips_ai(self):
+        self.mock_store.get_task_chain_messages = AsyncMock(return_value=[_msg(i, f"run {i}") for i in range(1, 5)])
+        self.mock_cache.get_task_history_summary = AsyncMock(return_value="cached summary")
+
+        result = await self.summarizer.summarize(_task([1, 2, 3, 4]), BOT_ID)
+
+        self.assertEqual(result, "cached summary")
+        self.mock_ai.generate_content.assert_not_called()
+        self.mock_cache.set_task_history_summary.assert_not_called()
+
+    async def test_cache_miss_stores_summary_under_same_key(self):
+        self.mock_store.get_task_chain_messages = AsyncMock(return_value=[_msg(i, f"run {i}") for i in range(1, 5)])
+
+        result = await self.summarizer.summarize(_task([1, 2, 3, 4]), BOT_ID)
+
+        self.assertEqual(result, "- 猫 (cat)\n- 犬 (dog)")
+        get_args = self.mock_cache.get_task_history_summary.await_args.args
+        set_args = self.mock_cache.set_task_history_summary.await_args.args
+        self.assertEqual(set_args, (*get_args, "- 猫 (cat)\n- 犬 (dog)"))
+
+    async def test_cache_key_depends_on_messages_and_prompt(self):
+        async def key_for(messages: list[ChatMessage], prompt: str) -> tuple:
+            self.mock_store.get_task_chain_messages = AsyncMock(return_value=messages)
+            task = _task([m.message_id for m in messages])
+            task.prompt = prompt
+            await self.summarizer.summarize(task, BOT_ID)
+            return self.mock_cache.get_task_history_summary.await_args.args
+
+        base = [_msg(i, f"run {i}") for i in range(1, 5)]
+        key = await key_for(base, "prompt a")
+        self.assertEqual(key, await key_for(base, "prompt a"))
+        self.assertNotEqual(key, await key_for([*base, _msg(5, "run 5")], "prompt a"))
+        self.assertNotEqual(key, await key_for(base, "prompt b"))
 
 
 if __name__ == "__main__":

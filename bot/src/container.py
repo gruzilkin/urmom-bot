@@ -289,6 +289,7 @@ class Container:
             ai_client=self.haiku_luna_deepseek_flash_fallback,
             store=self.store,
             conversation_formatter=self.conversation_formatter,
+            redis_cache=self.redis_cache,
             telemetry=self.telemetry,
             char_budget=self.config.schedule_history_char_budget,
         )

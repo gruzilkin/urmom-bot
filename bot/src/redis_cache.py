@@ -188,6 +188,31 @@ class RedisCache:
                 span.record_exception(e)
                 logger.error(f"Redis set_aliases failed: {e}", exc_info=True)
 
+    # ── scheduled task history summaries ────────────────────────────
+
+    async def get_task_history_summary(self, task_id: int, messages_hash: str, prompt_hash: str) -> str | None:
+        async with self._telemetry.async_create_span("redis.get_task_history_summary") as span:
+            key = f"task_history:{task_id}:{messages_hash}:{prompt_hash}"
+            span.set_attribute("key", key)
+            try:
+                result = await self._redis.get(key)
+                span.set_attribute("hit", result is not None)
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                logger.error(f"Redis get_task_history_summary failed: {e}", exc_info=True)
+                return None
+
+    async def set_task_history_summary(self, task_id: int, messages_hash: str, prompt_hash: str, summary: str) -> None:
+        async with self._telemetry.async_create_span("redis.set_task_history_summary") as span:
+            key = f"task_history:{task_id}:{messages_hash}:{prompt_hash}"
+            span.set_attribute("key", key)
+            try:
+                await self._redis.set(key, summary, ex=_SEVEN_DAYS)
+            except Exception as e:
+                span.record_exception(e)
+                logger.error(f"Redis set_task_history_summary failed: {e}", exc_info=True)
+
     # ── research handoffs ───────────────────────────────────────────
 
     def _handoff_key(self, message_id: int) -> str:

@@ -1,3 +1,4 @@
+import hashlib
 import logging
 
 from ai_client import AIClient
@@ -7,6 +8,7 @@ from conversation_formatter import (
     chat_message_to_conversation_message,
 )
 from open_telemetry import Telemetry
+from redis_cache import RedisCache
 from schemas import TaskHistorySummary
 from store import ChatMessage, ScheduledTask, Store
 
@@ -40,12 +42,14 @@ class TaskHistorySummarizer:
         ai_client: AIClient,
         store: Store,
         conversation_formatter: ConversationFormatter,
+        redis_cache: RedisCache,
         telemetry: Telemetry,
         char_budget: int,
     ) -> None:
         self.ai_client = ai_client
         self.store = store
         self.conversation_formatter = conversation_formatter
+        self.redis_cache = redis_cache
         self.telemetry = telemetry
         self.char_budget = char_budget
 
@@ -54,6 +58,8 @@ class TaskHistorySummarizer:
 
         Returns None when there are too few previous runs to need a summary (the
         conversation history already shows them verbatim) or when summarization fails.
+        Summaries are cached by the selected chain messages and the task prompt, so runs
+        that post nothing (and leave the chain unchanged) reuse the previous summary.
         """
         async with self.telemetry.async_create_span("summarize_task_history") as span:
             span.set_attribute("task_id", task.task_id)
@@ -73,6 +79,16 @@ class TaskHistorySummarizer:
                     span.set_attribute("status", "skipped")
                     return None
 
+                messages_hash = hashlib.md5(",".join(str(m.message_id) for m in history).encode()).hexdigest()
+                prompt_hash = hashlib.md5(task.prompt.encode()).hexdigest()
+                cached = await self.redis_cache.get_task_history_summary(task.task_id, messages_hash, prompt_hash)
+                span.set_attribute("cache_hit", cached is not None)
+                if cached is not None:
+                    logger.info(f"Task {task.task_id} history summary cache hit")
+                    span.set_attribute("summary_chars", len(cached))
+                    span.set_attribute("status", "success")
+                    return cached
+
                 chain_xml = await self.conversation_formatter.format_to_xml(
                     [chat_message_to_conversation_message(m) for m in history]
                 )
@@ -87,6 +103,9 @@ class TaskHistorySummarizer:
                     response_schema=TaskHistorySummary,
                 )
                 logger.info(f"Task {task.task_id} history summary reason: {result.reason}")
+                await self.redis_cache.set_task_history_summary(
+                    task.task_id, messages_hash, prompt_hash, result.summary
+                )
 
                 span.set_attribute("summary_chars", len(result.summary))
                 span.set_attribute("status", "success")
