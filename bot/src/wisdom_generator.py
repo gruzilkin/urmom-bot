@@ -10,7 +10,6 @@ from language_detector import LanguageDetector
 from response_summarizer import ResponseSummarizer
 from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
 from request_context import RequestContextBuilder
-from research_handoff import HANDOFF_CONTEXT_INSTRUCTIONS
 from conversation_formatter import (
     CONVERSATION_STRUCTURE_INSTRUCTIONS,
     ConversationFormatter,
@@ -43,7 +42,6 @@ class WisdomGenerator:
         self,
         trigger_message: ConversationMessage,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
-        bot_user_id: int,
     ) -> str | None:
         """
         Generate wisdom based on a message and its conversation context.
@@ -51,7 +49,6 @@ class WisdomGenerator:
         Args:
             trigger_message: The Discord message that was reacted to, sent as the <request> block
             conversation_fetcher: Async function that returns conversation history
-            bot_user_id: The bot's Discord user ID, used to load research handoffs
 
         Returns:
             str: The generated wisdom response
@@ -65,7 +62,7 @@ class WisdomGenerator:
 
             conversation = await conversation_fetcher()
 
-            context = await self._context_builder.build(trigger_message, conversation, bot_user_id)
+            context = await self._context_builder.build(trigger_message, conversation)
 
             prompt = f"""<system_instructions>
 You are a street-smart observer who distills Discord conversations into punchy, humorous wisdom.
@@ -120,8 +117,6 @@ Personalization:
 - Reference their quirks, habits, or known facts when it adds to the humor or insight
 
 {CONVERSATION_STRUCTURE_INSTRUCTIONS}
-
-{HANDOFF_CONTEXT_INSTRUCTIONS}
 </system_instructions>
 
 {context.memories_block}

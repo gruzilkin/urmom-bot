@@ -1,4 +1,4 @@
-"""Unit tests for FamousPersonGenerator: the prompt carries memories, research handoffs, and shared instructions."""
+"""Unit tests for FamousPersonGenerator: prompt has memories and shared instructions, no research handoffs."""
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
@@ -13,7 +13,7 @@ from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
 from request_context import RequestContextBuilder
 from request_helpers import make_request, utc_store
-from research_handoff import HANDOFF_CONTEXT_INSTRUCTIONS, ResearchHandoffService
+from research_handoff import ResearchHandoffService
 from schemas import FamousParams
 
 BOT_USER_ID = 999
@@ -78,11 +78,9 @@ class TestFamousPersonGenerator(unittest.IsolatedAsyncioTestCase):
     def _assert_shared_context(self, prompt: str) -> None:
         self.assertIn("Lives in Tokyo", prompt)
         self.assertIn("<also_known_as>Медвед</also_known_as>", prompt)
-        self.assertIn(
-            "<research_handoff>Kumagai pay FY2025: about ¥40M (securities filing)</research_handoff>",
-            prompt,
-        )
-        self.assertIn(HANDOFF_CONTEXT_INSTRUCTIONS, prompt)
+        self.assertIn("Very roughly ¥10M", prompt)
+        self.assertNotIn("research_handoff", prompt)
+        self.assertNotIn("Kumagai pay FY2025", prompt)
         self.assertIn(DISCORD_FORMATTING_INSTRUCTIONS, prompt)
         member_ids = self.memory_manager.build_memory_prompt.call_args.args[1]
         self.assertIn(REQUEST_AUTHOR_ID, member_ids)
@@ -100,7 +98,7 @@ class TestFamousPersonGenerator(unittest.IsolatedAsyncioTestCase):
         params = FamousParams(famous_person="Hermann Hesse", language_code="en", language_name="English")
 
         prompt = await self._run_and_get_prompt(
-            lambda: generator.handle_request(params, self.request, self._fetch_conversation, BOT_USER_ID)
+            lambda: generator.handle_request(params, self.request, self._fetch_conversation)
         )
 
         self._assert_shared_context(prompt)

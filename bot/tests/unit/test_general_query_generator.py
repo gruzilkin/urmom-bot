@@ -338,8 +338,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
 
         await self._run(params)
 
-        passed_conversation, passed_bot_id = self.mock_handoff_service.load_for_conversation.await_args.args
-        self.assertEqual(passed_bot_id, self.mock_bot_user.id)
+        (passed_conversation,) = self.mock_handoff_service.load_for_conversation.await_args.args
         self.assertEqual(len(passed_conversation), 1)
         # Handoffs travel into the conversation XML so each one sits inside its own message
         self.mock_conversation_formatter.format_to_xml.assert_awaited_once_with(passed_conversation, handoffs)

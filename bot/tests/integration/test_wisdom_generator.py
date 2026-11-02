@@ -148,7 +148,6 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
                 result = await generator.generate_wisdom(
                     trigger_message=trigger_message,
                     conversation_fetcher=mock_conversation_fetcher,
-                    bot_user_id=1,
                 )
 
                 self.assertIsInstance(result, str)

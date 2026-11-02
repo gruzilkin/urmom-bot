@@ -2,7 +2,7 @@
 
 Builds the two context blocks every conversational generator sends alongside its own
 instructions: ``<memories>`` for the members involved (with display names and aliases) and
-``<conversation_history>`` with research handoffs embedded in the bot's earlier messages.
+``<conversation_history>``, optionally with research handoffs embedded in the bot's earlier messages.
 """
 
 from dataclasses import dataclass
@@ -46,16 +46,16 @@ class RequestContextBuilder:
         self,
         request: ConversationMessage,
         conversation: list[ConversationMessage],
-        bot_user_id: int,
         extra_user_ids: set[int] | None = None,
+        include_handoffs: bool = False,
     ) -> RequestContext:
         """Build the memories and conversation blocks for a request.
 
         Args:
             request: The message being handled; its author's memories are always loaded
             conversation: Conversation history for the request
-            bot_user_id: The bot's Discord user ID, used to find its messages that may carry handoffs
             extra_user_ids: Additional members whose memories should be loaded
+            include_handoffs: Embed research handoffs attached to the bot's earlier messages
         """
         async with self._telemetry.async_create_span("build_request_context") as span:
             member_ids = collect_member_ids(conversation, request)
@@ -64,7 +64,8 @@ class RequestContextBuilder:
             span.set_attribute("memory_user_count", len(member_ids))
             memories_block = await self._memory_manager.build_memory_prompt(request.guild_id, member_ids)
 
-            handoffs = await self._handoff_service.load_for_conversation(conversation, bot_user_id)
+            span.set_attribute("include_handoffs", include_handoffs)
+            handoffs = await self._handoff_service.load_for_conversation(conversation) if include_handoffs else None
             conversation_block = await self._conversation_formatter.format_to_xml(conversation, handoffs)
 
             return RequestContext(memories_block=memories_block, conversation_block=conversation_block)

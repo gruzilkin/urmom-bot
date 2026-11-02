@@ -65,27 +65,27 @@ class TestLoadForConversation(unittest.IsolatedAsyncioTestCase):
         self.redis_cache.get_handoffs = AsyncMock(return_value={})
         self.service = ResearchHandoffService(redis_cache=self.redis_cache, telemetry=NullTelemetry())
 
-    async def test_no_bot_messages_skips_storage(self):
-        handoffs = await self.service.load_for_conversation([_msg(1, 5), _msg(2, 6)], BOT_ID)
+    async def test_empty_conversation_skips_storage(self):
+        handoffs = await self.service.load_for_conversation([])
         self.assertEqual(handoffs, {})
         self.redis_cache.get_handoffs.assert_not_called()
 
-    async def test_only_bot_messages_are_looked_up(self):
+    async def test_all_messages_are_looked_up(self):
         conversation = [_msg(1, BOT_ID), _msg(2, 5, reply_to_id=1), _msg(3, BOT_ID), _msg(4, 5)]
         self.redis_cache.get_handoffs.return_value = {1: _payload(note="first"), 3: _payload(note="third")}
 
-        handoffs = await self.service.load_for_conversation(conversation, BOT_ID)
+        handoffs = await self.service.load_for_conversation(conversation)
 
-        self.redis_cache.get_handoffs.assert_awaited_once_with([1, 3])
+        self.redis_cache.get_handoffs.assert_awaited_once_with([1, 2, 3, 4])
         self.assertEqual(handoffs, {1: _payload(note="first"), 3: _payload(note="third")})
 
     async def test_missing_entries_yield_empty_mapping(self):
-        handoffs = await self.service.load_for_conversation([_msg(1, BOT_ID), _msg(2, 5, reply_to_id=1)], BOT_ID)
+        handoffs = await self.service.load_for_conversation([_msg(1, BOT_ID), _msg(2, 5, reply_to_id=1)])
         self.assertEqual(handoffs, {})
 
     async def test_retrieval_failure_degrades_to_empty_mapping(self):
         self.redis_cache.get_handoffs.side_effect = RuntimeError("redis down")
-        handoffs = await self.service.load_for_conversation([_msg(1, BOT_ID), _msg(2, 5)], BOT_ID)
+        handoffs = await self.service.load_for_conversation([_msg(1, BOT_ID), _msg(2, 5)])
         self.assertEqual(handoffs, {})
 
 

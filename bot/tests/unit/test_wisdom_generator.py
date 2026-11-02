@@ -73,7 +73,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            bot_user_id=BOT_USER_ID,
         )
 
         self.assertEqual(result, "Thus spoke the sage.")
@@ -125,7 +124,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            bot_user_id=BOT_USER_ID,
         )
 
         self.assertEqual(result, "Wisdom from context.")
@@ -150,7 +148,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            bot_user_id=BOT_USER_ID,
         )
 
         self.assertEqual(result, "Мудрость")
@@ -178,7 +175,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            bot_user_id=BOT_USER_ID,
         )
 
         self.assertEqual(result, summarized)
@@ -204,7 +200,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            bot_user_id=BOT_USER_ID,
         )
 
         self.conversation_formatter.format_to_xml.assert_called_once()
@@ -221,7 +216,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         result = await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=mock_conversation,
-            bot_user_id=BOT_USER_ID,
         )
 
         self.assertIsNone(result)
@@ -239,7 +233,6 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
         await self.generator.generate_wisdom(
             trigger_message=self.mock_trigger_message,
             conversation_fetcher=AsyncMock(return_value=[]),
-            bot_user_id=BOT_USER_ID,
         )
 
         self.memory_manager.build_memory_prompt.assert_called_once()

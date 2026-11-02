@@ -210,7 +210,7 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
 
             conversation = await conversation_fetcher()
 
-            context = await self.context_builder.build(request, conversation, bot_user.id, extra_user_ids)
+            context = await self.context_builder.build(request, conversation, extra_user_ids, include_handoffs=True)
 
             span.set_attribute("has_task_history", task_history is not None)
             task_history_block = ""

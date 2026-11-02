@@ -4,7 +4,7 @@ A processor may return a ``ProcessorResult`` whose ``handoff`` carries findings,
 exclusions, and leads that did not fit into the public Discord reply. After the reply is
 sent, the caller persists the handoff in Redis under the sent bot message ID. When a later
 request is prepared, ``ResearchHandoffService.load_for_conversation`` looks up handoffs for
-the bot messages present in the conversation history, and ``ConversationFormatter`` embeds
+the messages present in the conversation history (only bot messages ever have one), and ``ConversationFormatter`` embeds
 each one inside its own ``<message>`` element as ``<research_handoff>``.
 """
 
@@ -93,21 +93,22 @@ class ResearchHandoffService:
 
     # ── retrieval side ──────────────────────────────────────────────
 
-    async def load_for_conversation(self, conversation: list[ConversationMessage], bot_user_id: int) -> dict[int, str]:
-        """Fetch stored handoffs for the bot's own messages in a conversation, keyed by message ID.
+    async def load_for_conversation(self, conversation: list[ConversationMessage]) -> dict[int, str]:
+        """Fetch stored handoffs for the messages in a conversation, keyed by message ID.
 
-        Returns an empty mapping when the conversation has no bot messages, when nothing is
-        stored, or when storage is unavailable.
+        Handoffs are only ever saved under messages the bot sent, so every message ID is looked up
+        without filtering by author. Returns an empty mapping when the conversation is empty, when
+        nothing is stored, or when storage is unavailable.
         """
         async with self._telemetry.async_create_span("research_handoff.load") as span:
-            bot_message_ids = [message.message_id for message in conversation if message.author_id == bot_user_id]
-            span.set_attribute("handoff_candidates", len(bot_message_ids))
-            if not bot_message_ids:
+            message_ids = [message.message_id for message in conversation]
+            span.set_attribute("handoff_candidates", len(message_ids))
+            if not message_ids:
                 span.set_attribute("handoffs_found", 0)
                 return {}
 
             try:
-                handoffs = await self._redis_cache.get_handoffs(bot_message_ids)
+                handoffs = await self._redis_cache.get_handoffs(message_ids)
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Failed to load research handoffs: {e}", exc_info=True)
