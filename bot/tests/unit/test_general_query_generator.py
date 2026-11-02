@@ -11,6 +11,7 @@ from research_handoff import (
     ProcessorResult,
     ResearchHandoffService,
 )
+from request_context import RequestContextBuilder
 from schemas import GeneralParams, GeneralQueryResponse
 from conversation_graph import ConversationMessage
 from null_telemetry import NullTelemetry
@@ -83,9 +84,13 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             telemetry=self.telemetry,
             store=self.mock_store,
             conversation_formatter=self.mock_conversation_formatter,
-            memory_manager=self.mock_memory_manager,
             user_resolver=self.mock_user_resolver,
-            handoff_service=self.mock_handoff_service,
+            context_builder=RequestContextBuilder(
+                self.mock_conversation_formatter,
+                self.mock_memory_manager,
+                self.mock_handoff_service,
+                self.telemetry,
+            ),
         )
 
     async def test_handle_request_with_gemini_flash(self):

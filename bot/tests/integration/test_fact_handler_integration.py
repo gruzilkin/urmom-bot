@@ -88,6 +88,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             response_summarizer=Mock(),
             telemetry=self.telemetry,
             conversation_formatter=conversation_formatter,
+            context_builder=Mock(),
         )
         famous_generator.get_parameter_schema = Mock(
             side_effect=Exception("Should not extract FAMOUS params in FACT tests")
@@ -102,9 +103,8 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             telemetry=self.telemetry,
             store=Mock(),
             conversation_formatter=conversation_formatter,
-            memory_manager=Mock(),
             user_resolver=user_resolver,
-            handoff_service=Mock(),
+            context_builder=Mock(),
         )
         general_generator.get_parameter_schema = Mock(
             side_effect=Exception("Should not extract GENERAL params in FACT tests")

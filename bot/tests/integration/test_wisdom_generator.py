@@ -16,7 +16,9 @@ from language_detector import LanguageDetector
 from memory_manager import MemoryManager
 from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
+from request_context import RequestContextBuilder
 from request_helpers import make_request, utc_store
+from research_handoff import ResearchHandoffService
 from response_summarizer import ResponseSummarizer
 from test_store import TestStore
 from wisdom_generator import WisdomGenerator
@@ -103,7 +105,12 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
-            memory_manager=self.memory_manager,
+            context_builder=RequestContextBuilder(
+                self.conversation_formatter,
+                self.memory_manager,
+                ResearchHandoffService(NullRedisCache(), self.telemetry),
+                self.telemetry,
+            ),
             telemetry=self.telemetry,
         )
 
@@ -141,6 +148,7 @@ class TestWisdomGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
                 result = await generator.generate_wisdom(
                     trigger_message=trigger_message,
                     conversation_fetcher=mock_conversation_fetcher,
+                    bot_user_id=1,
                 )
 
                 self.assertIsInstance(result, str)

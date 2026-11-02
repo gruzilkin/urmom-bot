@@ -21,7 +21,10 @@ from gemma_client import GemmaClient
 from general_query_generator import GeneralQueryGenerator
 from response_summarizer import ResponseSummarizer
 from schemas import GeneralParams
+from null_redis_cache import NullRedisCache
 from null_telemetry import NullTelemetry
+from request_context import RequestContextBuilder
+from research_handoff import ResearchHandoffService
 
 load_dotenv()
 
@@ -86,8 +89,13 @@ class TestGeneralQueryGeneratorIntegration(unittest.IsolatedAsyncioTestCase):
             telemetry=self.telemetry,
             store=self.mock_store,
             conversation_formatter=self.conversation_formatter,
-            memory_manager=self.mock_memory_manager,
             user_resolver=self.mock_user_resolver,
+            context_builder=RequestContextBuilder(
+                self.conversation_formatter,
+                self.mock_memory_manager,
+                ResearchHandoffService(NullRedisCache(), self.telemetry),
+                self.telemetry,
+            ),
         )
 
     async def test_handle_request_with_conversation_context(self):

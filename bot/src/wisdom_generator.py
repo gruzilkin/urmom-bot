@@ -8,7 +8,9 @@ from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from language_detector import LanguageDetector
 from response_summarizer import ResponseSummarizer
-from memory_manager import MemoryManager
+from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
+from request_context import RequestContextBuilder
+from research_handoff import HANDOFF_CONTEXT_INSTRUCTIONS
 from conversation_formatter import (
     CONVERSATION_STRUCTURE_INSTRUCTIONS,
     ConversationFormatter,
@@ -27,28 +29,21 @@ class WisdomGenerator:
         language_detector: LanguageDetector,
         conversation_formatter: ConversationFormatter,
         response_summarizer: ResponseSummarizer,
-        memory_manager: MemoryManager,
+        context_builder: RequestContextBuilder,
         telemetry: Telemetry,
     ) -> None:
         self._ai_client = ai_client
         self._language_detector = language_detector
         self._conversation_formatter = conversation_formatter
         self._response_summarizer = response_summarizer
-        self._memory_manager = memory_manager
+        self._context_builder = context_builder
         self._telemetry = telemetry
-
-    def _extract_unique_user_ids(self, conversation: list[ConversationMessage]) -> set[int]:
-        """Extract all unique user IDs from conversation (authors + mentions)."""
-        user_ids = set()
-        for msg in conversation:
-            user_ids.add(msg.author_id)
-            user_ids.update(msg.mentioned_user_ids)
-        return user_ids
 
     async def generate_wisdom(
         self,
         trigger_message: ConversationMessage,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
+        bot_user_id: int,
     ) -> str | None:
         """
         Generate wisdom based on a message and its conversation context.
@@ -56,6 +51,7 @@ class WisdomGenerator:
         Args:
             trigger_message: The Discord message that was reacted to, sent as the <request> block
             conversation_fetcher: Async function that returns conversation history
+            bot_user_id: The bot's Discord user ID, used to load research handoffs
 
         Returns:
             str: The generated wisdom response
@@ -69,11 +65,7 @@ class WisdomGenerator:
 
             conversation = await conversation_fetcher()
 
-            user_ids = self._extract_unique_user_ids(conversation)
-            user_ids.add(trigger_message.author_id)
-            memories_block = await self._memory_manager.build_memory_prompt(trigger_message.guild_id, user_ids)
-
-            conversation_block = await self._conversation_formatter.format_to_xml(conversation)
+            context = await self._context_builder.build(trigger_message, conversation, bot_user_id)
 
             prompt = f"""<system_instructions>
 You are a street-smart observer who distills Discord conversations into punchy, humorous wisdom.
@@ -116,6 +108,9 @@ Response format:
 - No preambles, no explanations, no meta-commentary
 - Just the one-liner, delivered straight
 
+Discord formatting:
+{DISCORD_FORMATTING_INSTRUCTIONS}
+
 Language:
 - Respond in {language_name}
 - Use whatever language style best delivers the wisdom - slang, formal, archaic, whatever fits
@@ -125,11 +120,13 @@ Personalization:
 - Reference their quirks, habits, or known facts when it adds to the humor or insight
 
 {CONVERSATION_STRUCTURE_INSTRUCTIONS}
+
+{HANDOFF_CONTEXT_INSTRUCTIONS}
 </system_instructions>
 
-{memories_block}
+{context.memories_block}
 
-{conversation_block}"""
+{context.conversation_block}"""
 
             request_xml = await self._conversation_formatter.format_request_message_xml(trigger_message)
 

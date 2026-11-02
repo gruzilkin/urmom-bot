@@ -84,6 +84,7 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 - **attachment_processor.py**: Processes images and attachments for AI analysis
 - **response_summarizer.py**: Condenses long AI responses to fit Discord limits
 - **research_handoff.py**: Message-attached research notes passed between bot responses via Redis
+- **request_context.py**: `RequestContextBuilder` builds the shared `<memories>` and `<conversation_history>` (with research handoffs) blocks for general, famous person, wisdom, and devil's advocate generators
 
 ## Project Structure
 - Main code: `bot/src/`

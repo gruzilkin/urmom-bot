@@ -38,6 +38,7 @@ from tinyurl_client import TinyURLClient
 from video_compressor import VideoCompressor
 from redis_cache import RedisCache
 from research_handoff import ResearchHandoffService
+from request_context import RequestContextBuilder
 from video_embedder import MAX_FILE_SIZE_BYTES, VideoEmbedder
 
 
@@ -222,13 +223,6 @@ class Container:
 
         self.conversation_formatter = ConversationFormatter(self.user_resolver, self.store)
 
-        self.famous_person_generator = FamousPersonGenerator(
-            self.retrying_grok,
-            self.response_summarizer,
-            self.telemetry,
-            self.conversation_formatter,
-        )
-
         fact_handler_client = CompositeAIClient(
             [self.codex, self.retrying_gemma, self.deepseek, self.retrying_grok],
             telemetry=self.telemetry,
@@ -266,15 +260,29 @@ class Container:
             telemetry=self.telemetry,
         )
 
+        self.context_builder = RequestContextBuilder(
+            conversation_formatter=self.conversation_formatter,
+            memory_manager=self.memory_manager,
+            handoff_service=self.handoff_service,
+            telemetry=self.telemetry,
+        )
+
+        self.famous_person_generator = FamousPersonGenerator(
+            self.retrying_grok,
+            self.response_summarizer,
+            self.telemetry,
+            self.conversation_formatter,
+            self.context_builder,
+        )
+
         self.general_query_generator = GeneralQueryGenerator(
             client_selector=self._build_general_ai_client,
             response_summarizer=self.response_summarizer,
             telemetry=self.telemetry,
             store=self.store,
             conversation_formatter=self.conversation_formatter,
-            memory_manager=self.memory_manager,
             user_resolver=self.user_resolver,
-            handoff_service=self.handoff_service,
+            context_builder=self.context_builder,
         )
 
         self.task_history_summarizer = TaskHistorySummarizer(
@@ -338,7 +346,7 @@ class Container:
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
-            memory_manager=self.memory_manager,
+            context_builder=self.context_builder,
             telemetry=self.telemetry,
         )
 
@@ -347,7 +355,7 @@ class Container:
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
-            memory_manager=self.memory_manager,
+            context_builder=self.context_builder,
             telemetry=self.telemetry,
         )
 

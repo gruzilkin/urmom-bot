@@ -7,7 +7,10 @@ from conversation_formatter import (
     ConversationFormatter,
 )
 from conversation_graph import ConversationMessage
+from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
 from open_telemetry import Telemetry
+from request_context import RequestContextBuilder
+from research_handoff import HANDOFF_CONTEXT_INSTRUCTIONS
 from schemas import FamousParams
 from response_summarizer import ResponseSummarizer
 
@@ -21,11 +24,13 @@ class FamousPersonGenerator:
         response_summarizer: ResponseSummarizer,
         telemetry: Telemetry,
         conversation_formatter: ConversationFormatter,
-    ):
+        context_builder: RequestContextBuilder,
+    ) -> None:
         self.ai_client = ai_client
         self.response_summarizer = response_summarizer
         self.telemetry = telemetry
         self.conversation_formatter = conversation_formatter
+        self.context_builder = context_builder
 
     def get_route_description(self) -> str:
         return """
@@ -139,6 +144,7 @@ a famous person and reply with the person's name.
         person: str,
         language_name: str,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
+        bot_user_id: int,
     ) -> str:
         """
         Generate a famous person response. Returns the response string.
@@ -147,6 +153,7 @@ a famous person and reply with the person's name.
             request (ConversationMessage): The user's message with bot mentions removed
             person (str): The name of the famous person to impersonate
             conversation_fetcher: Parameterless async function that returns conversation history
+            bot_user_id (int): The bot's Discord user ID, used to load research handoffs
 
         Returns:
             str: The response string ready to be sent by the caller
@@ -157,27 +164,42 @@ a famous person and reply with the person's name.
 
             conversation = await conversation_fetcher()
 
-            conversation_block = await self.conversation_formatter.format_to_xml(conversation)
+            context = await self.context_builder.build(request, conversation, bot_user_id)
 
-            prompt = f"""You are {person}. Generate a response as if you were {person}, 
-            using their communication style, beliefs, values, and knowledge.
-            Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
-            Stay in character completely and respond directly as {person} would.
-            Keep your response length similar to the average message length in the conversation.
-            Feel free to tease and poke fun at the message authors, especially Florent.
-            Respond to the user's message in the <request> block.
-            Your response should be in the form of direct speech - exactly as if {person} is speaking directly, \
+            prompt = f"""<system_instructions>
+You are {person}. Generate a response as if you were {person},
+using their communication style, beliefs, values, and knowledge.
+Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
+Stay in character completely and respond directly as {person} would.
+Keep your response length similar to the average message length in the conversation.
+Feel free to tease and poke fun at the message authors.
+Respond to the user's message in the <request> block.
+Your response should be in the form of direct speech - exactly as if {person} is speaking directly, \
 without quotation marks or attributions.
-            
-            **Always respond in {language_name} unless the user specifically requests \
+
+**Always respond in {language_name} unless the user specifically requests \
 a different language or translation.**
-            
-            Keep responses under 2000 characters due to Discord's message limit \
+
+Keep responses under 2000 characters due to Discord's message limit \
 but no need to report on the length of the response.
+
+Personalization:
+- You have memories about some users in this conversation - use them to make the response more personal and relevant
+- Prefer to use information from memories to address users instead of their Discord names
+- Weave what you know about them into the response and adapt your arguments, examples, and tone to them, \
+as {person} would when speaking to someone they know
+
+Discord formatting:
+{DISCORD_FORMATTING_INSTRUCTIONS}
 
 {CONVERSATION_STRUCTURE_INSTRUCTIONS}
 
-{conversation_block}"""
+{HANDOFF_CONTEXT_INSTRUCTIONS}
+</system_instructions>
+
+{context.memories_block}
+
+{context.conversation_block}"""
 
             logger.info(f"Generating response as {person}")
             logger.info(f"Conversation: {conversation}")
@@ -202,6 +224,7 @@ but no need to report on the length of the response.
         params: FamousParams,
         request: ConversationMessage,
         conversation_fetcher: Callable[[], Awaitable[list[ConversationMessage]]],
+        bot_user_id: int,
     ) -> str:
         """
         Handle a famous person request using the provided parameters.
@@ -210,10 +233,11 @@ but no need to report on the length of the response.
             params (FamousParams): Parameters containing the famous person's name and language
             request (ConversationMessage): The user's message with bot mentions removed
             conversation_fetcher: Parameterless async function that returns conversation history
+            bot_user_id (int): The bot's Discord user ID, used to load research handoffs
 
         Returns:
             str: The response string ready to be sent by the caller
         """
         return await self.generate_famous_person_response(
-            request, params.famous_person, params.language_name, conversation_fetcher
+            request, params.famous_person, params.language_name, conversation_fetcher, bot_user_id
         )

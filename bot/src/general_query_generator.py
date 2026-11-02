@@ -3,7 +3,6 @@ from collections.abc import Awaitable, Callable
 
 import nextcord
 
-from memory_manager import MemoryManager
 from conversation_graph import ConversationMessage
 from conversation_formatter import (
     CONVERSATION_STRUCTURE_INSTRUCTIONS,
@@ -14,8 +13,8 @@ from research_handoff import (
     HANDOFF_CONTEXT_INSTRUCTIONS,
     HANDOFF_INSTRUCTIONS,
     ProcessorResult,
-    ResearchHandoffService,
 )
+from request_context import RequestContextBuilder
 from schemas import GeneralParams, GeneralQueryResponse
 from response_summarizer import ResponseSummarizer
 from store import Store
@@ -34,18 +33,16 @@ class GeneralQueryGenerator:
         telemetry: Telemetry,
         store: Store,
         conversation_formatter: ConversationFormatter,
-        memory_manager: MemoryManager,
         user_resolver: UserResolver,
-        handoff_service: ResearchHandoffService,
+        context_builder: RequestContextBuilder,
     ) -> None:
         self._client_selector = client_selector
         self.response_summarizer = response_summarizer
         self.telemetry = telemetry
         self.store = store
         self.conversation_formatter = conversation_formatter
-        self.memory_manager = memory_manager
         self.user_resolver = user_resolver
-        self.handoff_service = handoff_service
+        self.context_builder = context_builder
 
     def get_route_description(self) -> str:
         return """
@@ -165,14 +162,6 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
             → "ask him if he's coming"
         {context_section}"""
 
-    def _extract_unique_user_ids(self, conversation) -> set[int]:
-        """Extract all unique user IDs from conversation (authors + mentions)."""
-        user_ids = set()
-        for msg in conversation:
-            user_ids.add(msg.author_id)
-            user_ids.update(msg.mentioned_user_ids)
-        return user_ids
-
     async def handle_request(
         self,
         params: GeneralParams,
@@ -221,15 +210,7 @@ If a specific ai_backend was explicitly requested earlier, reuse it for follow-u
 
             conversation = await conversation_fetcher()
 
-            user_ids = self._extract_unique_user_ids(conversation)
-            user_ids.add(request.author_id)
-            if extra_user_ids:
-                user_ids.update(extra_user_ids)
-            span.set_attribute("memory_user_count", len(user_ids))
-            memories_block = await self.memory_manager.build_memory_prompt(request.guild_id, user_ids)
-
-            handoffs = await self.handoff_service.load_for_conversation(conversation, bot_user.id)
-            conversation_block = await self.conversation_formatter.format_to_xml(conversation, handoffs)
+            context = await self.context_builder.build(request, conversation, bot_user.id, extra_user_ids)
 
             span.set_attribute("has_task_history", task_history is not None)
             task_history_block = ""
@@ -420,11 +401,11 @@ Memory Usage:
 {HANDOFF_INSTRUCTIONS}
 </system_instructions>
 
-{memories_block}
+{context.memories_block}
 
 {task_history_block}
 
-{conversation_block}"""
+{context.conversation_block}"""
 
             logger.info(f"Generating response using {params.ai_backend}")
             logger.info(f"User message XML: {user_message_xml}")
