@@ -12,6 +12,7 @@ class NullRedisCache:
         self._attachments: dict[int, str] = {}
         self._aliases: dict[str, list[str]] = {}
         self._handoffs: dict[int, str] = {}
+        self._task_history: dict[str, str] = {}
 
     async def get_daily_summary(self, guild_id: int, for_date: date) -> tuple[dict[int, str], datetime] | None:
         key = f"{guild_id}:{for_date}"
@@ -52,6 +53,12 @@ class NullRedisCache:
 
     async def set_aliases(self, facts_hash: str, aliases: list[str]) -> None:
         self._aliases[facts_hash] = aliases
+
+    async def get_task_history_summary(self, task_id: int, messages_hash: str, prompt_hash: str) -> str | None:
+        return self._task_history.get(f"{task_id}:{messages_hash}:{prompt_hash}")
+
+    async def set_task_history_summary(self, task_id: int, messages_hash: str, prompt_hash: str, summary: str) -> None:
+        self._task_history[f"{task_id}:{messages_hash}:{prompt_hash}"] = summary
 
     async def get_handoffs(self, message_ids: list[int]) -> dict[int, str]:
         return {message_id: self._handoffs[message_id] for message_id in message_ids if message_id in self._handoffs}
