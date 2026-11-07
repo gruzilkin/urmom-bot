@@ -9,7 +9,12 @@ from wisdom_generator import WisdomGenerator
 from conversation_graph import ConversationMessage
 from null_telemetry import NullTelemetry
 from request_helpers import make_request, utc_store
+from request_context import RequestContextBuilder
+from research_handoff import ResearchHandoffService
 from schemas import WisdomResponse
+
+
+BOT_USER_ID = 999
 
 
 class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
@@ -38,6 +43,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
 
         self.telemetry = NullTelemetry()
 
+        self.handoff_service = Mock(spec=ResearchHandoffService)
+        self.handoff_service.load_for_conversation = AsyncMock(return_value={})
+
         # Mock trigger message
         self.mock_trigger_message = make_request("Test message", author_id=12345, guild_id=123)
 
@@ -46,7 +54,9 @@ class TestWisdomGenerator(unittest.IsolatedAsyncioTestCase):
             language_detector=self.language_detector,
             conversation_formatter=self.conversation_formatter,
             response_summarizer=self.response_summarizer,
-            memory_manager=self.memory_manager,
+            context_builder=RequestContextBuilder(
+                self.conversation_formatter, self.memory_manager, self.handoff_service, self.telemetry
+            ),
             telemetry=self.telemetry,
         )
 

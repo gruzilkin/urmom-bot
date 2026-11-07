@@ -16,6 +16,7 @@ from research_handoff import ResearchHandoffService
 from open_telemetry import Telemetry
 from schemas import GeneralParams
 from store import ScheduledTask, Store
+from task_history_summarizer import TaskHistorySummarizer
 
 logger = logging.getLogger(__name__)
 
@@ -31,24 +32,34 @@ class ScheduleEngine:
         telemetry: Telemetry,
         general_query_generator: GeneralQueryGenerator,
         handoff_service: ResearchHandoffService,
+        task_history_summarizer: TaskHistorySummarizer,
+        chain_max_messages: int,
     ) -> None:
         self.store = store
         self.telemetry = telemetry
         self.general_query_generator = general_query_generator
         self.handoff_service = handoff_service
+        self.task_history_summarizer = task_history_summarizer
+        self.chain_max_messages = chain_max_messages
         # Set by the container after AiRouter construction; constructor injection
         # would be circular (engine → router → schedule_handler → engine).
         self.ai_router: AiRouter | None = None
         self.bot: nextcord.Client | None = None
-        self._channel_conversation_fetcher: Callable[[int], Awaitable[list[ConversationMessage]]] | None = None
+        self._channel_conversation_fetcher: Callable[[int, int | None], Awaitable[list[ConversationMessage]]] | None = (
+            None
+        )
         self._loop_task: asyncio.Task | None = None
 
     async def start(
         self,
         bot: nextcord.Client,
-        channel_conversation_fetcher: Callable[[int], Awaitable[list[ConversationMessage]]],
+        channel_conversation_fetcher: Callable[[int, int | None], Awaitable[list[ConversationMessage]]],
     ) -> None:
-        """Start the per-minute tick loop. Idempotent."""
+        """Start the per-minute tick loop. Idempotent.
+
+        channel_conversation_fetcher(channel_id, anchor_message_id) builds the conversation
+        from the anchor message, or from the latest channel message when the anchor is None.
+        """
         if self._loop_task and not self._loop_task.done():
             logger.info("ScheduleEngine already running")
             return
@@ -133,6 +144,11 @@ class ScheduleEngine:
             span.set_attribute("drift_seconds", (actual_run_at - intended_run_at).total_seconds())
             span.set_attribute("scheduled", scheduled)
 
+            reply_target_id = task.chain_message_ids[-1] if task.chain_message_ids else None
+            span.set_attribute("chain_length", len(task.chain_message_ids))
+            if reply_target_id is not None:
+                span.set_attribute("reply_target_id", reply_target_id)
+
             if self.bot is None or self._channel_conversation_fetcher is None or self.ai_router is None:
                 span.set_attribute("status", "engine_not_started")
                 logger.error(f"Task {task.task_id}: engine not started or not wired; cannot fire")
@@ -158,14 +174,20 @@ class ScheduleEngine:
                     content=task.prompt,
                     timestamp=actual_run_at,
                     mentioned_user_ids=[],
+                    reply_to_id=reply_target_id,
                 )
-                params: GeneralParams = await self.ai_router.extract_general_params(request)
+                params: GeneralParams
+                task_history: str | None
+                params, task_history = await asyncio.gather(
+                    self.ai_router.extract_general_params(request),
+                    self.task_history_summarizer.summarize(task, self.bot.user.id),
+                )
 
                 span.set_attribute("ai_backend", params.ai_backend)
                 span.set_attribute("temperature", params.temperature)
 
                 async def fetch_conversation() -> list[ConversationMessage]:
-                    return await self._channel_conversation_fetcher(task.channel_id)
+                    return await self._channel_conversation_fetcher(task.channel_id, reply_target_id)
 
                 active_user_ids = await self.store.list_active_user_ids(task.guild_id, actual_run_at - ACTIVITY_WINDOW)
                 extra_user_ids = set(active_user_ids)
@@ -177,6 +199,7 @@ class ScheduleEngine:
                     fetch_conversation,
                     self.bot.user,
                     extra_user_ids=extra_user_ids,
+                    task_history=task_history,
                 )
 
                 if result is None:
@@ -184,9 +207,18 @@ class ScheduleEngine:
                     logger.warning(f"Task {task.task_id}: generator returned None")
                     return
 
-                sent_message = await channel.send(result.text, suppress_embeds=True)
+                if reply_target_id is not None:
+                    reference = nextcord.MessageReference(
+                        message_id=reply_target_id,
+                        channel_id=task.channel_id,
+                        guild_id=task.guild_id,
+                        fail_if_not_exists=False,
+                    )
+                    sent_message = await channel.send(result.text, suppress_embeds=True, reference=reference)
+                else:
+                    sent_message = await channel.send(result.text, suppress_embeds=True)
                 await self.handoff_service.save(sent_message.id, result.handoff)
-                await self.store.mark_task_last_run(task.task_id, actual_run_at)
+                await self.store.record_task_run(task.task_id, actual_run_at, sent_message.id, self.chain_max_messages)
                 span.set_attribute("status", "success")
             except Exception as e:
                 span.set_attribute("status", "error")

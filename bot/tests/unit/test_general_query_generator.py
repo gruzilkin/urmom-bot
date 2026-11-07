@@ -11,6 +11,7 @@ from research_handoff import (
     ProcessorResult,
     ResearchHandoffService,
 )
+from request_context import RequestContextBuilder
 from schemas import GeneralParams, GeneralQueryResponse
 from conversation_graph import ConversationMessage
 from null_telemetry import NullTelemetry
@@ -83,9 +84,13 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
             telemetry=self.telemetry,
             store=self.mock_store,
             conversation_formatter=self.mock_conversation_formatter,
-            memory_manager=self.mock_memory_manager,
             user_resolver=self.mock_user_resolver,
-            handoff_service=self.mock_handoff_service,
+            context_builder=RequestContextBuilder(
+                self.mock_conversation_formatter,
+                self.mock_memory_manager,
+                self.mock_handoff_service,
+                self.telemetry,
+            ),
         )
 
     async def test_handle_request_with_gemini_flash(self):
@@ -333,8 +338,7 @@ class TestGeneralQueryGenerator(unittest.IsolatedAsyncioTestCase):
 
         await self._run(params)
 
-        passed_conversation, passed_bot_id = self.mock_handoff_service.load_for_conversation.await_args.args
-        self.assertEqual(passed_bot_id, self.mock_bot_user.id)
+        (passed_conversation,) = self.mock_handoff_service.load_for_conversation.await_args.args
         self.assertEqual(len(passed_conversation), 1)
         # Handoffs travel into the conversation XML so each one sits inside its own message
         self.mock_conversation_formatter.format_to_xml.assert_awaited_once_with(passed_conversation, handoffs)

@@ -138,6 +138,8 @@ class TestScheduleHandler(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["prompt"], "post a weekly summary")
         self.assertEqual(kwargs["cron_expression"], "0 9 * * 1")
         self.assertEqual(kwargs["timezone"], "Asia/Tokyo")
+        # The request message seeds the task's reply chain so the first run replies to it
+        self.assertEqual(kwargs["chain_message_ids"], [1000])
 
     async def test_create_llm_failure_returns_answer_without_persisting(self):
         self.mock_ai.generate_content = AsyncMock(

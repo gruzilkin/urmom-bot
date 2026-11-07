@@ -7,7 +7,9 @@ from conversation_formatter import (
     ConversationFormatter,
 )
 from conversation_graph import ConversationMessage
+from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
 from open_telemetry import Telemetry
+from request_context import RequestContextBuilder
 from schemas import FamousParams
 from response_summarizer import ResponseSummarizer
 
@@ -21,11 +23,13 @@ class FamousPersonGenerator:
         response_summarizer: ResponseSummarizer,
         telemetry: Telemetry,
         conversation_formatter: ConversationFormatter,
-    ):
+        context_builder: RequestContextBuilder,
+    ) -> None:
         self.ai_client = ai_client
         self.response_summarizer = response_summarizer
         self.telemetry = telemetry
         self.conversation_formatter = conversation_formatter
+        self.context_builder = context_builder
 
     def get_route_description(self) -> str:
         return """
@@ -157,27 +161,46 @@ a famous person and reply with the person's name.
 
             conversation = await conversation_fetcher()
 
-            conversation_block = await self.conversation_formatter.format_to_xml(conversation)
+            context = await self.context_builder.build(request, conversation)
 
-            prompt = f"""You are {person}. Generate a response as if you were {person}, 
-            using their communication style, beliefs, values, and knowledge.
-            Make the response thoughtful, authentic to {person}'s character, and relevant to the conversation.
-            Stay in character completely and respond directly as {person} would.
-            Keep your response length similar to the average message length in the conversation.
-            Feel free to tease and poke fun at the message authors, especially Florent.
-            Respond to the user's message in the <request> block.
-            Your response should be in the form of direct speech - exactly as if {person} is speaking directly, \
+            prompt = f"""<system_instructions>
+You are {person}. Respond as an amplified version of {person}:
+take their best-known traits, catchphrases, obsessions, beliefs, and the stereotypes people associate with them, \
+and amplify them well beyond realistic - the persona should be instantly recognizable.
+Stay in character completely and respond directly as {person} would.
+
+Focus:
+- Respond to the user's message in the <request> block - that is what you are answering
+- Use the conversation to understand what the request is about, but keep the focus on answering it
+- Address the core of the question as {person} sees it - there is no need to cover everything
+- Skip recaps, filler, and meta-commentary
+
+Length:
+- Be concise: say what the request needs in as few words as {person} can, then stop
+- The limit is 1800 characters, but it's not a target
+
+Your response should be in the form of direct speech - exactly as if {person} is speaking directly, \
 without quotation marks or attributions.
-            
-            **Always respond in {language_name} unless the user specifically requests \
+
+**Always respond in {language_name} unless the user specifically requests \
 a different language or translation.**
-            
-            Keep responses under 2000 characters due to Discord's message limit \
-but no need to report on the length of the response.
+
+Personalization:
+- You have memories about some users in this conversation - use them to make the response more personal and relevant
+- Prefer to use information from memories to address users instead of their Discord names
+- Weave what you know about them into the response: adapt your arguments, examples, and tone to them, \
+and aim your point at them - as a jab, a reproach, or praise, whichever {person} would choose \
+with someone they know
+
+Discord formatting:
+{DISCORD_FORMATTING_INSTRUCTIONS}
 
 {CONVERSATION_STRUCTURE_INSTRUCTIONS}
+</system_instructions>
 
-{conversation_block}"""
+{context.memories_block}
+
+{context.conversation_block}"""
 
             logger.info(f"Generating response as {person}")
             logger.info(f"Conversation: {conversation}")

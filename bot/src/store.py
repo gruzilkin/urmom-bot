@@ -1,6 +1,6 @@
 import psycopg
 from psycopg import AsyncConnection
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from cachetools import LRUCache
 from datetime import datetime, date, time, timedelta
@@ -51,6 +51,7 @@ class ScheduledTask:
     last_run_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    chain_message_ids: list[int] = field(default_factory=list)
 
 
 class Store:
@@ -594,6 +595,7 @@ class Store:
         cron_expression: str | None,
         timezone: str,
         next_run_at: datetime,
+        chain_message_ids: list[int],
     ) -> int:
         """Insert a new scheduled task and return its task_id."""
         async with self._telemetry.async_create_span("create_scheduled_task") as span:
@@ -611,11 +613,20 @@ class Store:
                         """
                         INSERT INTO scheduled_tasks
                             (guild_id, channel_id, creator_user_id, prompt,
-                             cron_expression, timezone, next_run_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                             cron_expression, timezone, next_run_at, chain_message_ids)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         RETURNING task_id
                         """,
-                        (guild_id, channel_id, creator_user_id, prompt, cron_expression, timezone, next_run_at),
+                        (
+                            guild_id,
+                            channel_id,
+                            creator_user_id,
+                            prompt,
+                            cron_expression,
+                            timezone,
+                            next_run_at,
+                            chain_message_ids,
+                        ),
                     )
                     result = await cur.fetchone()
                     await self.conn.commit()
@@ -640,7 +651,7 @@ class Store:
                         """
                         SELECT task_id, guild_id, channel_id, creator_user_id, prompt,
                                cron_expression, timezone, next_run_at, last_run_at,
-                               created_at, updated_at
+                               created_at, updated_at, chain_message_ids
                         FROM scheduled_tasks
                         WHERE task_id = %s
                         """,
@@ -704,7 +715,7 @@ class Store:
                         f"""
                         SELECT task_id, guild_id, channel_id, creator_user_id, prompt,
                                cron_expression, timezone, next_run_at, last_run_at,
-                               created_at, updated_at
+                               created_at, updated_at, chain_message_ids
                         FROM scheduled_tasks
                         {where}
                         ORDER BY next_run_at ASC
@@ -790,9 +801,39 @@ class Store:
             finally:
                 self._telemetry.metrics.db_latency.record(timer(), {"operation": "update_task_next_run_at"})
 
-    async def mark_task_last_run(self, task_id: int, last_run_at: datetime) -> None:
-        """Engine post-execution: record when the task last fired."""
-        async with self._telemetry.async_create_span("mark_task_last_run") as span:
+    async def record_task_run(self, task_id: int, last_run_at: datetime, message_id: int, max_chain_ids: int) -> None:
+        """Engine post-execution: record when the task last fired and append the posted
+        message to the task's reply chain, keeping only the newest max_chain_ids ids."""
+        async with self._telemetry.async_create_span("record_task_run") as span:
+            span.set_attribute("task_id", task_id)
+            span.set_attribute("message_id", message_id)
+
+            timer = self._telemetry.metrics.timer()
+            try:
+                await self._ensure_connection()
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        UPDATE scheduled_tasks
+                        SET last_run_at = %s,
+                            chain_message_ids = (array_append(chain_message_ids, %s))[
+                                GREATEST(1, cardinality(chain_message_ids) + 2 - %s):
+                            ]
+                        WHERE task_id = %s
+                        """,
+                        (last_run_at, message_id, max_chain_ids, task_id),
+                    )
+                    await self.conn.commit()
+            finally:
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "record_task_run"})
+
+    async def get_task_chain_messages(self, task_id: int) -> list[ChatMessage]:
+        """Fetch chat_history rows for a scheduled task's chain_message_ids, oldest first.
+
+        Chain ids with no stored row are omitted. Returns nothing for a task whose row
+        no longer exists (one-off tasks are deleted before they fire).
+        """
+        async with self._telemetry.async_create_span("get_task_chain_messages") as span:
             span.set_attribute("task_id", task_id)
 
             timer = self._telemetry.metrics.timer()
@@ -800,12 +841,22 @@ class Store:
                 await self._ensure_connection()
                 async with self.conn.cursor() as cur:
                     await cur.execute(
-                        "UPDATE scheduled_tasks SET last_run_at = %s WHERE task_id = %s",
-                        (last_run_at, task_id),
+                        """
+                        SELECT ch.guild_id, ch.channel_id, ch.message_id, ch.user_id,
+                               ch.message_text, ch.timestamp, ch.reply_to_id
+                        FROM scheduled_tasks t
+                        JOIN chat_history ch ON ch.message_id = ANY(t.chain_message_ids)
+                        WHERE t.task_id = %s
+                        ORDER BY ch.message_id
+                        """,
+                        (task_id,),
                     )
-                    await self.conn.commit()
+                    rows = await cur.fetchall()
+                    messages = [ChatMessage(*row) for row in rows]
+                    span.set_attribute("found_count", len(messages))
+                    return messages
             finally:
-                self._telemetry.metrics.db_latency.record(timer(), {"operation": "mark_task_last_run"})
+                self._telemetry.metrics.db_latency.record(timer(), {"operation": "get_task_chain_messages"})
 
     async def close(self) -> None:
         """Close the database connection."""

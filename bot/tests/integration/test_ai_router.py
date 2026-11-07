@@ -96,6 +96,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             response_summarizer=None,
             telemetry=self.telemetry,
             conversation_formatter=conversation_formatter,
+            context_builder=Mock(),
         )
         general_generator = GeneralQueryGenerator(
             client_selector=lambda _: AsyncMock(spec=AIClient),
@@ -103,9 +104,8 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             telemetry=self.telemetry,
             store=mock_store,
             conversation_formatter=conversation_formatter,
-            memory_manager=AsyncMock(),
             user_resolver=mock_user_resolver,
-            handoff_service=Mock(),
+            context_builder=Mock(),
         )
         fact_handler = FactHandler(
             ai_client=None,

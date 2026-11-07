@@ -8,8 +8,11 @@ from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
 
 from ai_client import AIClient, BlockedException
-from conversation_formatter import CONVERSATION_STRUCTURE_INSTRUCTIONS, ConversationFormatter
-from conversation_graph import ConversationMessage
+from conversation_formatter import (
+    CONVERSATION_STRUCTURE_INSTRUCTIONS,
+    ConversationFormatter,
+    chat_message_to_conversation_message,
+)
 from message_node import MessageNode
 from open_telemetry import Telemetry
 from redis_cache import RedisCache
@@ -336,18 +339,7 @@ class MemoryManager:
             active_user_ids = list(set(msg.user_id for msg in messages))
             span.set_attribute("active_user_count", len(active_user_ids))
 
-            conversation_messages = [
-                ConversationMessage(
-                    message_id=msg.message_id,
-                    guild_id=msg.guild_id,
-                    author_id=msg.user_id,
-                    content=msg.message_text,
-                    timestamp=msg.timestamp,
-                    mentioned_user_ids=[],
-                    reply_to_id=msg.reply_to_id,
-                )
-                for msg in messages
-            ]
+            conversation_messages = [chat_message_to_conversation_message(msg) for msg in messages]
 
             formatter = ConversationFormatter(self._user_resolver, self._store)
             formatted_messages = await formatter.format_to_xml(conversation_messages)
