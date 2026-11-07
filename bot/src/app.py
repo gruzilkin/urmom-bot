@@ -65,17 +65,18 @@ async def on_ready() -> None:
             except Exception as e:
                 logger.error(f"Cannot fetch channel {channel_id} for scheduled task: {e}", exc_info=True)
                 return []
-        anchor_message = None
-        if anchor_message_id is not None:
+        latest_message = await fetch_latest_message(channel)
+        trigger_messages = [latest_message] if latest_message else []
+        if anchor_message_id is not None and (latest_message is None or latest_message.id != anchor_message_id):
             try:
-                anchor_message = await channel.fetch_message(anchor_message_id)
+                trigger_messages.append(await channel.fetch_message(anchor_message_id))
             except Exception as e:
                 logger.error(
                     f"Cannot fetch anchor message {anchor_message_id} for scheduled task, "
-                    f"falling back to latest channel message: {e}",
+                    f"continuing from latest channel message only: {e}",
                     exc_info=True,
                 )
-        return await get_recent_conversation(channel, reference_message=anchor_message)
+        return await get_recent_conversation(channel, trigger_messages)
 
     await container.schedule_engine.start(bot, fetch_channel_conversation)
 
@@ -391,22 +392,31 @@ async def discord_to_message_node(message: nextcord.Message) -> MessageNode:
     )
 
 
+async def fetch_latest_message(channel: nextcord.TextChannel) -> nextcord.Message | None:
+    try:
+        async for msg in channel.history(limit=1):
+            return msg
+    except Exception as e:
+        logger.error(f"Failed to fetch most recent message from channel: {e}", exc_info=True)
+    return None
+
+
 async def get_recent_conversation(
     channel: nextcord.TextChannel,
-    min_messages: int = 10,
+    trigger_messages: list[nextcord.Message],
+    min_messages: int = 3,
     max_messages: int = 30,
     max_age_minutes: int = 30,
-    reference_message: nextcord.Message | None = None,
 ) -> list[ConversationMessage]:
     """
     Fetch recent conversation using graph-based clustering.
 
     Args:
         channel: The Discord channel to get messages from
-        min_messages: Minimum number of messages to retrieve (now min_linear)
+        trigger_messages: Starting points for the conversation
+        min_messages: Linear messages per trigger message, counting the trigger itself (min_linear)
         max_messages: Maximum number of messages to retrieve (now max_total)
         max_age_minutes: Time threshold for temporal connections (now time_threshold_minutes)
-        reference_message: If provided, use this as the starting point for the conversation
 
     Returns:
         List of ConversationMessage objects with timestamps in chronological order
@@ -456,21 +466,7 @@ async def get_recent_conversation(
             span.set_attribute("messages_fetched", len(messages))
             return messages
 
-    # Determine trigger message
-    trigger_message = None
-    if reference_message:
-        trigger_message = reference_message
-    else:
-        # Get most recent message as trigger
-        try:
-            async for msg in channel.history(limit=1):
-                trigger_message = msg
-                break
-        except Exception as e:
-            logger.error(f"Failed to fetch most recent message from channel: {e}", exc_info=True)
-            return []
-
-    if not trigger_message:
+    if not trigger_messages:
         return []
 
     # Build conversation graph with telemetry
@@ -481,8 +477,9 @@ async def get_recent_conversation(
             telemetry=container.telemetry,
         )
 
+        span.set_attribute("trigger_count", len(trigger_messages))
         conversation = await builder.build_conversation_graph(
-            trigger_message=trigger_message,
+            trigger_messages=trigger_messages,
             min_linear=min_messages,
             max_total=max_messages,
             time_threshold_minutes=max_age_minutes,
@@ -512,7 +509,7 @@ def to_request_message(message: nextcord.Message, content: str | None = None) ->
 
 def create_conversation_fetcher(
     message: nextcord.Message,
-    min_messages: int = 10,
+    min_messages: int = 3,
     max_messages: int = 30,
     max_age_minutes: int = 30,
 ) -> Callable[[], Awaitable[list[ConversationMessage]]]:
@@ -521,7 +518,7 @@ def create_conversation_fetcher(
 
     Args:
         message: The Discord message to start conversation history from
-        min_messages: Minimum number of messages to retrieve (default: 10)
+        min_messages: Minimum number of messages to retrieve (default: 3)
         max_messages: Maximum number of messages to retrieve (default: 30)
         max_age_minutes: Time threshold for temporal connections (default: 30)
 
@@ -532,10 +529,10 @@ def create_conversation_fetcher(
     async def fetch_conversation():
         return await get_recent_conversation(
             message.channel,
+            [message],
             min_messages=min_messages,
             max_messages=max_messages,
             max_age_minutes=max_age_minutes,
-            reference_message=message,
         )
 
     return fetch_conversation

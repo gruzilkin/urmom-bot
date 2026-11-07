@@ -178,7 +178,7 @@ A one-off task created as a reply to some message therefore replies to the reque
 
 ### Two Sources of Context
 
-1. **Conversation history (detailed, recent).** The conversation graph is built from the last chain message instead of the latest channel message. The regular reference-following walks back through previous runs to the request and whatever it replied to.
+1. **Conversation history (detailed, recent).** The conversation graph grows from two trigger messages: the latest channel message, for what the channel is discussing now, and the last chain message. From the last chain message, the regular reference-following walks back through previous runs to the request and whatever it replied to. When nothing was posted since the last run, the latest channel message is the last chain message and the graph has a single trigger.
 2. **Task history summary (wide, cheap).** `TaskHistorySummarizer` reads the chain's text from `chat_history` (no Discord API calls) and asks a cheap model to summarize the previous runs from the perspective of the task prompt. The summarizer prompt is generic: the task prompt alone decides what matters about previous runs (e.g. the words a vocabulary task already taught, or the facts a news-follow-up task already reported). The summary is passed to the generator as a `<task_history>` block, so the heavy model gets the previous runs without reading the whole history.
 
 The summarizer reads the chain newest first up to `SCHEDULE_HISTORY_CHAR_BUDGET` characters (default 100k) and drops anything older. There is no time-based limit: tasks with short outputs reach further back, long reports cover less time. Chain messages missing from `chat_history` are skipped.
@@ -187,7 +187,7 @@ The summary is computed at firing time, which is fine because firings are off th
 
 ### Edge Cases
 
-- **Reply target deleted.** The reply is sent with `fail_if_not_exists=False`, so it becomes a plain post. Conversation history falls back to the latest channel message.
+- **Reply target deleted.** The reply is sent with `fail_if_not_exists=False`, so it becomes a plain post. Conversation history is built from the latest channel message only.
 - **Tasks with an empty chain** (created before this feature) build context from the latest channel message and post without a reply. Their first output starts the chain.
 
 ### Not Included (Possible Later)

@@ -183,7 +183,7 @@ class ConversationGraphBuilder:
 
     async def build_conversation_graph(
         self,
-        trigger_message: nextcord.Message,
+        trigger_messages: list[nextcord.Message],
         min_linear: int,
         max_total: int,
         time_threshold_minutes: int,
@@ -193,8 +193,10 @@ class ConversationGraphBuilder:
         Build conversation graph using tik/tok alternating exploration.
 
         Args:
-            trigger_message: Message that triggered the bot
-            min_linear: Minimum linear messages to include regardless of time gaps
+            trigger_messages: Messages to grow the conversation from, e.g. the message that
+                triggered the bot, or the latest channel message plus a reply target
+            min_linear: Linear messages to include per trigger message, counting the trigger itself,
+                regardless of time gaps
             max_total: Maximum total messages in graph
             time_threshold_minutes: Time threshold for temporal connections
 
@@ -203,10 +205,9 @@ class ConversationGraphBuilder:
         """
         graph = MessageGraph()
 
-        # Seed with guaranteed linear history
-        linear_messages = await self.get_linear_history(trigger_message, min_linear)
-        for msg in linear_messages:
-            graph.add_node(msg)
+        for trigger_message in trigger_messages:
+            for msg in await self.get_linear_history(trigger_message, min_linear):
+                graph.add_node(msg)
 
         # Tik/tok alternating exploration
         while len(graph) < max_total:

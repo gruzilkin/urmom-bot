@@ -24,13 +24,13 @@ This approach ensures that both explicit user connections (replies) and implicit
 The conversation building algorithm uses alternating exploration phases:
 
 ```python
-async def build_conversation_graph(trigger_message, min_linear, max_total, time_threshold_minutes, discord_to_message_node_func):
+async def build_conversation_graph(trigger_messages, min_linear, max_total, time_threshold_minutes, discord_to_message_node_func):
     graph = MessageGraph()  # Works with nextcord.Message objects
     
-    # Seed with guaranteed linear history
-    linear_messages = await get_linear_history(trigger_message, min_linear)
-    for msg in linear_messages:
-        graph.add_node(msg)  # Add Discord message directly
+    # Seed each trigger message with its guaranteed linear history
+    for trigger_message in trigger_messages:
+        for msg in await get_linear_history(trigger_message, min_linear):
+            graph.add_node(msg)  # Add Discord message directly
     
     while len(graph) < max_total:
         # TIK: Reference step - follow all unexplored references
@@ -53,26 +53,34 @@ async def build_conversation_graph(trigger_message, min_linear, max_total, time_
 ### Key Features
 
 1. **Guaranteed Minimum Context**
-   - Always includes `min_linear` recent messages regardless of time gaps
+   - Always includes `min_linear` messages per trigger message (the trigger and the messages right before it) regardless of time gaps
    - Handles implicit conversation continuity when users respond to older topics
+   - Kept small (3): older context is reached through temporal clusters and replies,
+     so a user who needs a specific older message as context replies to it
 
-2. **Reference Following**
+2. **Multiple Trigger Messages**
+   - The graph can grow from several trigger messages; reactive requests use one (the message that
+     triggered the bot), scheduled tasks use the latest channel message plus the task's reply target
+     (see `scheduled_tasks.md`)
+   - Each trigger seeds its own cluster; overlapping clusters merge through deduplication
+
+3. **Reference Following**
    - All Discord reply references are followed (explicit user connections)
    - No circular references possible (past messages can't reference future ones)
    - Natural deduplication (same message reached via multiple paths = single node)
 
-3. **Temporal Sealing**
+4. **Temporal Sealing**
    - When exploring temporal neighbors, if time gap > threshold, seals that path
    - Prevents exploration of unrelated conversation clusters
    - Allows algorithm to explore other directions
    - Default threshold: 30 minutes
 
-4. **Balanced Exploration**
+5. **Balanced Exploration**
    - Alternates between reference exploration (TIK) and temporal exploration (TOK)
    - Ensures neither explicit connections nor temporal continuity dominate
    - References explored 1 level deep at a time
 
-5. **Natural Termination**
+6. **Natural Termination**
    - Stops when max message limit reached
    - Stops when no new messages found in either exploration type
    - Bounded performance with predictable limits
@@ -158,6 +166,6 @@ This format allows AI models to seamlessly access both the original message and 
 ## Configuration
 
 Parameters are configured in `create_conversation_fetcher()` in `app.py`:
-- `min_messages=10`: Minimum guaranteed linear messages
+- `min_messages=3`: Guaranteed linear messages per trigger message, counting the trigger itself
 - `max_messages=30`: Maximum total messages in graph
 - `max_age_minutes=30`: Temporal connection threshold
