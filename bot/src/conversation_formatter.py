@@ -4,7 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from conversation_graph import ConversationMessage
-from store import Store
+from store import ChatMessage, Store
 from user_resolver import UserResolver
 
 CONVERSATION_STRUCTURE_INSTRUCTIONS = """Conversation Structure:
@@ -28,6 +28,19 @@ def format_timestamp(timestamp: datetime, tz: ZoneInfo) -> str:
     local = timestamp.astimezone(tz)
     offset = local.strftime("%z")
     return f"{local.strftime('%Y-%m-%d %a %H:%M')} {offset[:3]}:{offset[3:]}"
+
+
+def chat_message_to_conversation_message(message: ChatMessage) -> ConversationMessage:
+    """Convert a stored chat_history row into the shape the formatter renders."""
+    return ConversationMessage(
+        message_id=message.message_id,
+        guild_id=message.guild_id,
+        author_id=message.user_id,
+        content=message.message_text,
+        timestamp=message.timestamp,
+        mentioned_user_ids=[],
+        reply_to_id=message.reply_to_id,
+    )
 
 
 class ConversationFormatter:

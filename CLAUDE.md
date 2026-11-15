@@ -64,6 +64,9 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 - **fact_handler.py**: "remember" and "forget" commands
 - **country_resolver.py**: Flag emoji to country mapping
 - **wisdom_generator.py**: Philosophical wisdom generation from conversation context with creative freedom
+- **schedule_handler.py** / **schedule_engine.py**: Scheduled task management and the per-minute firing loop
+  - **See `bot/documents/scheduled_tasks.md` for the design, including run-to-run continuation**
+- **task_history_summarizer.py**: Summary of a scheduled task's previous runs, shaped by the task prompt
 
 ### Memory & Conversation
 - **memory_manager.py**: User memory system (facts + daily summaries)
@@ -81,6 +84,7 @@ source .venv/bin/activate && PYTHONPATH=bot/src:bot/tests python -m unittest dis
 - **attachment_processor.py**: Processes images and attachments for AI analysis
 - **response_summarizer.py**: Condenses long AI responses to fit Discord limits
 - **research_handoff.py**: Message-attached research notes passed between bot responses via Redis
+- **request_context.py**: `RequestContextBuilder` builds the shared `<memories>` and `<conversation_history>` blocks for general, famous person, wisdom, and devil's advocate generators; research handoffs are embedded only with `include_handoffs=True` (general only)
 
 ## Project Structure
 - Main code: `bot/src/`

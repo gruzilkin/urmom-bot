@@ -298,3 +298,10 @@ class GeneralQueryResponse(BaseModel):
         default=None,
         description="Research handoff for follow-ups",
     )
+
+
+class TaskHistorySummary(BaseModel):
+    """Summary of a scheduled task's previous runs, shaped by the task prompt."""
+
+    summary: str = Field(description="Summary of the previous runs, capturing what the task prompt needs to know")
+    reason: str = Field(description="What the summary captures about the previous runs and why")

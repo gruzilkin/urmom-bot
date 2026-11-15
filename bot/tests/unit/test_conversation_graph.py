@@ -2,6 +2,8 @@ import datetime
 import unittest
 from unittest.mock import Mock
 
+import nextcord
+
 from conversation_graph import ConversationGraphBuilder, MessageGraph, CachedHistoryFetcher
 from message_node import MessageNode
 from null_telemetry import NullTelemetry
@@ -255,7 +257,7 @@ class TestConversationGraphBuilder(BaseMessageGraphTest):
             )
 
         conversation = await counting_builder.build_conversation_graph(
-            trigger_message=trigger_message,
+            trigger_messages=[trigger_message],
             min_linear=10,
             max_total=200,  # Request all 200 messages
             time_threshold_minutes=300,  # Large threshold to include all messages
@@ -275,6 +277,53 @@ class TestConversationGraphBuilder(BaseMessageGraphTest):
             f"Expected exactly 2 API calls but got {api_call_count}. "
             f"With 200 messages, should need exactly 2 calls of 100 messages each.",
         )
+
+    async def _message_to_node(self, discord_msg: nextcord.Message) -> MessageNode:
+        return MessageNode(
+            id=discord_msg.id,
+            content=discord_msg.content,
+            author_id=discord_msg.author.id,
+            guild_id=1,
+            channel_id=1000,
+            mentioned_user_ids=[user.id for user in discord_msg.mentions],
+            created_at=discord_msg.created_at,
+            reference_id=discord_msg.reference.message_id if discord_msg.reference else None,
+        )
+
+    async def test_multiple_triggers_build_separate_clusters(self):
+        """Each trigger seeds its own cluster, so distant parts of the channel both appear."""
+        self.messages[1] = self.create_test_message(1, "task request", 3000)
+        self.messages[2] = self.create_test_message(2, "chatter before run", 1442)
+        self.messages[3] = self.create_test_message(3, "previous run", 1440, reference_id=1)
+        self.messages[10] = self.create_test_message(10, "older recent chatter", 600)
+        self.messages[11] = self.create_test_message(11, "recent chatter", 12)
+        self.messages[12] = self.create_test_message(12, "latest chatter", 0)
+
+        conversation = await self.builder.build_conversation_graph(
+            trigger_messages=[self.messages[12], self.messages[3]],
+            min_linear=2,
+            max_total=30,
+            time_threshold_minutes=30,
+            discord_to_message_node_func=self._message_to_node,
+        )
+
+        self.assertEqual([m.message_id for m in conversation], [1, 2, 3, 11, 12])
+
+    async def test_overlapping_triggers_are_deduplicated(self):
+        """Triggers whose histories overlap produce each message once."""
+        self.messages[1] = self.create_test_message(1, "one", 3)
+        self.messages[2] = self.create_test_message(2, "two", 2)
+        self.messages[3] = self.create_test_message(3, "three", 1)
+
+        conversation = await self.builder.build_conversation_graph(
+            trigger_messages=[self.messages[3], self.messages[2], self.messages[3]],
+            min_linear=3,
+            max_total=30,
+            time_threshold_minutes=30,
+            discord_to_message_node_func=self._message_to_node,
+        )
+
+        self.assertEqual([m.message_id for m in conversation], [1, 2, 3])
 
 
 class TestCachedHistoryFetcher(BaseMessageGraphTest):

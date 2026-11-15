@@ -12,6 +12,7 @@ from research_handoff import ProcessorResult, ResearchHandoffService
 from schedule_engine import CATCHUP_STALENESS, ScheduleEngine
 from schemas import GeneralParams
 from store import ScheduledTask, Store
+from task_history_summarizer import TaskHistorySummarizer
 
 
 def _make_task(
@@ -19,6 +20,7 @@ def _make_task(
     cron: str | None = "0 9 * * *",
     tz: str = "Asia/Tokyo",
     next_run_at: datetime | None = None,
+    chain_message_ids: list[int] | None = None,
 ) -> ScheduledTask:
     now = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
     return ScheduledTask(
@@ -33,6 +35,7 @@ def _make_task(
         last_run_at=None,
         created_at=now,
         updated_at=now,
+        chain_message_ids=chain_message_ids or [],
     )
 
 
@@ -42,7 +45,7 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.mock_store.list_scheduled_tasks = AsyncMock(return_value=[])
         self.mock_store.update_task_next_run_at = AsyncMock()
         self.mock_store.delete_scheduled_task = AsyncMock(return_value=True)
-        self.mock_store.mark_task_last_run = AsyncMock()
+        self.mock_store.record_task_run = AsyncMock()
         self.mock_store.list_active_user_ids = AsyncMock(return_value=[])
 
         self.mock_gqg = MagicMock(spec=GeneralQueryGenerator)
@@ -62,11 +65,16 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
             )
         )
 
+        self.mock_summarizer = MagicMock(spec=TaskHistorySummarizer)
+        self.mock_summarizer.summarize = AsyncMock(return_value=None)
+
         self.engine = ScheduleEngine(
             store=self.mock_store,
             telemetry=NullTelemetry(),
             general_query_generator=self.mock_gqg,
             handoff_service=self.mock_handoff_service,
+            task_history_summarizer=self.mock_summarizer,
+            chain_max_messages=100,
         )
         self.engine.ai_router = self.mock_router
 
@@ -145,7 +153,7 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         await self.engine._execute(task, intended_run_at=task.next_run_at, scheduled=True)
 
         self.mock_channel.send.assert_not_called()
-        self.mock_store.mark_task_last_run.assert_not_awaited()
+        self.mock_store.record_task_run.assert_not_awaited()
 
     async def test_execute_handles_channel_unavailable(self):
         self.mock_bot.get_channel.return_value = None
@@ -231,7 +239,7 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         await self.engine._execute(task, intended_run_at=task.next_run_at, scheduled=True)
 
         self.mock_channel.send.assert_not_called()
-        self.mock_store.mark_task_last_run.assert_not_called()
+        self.mock_store.record_task_run.assert_not_called()
 
     async def test_execute_fetches_channel_via_api_when_cache_misses(self):
         self.mock_bot.get_channel.return_value = None
@@ -254,7 +262,7 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
 
         self.mock_channel.send.assert_awaited_once_with("response text", suppress_embeds=True)
         self.mock_handoff_service.save.assert_awaited_once_with(555, handoff)
-        self.mock_store.mark_task_last_run.assert_awaited_once()
+        self.mock_store.record_task_run.assert_awaited_once()
 
     async def test_execute_sends_task_as_request_from_creator(self):
         # The firing is answered as a request authored by the task creator, so
@@ -269,6 +277,60 @@ class TestScheduleEngine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.guild_id, task.guild_id)
         self.assertEqual(request.content, task.prompt)
         self.assertIs(self.mock_router.extract_general_params.await_args.args[0], request)
+
+    # ---- reply chain ----
+
+    async def test_execute_without_chain_posts_plain_message_from_latest_context(self):
+        task = _make_task(chain_message_ids=[])
+
+        await self.engine._execute(task, intended_run_at=task.next_run_at, scheduled=True)
+
+        _params, request, fetch_conversation, _bot_user = self.mock_gqg.handle_request.await_args.args
+        await fetch_conversation()
+        self.engine._channel_conversation_fetcher.assert_awaited_once_with(task.channel_id, None)
+        self.mock_channel.send.assert_awaited_once_with("response text", suppress_embeds=True)
+        self.assertIsNone(request.reply_to_id)
+
+    async def test_execute_replies_to_last_chain_message(self):
+        task = _make_task(task_id=3, chain_message_ids=[10, 20, 30])
+
+        await self.engine._execute(task, intended_run_at=task.next_run_at, scheduled=True)
+
+        _params, request, fetch_conversation, _bot_user = self.mock_gqg.handle_request.await_args.args
+        await fetch_conversation()
+        self.engine._channel_conversation_fetcher.assert_awaited_once_with(task.channel_id, 30)
+        reference = self.mock_channel.send.await_args.kwargs["reference"]
+        self.assertEqual(reference.message_id, 30)
+        self.assertEqual(reference.channel_id, task.channel_id)
+        self.assertFalse(reference.fail_if_not_exists)
+        self.assertEqual(request.reply_to_id, 30)
+
+    async def test_execute_records_sent_message_in_chain(self):
+        task = _make_task(task_id=3, chain_message_ids=[10])
+
+        await self.engine._execute(task, intended_run_at=task.next_run_at, scheduled=True)
+
+        task_id, _last_run_at, message_id, max_chain_ids = self.mock_store.record_task_run.await_args.args
+        self.assertEqual(task_id, 3)
+        self.assertEqual(message_id, 555)
+        self.assertEqual(max_chain_ids, 100)
+
+    async def test_execute_passes_task_history_to_generator(self):
+        self.mock_summarizer.summarize.return_value = "- covered: 猫 (cat)"
+        task = _make_task(chain_message_ids=[10, 20, 30, 40])
+
+        await self.engine._execute(task, intended_run_at=task.next_run_at, scheduled=True)
+
+        self.mock_summarizer.summarize.assert_awaited_once_with(task, 999)
+        self.assertEqual(self.mock_gqg.handle_request.await_args.kwargs["task_history"], "- covered: 猫 (cat)")
+
+    async def test_fire_task_also_extends_chain(self):
+        task = _make_task(task_id=5, chain_message_ids=[10])
+
+        await self.engine.fire_task(task)
+
+        self.mock_store.record_task_run.assert_awaited_once()
+        self.assertEqual(self.mock_channel.send.await_args.kwargs["reference"].message_id, 10)
 
     # ---- _dispatch_due_task error handling ----
 

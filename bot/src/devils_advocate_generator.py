@@ -8,7 +8,8 @@ from conversation_graph import ConversationMessage
 from open_telemetry import Telemetry
 from language_detector import LanguageDetector
 from response_summarizer import ResponseSummarizer
-from memory_manager import MemoryManager
+from discord_formatting import DISCORD_FORMATTING_INSTRUCTIONS
+from request_context import RequestContextBuilder
 from conversation_formatter import (
     CONVERSATION_STRUCTURE_INSTRUCTIONS,
     ConversationFormatter,
@@ -27,23 +28,15 @@ class DevilsAdvocateGenerator:
         language_detector: LanguageDetector,
         conversation_formatter: ConversationFormatter,
         response_summarizer: ResponseSummarizer,
-        memory_manager: MemoryManager,
+        context_builder: RequestContextBuilder,
         telemetry: Telemetry,
     ) -> None:
         self._ai_client = ai_client
         self._language_detector = language_detector
         self._conversation_formatter = conversation_formatter
         self._response_summarizer = response_summarizer
-        self._memory_manager = memory_manager
+        self._context_builder = context_builder
         self._telemetry = telemetry
-
-    def _extract_unique_user_ids(self, conversation: list[ConversationMessage]) -> set[int]:
-        """Extract all unique user IDs from conversation (authors + mentions)."""
-        user_ids = set()
-        for msg in conversation:
-            user_ids.add(msg.author_id)
-            user_ids.update(msg.mentioned_user_ids)
-        return user_ids
 
     async def generate_counter_argument(
         self,
@@ -69,11 +62,7 @@ class DevilsAdvocateGenerator:
 
             conversation = await conversation_fetcher()
 
-            user_ids = self._extract_unique_user_ids(conversation)
-            user_ids.add(trigger_message.author_id)
-            memories_block = await self._memory_manager.build_memory_prompt(trigger_message.guild_id, user_ids)
-
-            conversation_block = await self._conversation_formatter.format_to_xml(conversation)
+            context = await self._context_builder.build(trigger_message, conversation)
 
             prompt = f"""<system_instructions>
 You are a devil's advocate.
@@ -101,6 +90,9 @@ then add tightly edited support using Markdown structure (headings, lists) to im
 - Do not add follow-up questions or invitations to continue; state the counter-argument and stop.
 - Deliver the counter-argument directly, without any meta commentary.
 
+Discord formatting:
+{DISCORD_FORMATTING_INSTRUCTIONS}
+
 Language:
 - Respond in {language_name}
 
@@ -112,9 +104,9 @@ Personalization:
 {CONVERSATION_STRUCTURE_INSTRUCTIONS}
 </system_instructions>
 
-{memories_block}
+{context.memories_block}
 
-{conversation_block}"""
+{context.conversation_block}"""
 
             request_xml = await self._conversation_formatter.format_request_message_xml(trigger_message)
 
