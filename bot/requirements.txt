@@ -1,4 +1,4 @@
-google-genai
+google-genai>=3,<4
 nextcord
 python-dotenv
 psycopg[binary]
