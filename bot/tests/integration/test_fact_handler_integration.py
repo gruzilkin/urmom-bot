@@ -140,7 +140,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
             schedule_handler=schedule_handler,
             conversation_formatter=conversation_formatter,
             memory_manager=memory_manager,
-            route_selector=LlmRouteSelector(client, route_descriptions, self.telemetry),
+            route_selector=LlmRouteSelector(client, route_descriptions, Mock(bot_user_id=999), self.telemetry),
         )
 
         guild_id = store.physics_guild_id

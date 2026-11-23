@@ -29,6 +29,13 @@ class UserResolver:
         self._display_name_cache.clear()
         logger.info("UserResolver initialized with bot client.")
 
+    @property
+    def bot_user_id(self) -> int | None:
+        """Discord user ID of the bot itself, or None before the bot client is set."""
+        if self._bot is None or self._bot.user is None:
+            return None
+        return self._bot.user.id
+
     async def get_display_name(self, guild_id: int, user_id: int) -> str:
         async with self.telemetry.async_create_span("get_display_name", SpanKind.CLIENT) as span:
             span.set_attribute("guild_id", guild_id)

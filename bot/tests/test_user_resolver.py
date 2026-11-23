@@ -11,6 +11,7 @@ class TestUserResolver(UserResolver):
 
     def __init__(self):
         # Don't call super().__init__() since we don't need real Discord client
+        self._bot = None
         self._physicists = {
             # User ID based on birth-death years
             187911955: "Einstein",  # Albert Einstein (1879-1955)

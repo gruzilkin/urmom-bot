@@ -13,10 +13,18 @@ from schemas import RouteName, RouteSelection
 class TestLlmRouteSelectorPrompt(unittest.TestCase):
     def test_prompt_offers_every_route(self):
         descriptions = {route: f"{route}: description" for route in get_args(RouteName)}
-        prompt = LlmRouteSelector(Mock(), descriptions, NullTelemetry()).build_prompt("")
+        prompt = LlmRouteSelector(Mock(), descriptions, Mock(bot_user_id=999), NullTelemetry()).build_prompt("")
 
         for route in get_args(RouteName):
             self.assertIn(f'<route route="{route}">\n{route}: description', prompt)
+
+    def test_prompt_with_context_names_bot_member_id(self):
+        descriptions = {route: f"{route}: description" for route in get_args(RouteName)}
+        selector = LlmRouteSelector(Mock(), descriptions, Mock(bot_user_id=999), NullTelemetry())
+
+        prompt = selector.build_prompt("<conversation_history></conversation_history>")
+
+        self.assertIn("Messages from member_id 999 are the bot's own messages.", prompt)
 
 
 class TestJevRouteSelector(unittest.IsolatedAsyncioTestCase):
@@ -26,7 +34,7 @@ class TestJevRouteSelector(unittest.IsolatedAsyncioTestCase):
         answer = Choice(choice=top, probabilities=probabilities, confidence=0.5)
         jev_client = Mock()
         jev_client.ask = AsyncMock(return_value=Mock(route=answer))
-        return JevRouteSelector(jev_client, descriptions, NullTelemetry(), min_probability=0.8)
+        return JevRouteSelector(jev_client, descriptions, Mock(bot_user_id=999), NullTelemetry(), min_probability=0.8)
 
     async def test_confident_answer_is_returned(self):
         selection = await self._selector({"SCHEDULE": 0.9, "GENERAL": 0.1}).select("m", "")
@@ -38,6 +46,14 @@ class TestJevRouteSelector(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(selection.route, "NOTSURE")
         self.assertEqual(selection.reason, "jev GENERAL=0.61, SCHEDULE=0.39")
+
+    async def test_bot_member_id_is_sent_with_conversation_context(self):
+        selector = self._selector({"GENERAL": 0.95, "NONE": 0.05})
+
+        await selector.select("m", "<conversation_history></conversation_history>")
+
+        state = selector.jev_client.ask.call_args.kwargs["state"]
+        self.assertEqual(state["bot_member_id"], "999")
 
 
 class TestCompositeRouteSelector(unittest.IsolatedAsyncioTestCase):

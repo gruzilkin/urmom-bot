@@ -317,9 +317,13 @@ class Container:
             self.fact_handler,
             self.schedule_handler,
         )
-        llm_route_selector = LlmRouteSelector(self.latency_critical, route_descriptions, self.telemetry)
+        llm_route_selector = LlmRouteSelector(
+            self.latency_critical, route_descriptions, self.user_resolver, self.telemetry
+        )
         if self.jev_client is not None:
-            jev_route_selector = JevRouteSelector(self.jev_client, route_descriptions, self.telemetry)
+            jev_route_selector = JevRouteSelector(
+                self.jev_client, route_descriptions, self.user_resolver, self.telemetry
+            )
             self.route_selector = CompositeRouteSelector([jev_route_selector, llm_route_selector], self.telemetry)
         else:
             self.route_selector = llm_route_selector

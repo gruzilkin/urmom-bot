@@ -68,7 +68,7 @@ class TestAiRouterUnit(unittest.IsolatedAsyncioTestCase):
         route_descriptions = build_route_descriptions(
             self.famous_generator, self.general_generator, self.fact_handler, self.schedule_handler
         )
-        route_selector = LlmRouteSelector(router_client, route_descriptions, self.telemetry)
+        route_selector = LlmRouteSelector(router_client, route_descriptions, Mock(bot_user_id=999), self.telemetry)
 
         # Create router with mocked dependencies
         self.router = AiRouter(

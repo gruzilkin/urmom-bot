@@ -54,6 +54,8 @@ class GeneralQueryGenerator:
           "Tell me about user X"
         - Context-dependent questions: "What about this?",
           "How does that work?"
+        - Replies that continue a conversation with the bot, even without
+          a question, when they engage with what the bot said
         - Factual questions about real people: "What did Trump say?",
           "Did X say anything interesting?",
           "What did Marie Curie discover?"
@@ -62,7 +64,7 @@ class GeneralQueryGenerator:
         - May contain AI backend specifications such as
           "ask grok to...", "have gemini explain..."
         - Invalid: Simple reactions like "lol", "nice",
-          "haha that's funny"
+          "haha that's funny", and pure taunts at the bot
         """
 
     def get_parameter_schema(self):

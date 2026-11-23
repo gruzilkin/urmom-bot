@@ -23,15 +23,18 @@ from open_telemetry import Telemetry
 from schedule_handler import ScheduleHandler
 from conversation_formatter import CONVERSATION_STRUCTURE_INSTRUCTIONS
 from schemas import DefiniteRouteName, RouteName, RouteSelection
+from user_resolver import UserResolver
 
 logger = logging.getLogger(__name__)
 
 
 NONE_ROUTE_DESCRIPTION = """NONE: For everything else
-- Simple reactions, acknowledgments, or invalid queries
-- Conversations about the BOT without a direct request to it
+- Simple reactions, acknowledgments, or invalid queries, even when replying to the bot
+- Conversations about the bot between members, not addressed to it
+- Taunts, insults, or boundary-testing aimed at the bot with nothing to answer
+- NOT for replies that answer or substantively continue one of the bot's messages
 - Examples:
-  - "lol", "nice", "ok", "haha", random gibberish
+  - "lol", "nice", "ok", "haha", "found it", a bare link or GIF, random gibberish
   - "Did you see BOT's last response? It was hilarious."
   - "I think BOT is getting smarter at answering questions."
   - "You should ask BOT about that."
@@ -70,9 +73,16 @@ class RouteSelector(Protocol):
 class LlmRouteSelector:
     """Route selection by an LLM with the full instruction prompt; may answer NOTSURE."""
 
-    def __init__(self, ai_client: AIClient, route_descriptions: dict[str, str], telemetry: Telemetry) -> None:
+    def __init__(
+        self,
+        ai_client: AIClient,
+        route_descriptions: dict[str, str],
+        user_resolver: UserResolver,
+        telemetry: Telemetry,
+    ) -> None:
         self.ai_client = ai_client
         self.route_descriptions = route_descriptions
+        self.user_resolver = user_resolver
         self.telemetry = telemetry
 
     def __repr__(self) -> str:
@@ -84,6 +94,7 @@ class LlmRouteSelector:
 <conversation_context>
 {CONVERSATION_STRUCTURE_INSTRUCTIONS}
 
+Messages from member_id {self.user_resolver.bot_user_id} are the bot's own messages.
 Route the <request> message.
 Use earlier messages to resolve references like "this", "that", "it" in the <request>.
 
@@ -114,14 +125,16 @@ Route based on the SEMANTIC MEANING and INTENT of the message, not specific keyw
 Instructions:
 1. Check if the message contains references to child sexual abuse. If yes, choose NONE immediately.
 2. Read the user message carefully, understanding its semantic meaning regardless of language.
-3. Assess your confidence: Are you ABSOLUTELY CERTAIN about the intent?
-4. If not absolutely certain, choose NOTSURE immediately - this is the preferred choice.
-5. Consider that all route types can be expressed in any language:
+3. A member answering, correcting, adding to, or arguing with one of the bot's messages is talking to the bot;
+   do not choose NONE just because there is no explicit question or request.
+4. Assess your confidence: Are you ABSOLUTELY CERTAIN about the intent?
+5. If not absolutely certain, choose NOTSURE immediately - this is the preferred choice.
+6. Consider that all route types can be expressed in any language:
    - Famous person requests: "What would X say?" / "Что бы сказал X?" / "¿Qué diría X?"
    - Memory operations: "Remember that..." / "Запомни что..." / "Recuerda que..."
    - General queries: "Explain..." / "Объясни..." / "Explica..."
-6. ALWAYS provide a brief (1-2 sentence) reason for your decision.
-7. Focus ONLY on route selection - parameter extraction happens later.
+7. ALWAYS provide a brief (1-2 sentence) reason for your decision.
+8. Focus ONLY on route selection - parameter extraction happens later.
 </system_instructions>
 {conversation_context}
 <route_definitions>
@@ -146,8 +159,8 @@ JEV_ROUTE_INSTRUCTIONS = (
     "Decide how to route the user message, given as a <request> block in `message`. The message can be in "
     "any language; route by semantic meaning and intent, not keywords. If `conversation_context` is present, "
     "route only the <request> in `message` and use the earlier conversation to resolve references like "
-    "'this', 'that', 'it'. Any message referencing child sexual abuse is NONE.\n\n"
-    + CONVERSATION_STRUCTURE_INSTRUCTIONS
+    "'this', 'that', 'it'. `bot_member_id` is the bot's own member_id. "
+    "Any message referencing child sexual abuse is NONE.\n\n" + CONVERSATION_STRUCTURE_INSTRUCTIONS
 )
 
 
@@ -159,10 +172,12 @@ class JevRouteSelector:
         self,
         jev_client: JevClient,
         route_descriptions: dict[str, str],
+        user_resolver: UserResolver,
         telemetry: Telemetry,
-        min_probability: float = 0.9,
+        min_probability: float = 0.8,
     ) -> None:
         self.jev_client = jev_client
+        self.user_resolver = user_resolver
         self.telemetry = telemetry
         self.min_probability = min_probability
         self.questions: type[BaseModel] = create_model(
@@ -188,6 +203,7 @@ class JevRouteSelector:
             state: dict[str, str] = {"message": message}
             if conversation_context:
                 state["conversation_context"] = conversation_context
+                state["bot_member_id"] = str(self.user_resolver.bot_user_id)
 
             decision = await self.jev_client.ask(state=state, questions=self.questions)
             answer: Choice = decision.route

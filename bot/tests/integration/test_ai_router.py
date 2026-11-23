@@ -142,7 +142,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             schedule_handler=schedule_handler,
             conversation_formatter=conversation_formatter,
             memory_manager=memory_manager,
-            route_selector=LlmRouteSelector(router_client, route_descriptions, self.telemetry),
+            route_selector=LlmRouteSelector(router_client, route_descriptions, Mock(bot_user_id=999), self.telemetry),
         )
 
     async def test_route_request_with_perspective_shift(self):
