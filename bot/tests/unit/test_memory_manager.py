@@ -446,6 +446,22 @@ class TestMemoryManagerDataProcessing(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("</message>", prompt)
 
+    async def test_summaries_for_members_not_offered_are_discarded(self):
+        einstein_id = self.physicist_ids["Einstein"]
+
+        self.mock_summary_client.generate_content = AsyncMock(
+            return_value=DailySummaries(
+                summaries=[
+                    UserSummary(user_id=str(einstein_id), summary="Einstein discussed quantum theory"),
+                    UserSummary(user_id="285005165772406800", summary="Nobody discussed anything"),
+                ]
+            )
+        )
+
+        result = await self.memory_manager._create_daily_summaries(self.physics_guild_id, self.test_date, UTC)
+
+        self.assertEqual(result, {einstein_id: "Einstein discussed quantum theory"})
+
     async def test_user_deduplication(self):
         """Test that AI prompt contains deduplicated user list despite duplicate messages."""
         # Arrange - TestStore for March 3rd contains 10 messages from multiple users, with duplicates

@@ -73,7 +73,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the <req
         
         operation: "remember" or "forget" based on an EXPLICIT and IMPERATIVE
         command.
-        member_id: The numeric Discord ID of the member the fact is about.
+        member_id: The Discord ID of the member the fact is about.
         If they are mentioned directly with a tag like <@1234567890>, use that id.
         If they are referred to only by a name (e.g. "Boris"), find that member
         in the <memories> block and use their member_id. If you cannot find the
@@ -92,7 +92,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the <req
         
         Example:
         - "Bot remember that <@1234567890> is from Moscow"
-          → operation: "remember", member_id: 1234567890,
+          → operation: "remember", member_id: "1234567890",
           fact_content: "They are from Moscow"
         
         For fact_content conversion to third-person perspective:
@@ -267,7 +267,7 @@ Use earlier messages to resolve references like "this", "that", "it" in the <req
 
         if params.member_id is None:
             return "I couldn't identify the member. Please reference them with a Discord mention."
-        user_id = params.member_id
+        user_id = int(params.member_id)
 
         if params.operation == "remember":
             return await self._remember_fact(guild_id, user_id, params.fact_content, params.language_name)

@@ -6,7 +6,7 @@ for structured output generation.
 """
 
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class YesNo(BaseModel):
@@ -57,12 +57,14 @@ class GeneralParams(BaseModel):
 class FactParams(BaseModel):
     """Parameters for memory fact operations."""
 
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     operation: Literal["remember", "forget"] = Field(
         description="Memory operation type: 'remember' to store a fact, 'forget' to remove a fact"
     )
-    member_id: int | None = Field(
+    member_id: str | None = Field(
         default=None,
-        description="Numeric Discord member ID of the member the fact is about, or null if it cannot be determined",
+        description="Discord member ID of the member the fact is about, or null if it cannot be determined",
     )
     fact_content: str = Field(description="The specific fact to remember or forget about the user")
     language_code: str | None = Field(
@@ -251,7 +253,9 @@ class MemoryContext(BaseModel):
 class UserSummary(BaseModel):
     """Schema for individual user summary."""
 
-    user_id: int = Field(description="Discord user ID")
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
+    user_id: str = Field(description="Discord user ID")
     summary: str = Field(description="Daily summary for the user")
 
 

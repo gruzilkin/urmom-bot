@@ -35,7 +35,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Arrange
         params = FactParams(
             operation="remember",
-            member_id=12345,
+            member_id="12345",
             fact_content="they like chocolate",
             language_code="en",
             language_name="English",
@@ -61,7 +61,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Arrange
         params = FactParams(
             operation="remember",
-            member_id=12345,
+            member_id="12345",
             fact_content="they are a developer",
             language_code="en",
             language_name="English",
@@ -91,7 +91,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Arrange
         params = FactParams(
             operation="forget",
-            member_id=12345,
+            member_id="12345",
             fact_content="they dislike broccoli",
             language_code="en",
             language_name="English",
@@ -120,7 +120,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
         # Arrange
         params = FactParams(
             operation="forget",
-            member_id=12345,
+            member_id="12345",
             fact_content="they like chocolate",
             language_code="en",
             language_name="English",

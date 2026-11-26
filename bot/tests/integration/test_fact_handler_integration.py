@@ -398,7 +398,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(route, "FACT", "Should route Russian command to FACT")
                 self.assertIsNotNone(params, "Should extract parameters for FACT route")
                 self.assertEqual(params.operation, "remember")
-                self.assertEqual(params.member_id, rutherford_id)
+                self.assertEqual(params.member_id, str(rutherford_id))
 
                 fact_content_lower = params.fact_content.lower()
                 russian_terms = ["известен", "крокодил"]
@@ -451,7 +451,7 @@ class TestFactHandlerIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(route, "FACT")
                 self.assertIsNotNone(params)
                 self.assertEqual(params.operation, "remember")
-                self.assertEqual(params.member_id, einstein_id)
+                self.assertEqual(params.member_id, str(einstein_id))
                 self.assertIn("chocolate", params.fact_content.lower())
                 self.assertIn("like", params.fact_content.lower())
 

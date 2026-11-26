@@ -368,9 +368,17 @@ class MemoryManager:
                 temperature=0,
             )
 
-            # Convert list of UserSummary objects to dict[int, str]
-            summaries_dict = {user_summary.user_id: user_summary.summary for user_summary in response.summaries}
-            return summaries_dict
+            offered_ids = {str(user_id) for user_id in active_user_ids}
+            rejected_ids = [summary.user_id for summary in response.summaries if summary.user_id not in offered_ids]
+            if rejected_ids:
+                logger.warning(f"Discarding daily summaries for user_ids not among target members: {rejected_ids}")
+                span.set_attribute("rejected_summary_count", len(rejected_ids))
+
+            return {
+                int(summary.user_id): summary.summary
+                for summary in response.summaries
+                if summary.user_id in offered_ids
+            }
 
     async def _merge_context(
         self, guild_id: int, user_id: int, facts: str | None, daily_summaries: dict[date, str]

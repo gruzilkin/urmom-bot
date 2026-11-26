@@ -208,7 +208,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(route, "FACT")
                 self.assertIsNotNone(params)
                 self.assertEqual(params.operation, "remember")
-                self.assertEqual(params.member_id, 1333878858138652682)
+                self.assertEqual(params.member_id, "1333878858138652682")
                 self.assertIn("TechCorp", params.fact_content)
 
     async def test_route_request_memory_forget(self):
@@ -226,7 +226,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(route, "FACT")
                 self.assertIsNotNone(params)
                 self.assertEqual(params.operation, "forget")
-                self.assertEqual(params.member_id, 1333878858138652682)
+                self.assertEqual(params.member_id, "1333878858138652682")
                 self.assertIn("pizza", params.fact_content.lower())
                 self.assertIn("like", params.fact_content.lower())
 
@@ -506,7 +506,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
             ConversationMessage(
                 message_id=1,
                 guild_id=12345,
-                author_id=int(self._RESOLVE_TARGET_ID),
+                author_id=self._RESOLVE_TARGET_ID,
                 content="hey everyone",
                 timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
                 mentioned_user_ids=[],
@@ -525,7 +525,7 @@ class TestAiRouterIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(params.operation, "remember")
                 self.assertEqual(
                     params.member_id,
-                    int(self._RESOLVE_TARGET_ID),
+                    self._RESOLVE_TARGET_ID,
                     f"Should resolve '{reference}' to member_id via the <memories> directory",
                 )
 
